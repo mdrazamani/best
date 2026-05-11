@@ -25,7 +25,7 @@ export class UsersService extends BaseService {
     const normalizedUsername = dto.username.trim();
     const existing = await this.usersRepository.findByUsername(normalizedUsername);
     if (existing) {
-      throw new BadRequestException('??? ?????? ???? ??? ??? ???.');
+      throw new BadRequestException('\u0646\u0627\u0645 \u06a9\u0627\u0631\u0628\u0631\u06cc \u0642\u0628\u0644\u0627\u064b \u062b\u0628\u062a \u0634\u062f\u0647 \u0627\u0633\u062a.');
     }
 
     const created = await this.usersRepository.create({
@@ -46,7 +46,7 @@ export class UsersService extends BaseService {
       entityType: 'User',
       entityId: created.id,
       action: 'CREATE',
-      description: '????? ????? ???????'
+      description: '\u0627\u06cc\u062c\u0627\u062f \u06a9\u0627\u0631\u0628\u0631 \u0645\u062f\u06cc\u0631\u06cc\u062a\u06cc'
     });
 
     return this.usersRepository.findById(created.id);
@@ -55,7 +55,7 @@ export class UsersService extends BaseService {
   async update(actorId: string, id: string, dto: UpdateUserDto) {
     const existing = await this.usersRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException('????? ???? ???.');
+      throw new NotFoundException('\u06a9\u0627\u0631\u0628\u0631 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
     const updated = await this.usersRepository.update(id, {
@@ -72,7 +72,7 @@ export class UsersService extends BaseService {
       entityType: 'User',
       entityId: updated.id,
       action: 'UPDATE',
-      description: '?????? ????? ???????'
+      description: '\u0648\u06cc\u0631\u0627\u06cc\u0634 \u06a9\u0627\u0631\u0628\u0631 \u0645\u062f\u06cc\u0631\u06cc\u062a\u06cc'
     });
 
     return this.usersRepository.findById(updated.id);
@@ -81,12 +81,12 @@ export class UsersService extends BaseService {
   async assignRole(actorId: string, userId: string, roleKey: string) {
     const user = await this.usersRepository.findById(userId);
     if (!user) {
-      throw new NotFoundException('????? ???? ???.');
+      throw new NotFoundException('\u06a9\u0627\u0631\u0628\u0631 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
     const role = await this.rolesService.findByKey(roleKey.trim());
     if (!role) {
-      throw new NotFoundException('??? ???? ???.');
+      throw new NotFoundException('\u0646\u0642\u0634 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
     await this.usersRepository.addRole(userId, role.id);
@@ -96,7 +96,7 @@ export class UsersService extends BaseService {
       entityType: 'UserRole',
       entityId: userId,
       action: 'ASSIGN_ROLE',
-      description: `?????? ??? ${role.name}`
+      description: `\u0627\u062e\u062a\u0635\u0627\u0635 \u0646\u0642\u0634 ${role.name}`
     });
 
     return this.usersRepository.findById(userId);

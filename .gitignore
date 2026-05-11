@@ -3,5 +3,10 @@ node_modules/
 apps/*/dist/
 apps/*/coverage/
 apps/*/.env
+apps/*/backups/
+apps/*/.tmp/
+apps/*/artifacts/
+apps/*/var/
 *.log
 *.tsbuildinfo
+.DS_Store

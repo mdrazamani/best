@@ -1,51 +1,54 @@
-import { PrismaClient } from '@prisma/client';
-import * as argon2 from 'argon2';
+const { PrismaClient } = require('@prisma/client');
+const argon2 = require('argon2');
 
 const prisma = new PrismaClient();
 
+const LABELS = {
+  firstName: '\u0645\u062f\u06cc\u0631',
+  lastName: '\u0627\u0635\u0644\u06cc',
+  superAdminName: '\u0645\u062f\u06cc\u0631 \u0627\u0635\u0644\u06cc',
+  superAdminDescription: '\u062f\u0633\u062a\u0631\u0633\u06cc \u06a9\u0627\u0645\u0644 \u0633\u06cc\u0633\u062a\u0645',
+  customerName: '\u0645\u0634\u062a\u0631\u06cc',
+  customerDescription: '\u0646\u0642\u0634 \u067e\u06cc\u0634\u200c\u0641\u0631\u0636',
+  managerName: '\u0645\u062f\u06cc\u0631',
+  managerDescription: '\u0645\u062f\u06cc\u0631 \u0633\u06cc\u0633\u062a\u0645'
+};
+
 async function main() {
-  const username = process.env.SEED_SUPER_ADMIN_USERNAME ?? 'superadmin';
-  const password = process.env.SEED_SUPER_ADMIN_PASSWORD ?? 'Best@123456';
-  const firstName = process.env.SEED_SUPER_ADMIN_FIRSTNAME ?? '\u0645\u062f\u06cc\u0631';
-  const lastName = process.env.SEED_SUPER_ADMIN_LASTNAME ?? '\u0627\u0635\u0644\u06cc';
+  const username = process.env.SEED_SUPER_ADMIN_USERNAME || 'superadmin';
+  const password = process.env.SEED_SUPER_ADMIN_PASSWORD || 'Best@123456';
+  const firstName = process.env.SEED_SUPER_ADMIN_FIRSTNAME || LABELS.firstName;
+  const lastName = process.env.SEED_SUPER_ADMIN_LASTNAME || LABELS.lastName;
 
   const superRole = await prisma.role.upsert({
     where: { key: 'super_admin' },
-    update: {
-      name: '\u0645\u062f\u06cc\u0631 \u0627\u0635\u0644\u06cc',
-      isSystem: true
-    },
+    update: { name: LABELS.superAdminName, isSystem: true },
     create: {
       key: 'super_admin',
-      name: '\u0645\u062f\u06cc\u0631 \u0627\u0635\u0644\u06cc',
-      description: '\u062f\u0633\u062a\u0631\u0633\u06cc \u06a9\u0627\u0645\u0644 \u0633\u06cc\u0633\u062a\u0645',
+      name: LABELS.superAdminName,
+      description: LABELS.superAdminDescription,
       isSystem: true
     }
   });
 
   await prisma.role.upsert({
     where: { key: 'customer' },
-    update: {
-      name: '\u0645\u0634\u062a\u0631\u06cc',
-      isSystem: true
-    },
+    update: { name: LABELS.customerName, isSystem: true },
     create: {
       key: 'customer',
-      name: '\u0645\u0634\u062a\u0631\u06cc',
-      description: '\u0646\u0642\u0634 \u067e\u06cc\u0634\u200c\u0641\u0631\u0636',
+      name: LABELS.customerName,
+      description: LABELS.customerDescription,
       isSystem: true
     }
   });
 
   const managerRole = await prisma.role.upsert({
     where: { key: 'manager' },
-    update: {
-      name: '\u0645\u062f\u06cc\u0631'
-    },
+    update: { name: LABELS.managerName },
     create: {
       key: 'manager',
-      name: '\u0645\u062f\u06cc\u0631',
-      description: '\u0645\u062f\u06cc\u0631 \u0633\u06cc\u0633\u062a\u0645',
+      name: LABELS.managerName,
+      description: LABELS.managerDescription,
       isSystem: false
     }
   });
@@ -64,7 +67,7 @@ async function main() {
     { key: 'backups.all', resource: 'backups', apiName: 'Backups', method: 'ANY', path: '/backups' },
     { key: 'reports.all', resource: 'reports', apiName: 'Reports', method: 'ANY', path: '/reports' },
     { key: 'logs.list', resource: 'operation_logs', apiName: 'Logs', method: 'GET', path: '/operation-logs' }
-  ] as const;
+  ];
 
   for (const item of permissionDefs) {
     const permission = await prisma.permission.upsert({
@@ -74,31 +77,15 @@ async function main() {
     });
 
     await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: {
-          roleId: superRole.id,
-          permissionId: permission.id
-        }
-      },
+      where: { roleId_permissionId: { roleId: superRole.id, permissionId: permission.id } },
       update: {},
-      create: {
-        roleId: superRole.id,
-        permissionId: permission.id
-      }
+      create: { roleId: superRole.id, permissionId: permission.id }
     });
 
     await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: {
-          roleId: managerRole.id,
-          permissionId: permission.id
-        }
-      },
+      where: { roleId_permissionId: { roleId: managerRole.id, permissionId: permission.id } },
       update: {},
-      create: {
-        roleId: managerRole.id,
-        permissionId: permission.id
-      }
+      create: { roleId: managerRole.id, permissionId: permission.id }
     });
   }
 

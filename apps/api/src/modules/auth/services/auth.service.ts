@@ -28,19 +28,19 @@ export class AuthService extends BaseService {
 
     const attempt = await this.authRepository.findLoginAttempt(username);
     if (attempt?.lockedUntil && attempt.lockedUntil > new Date()) {
-      throw new UnauthorizedException('???? ??? ????? ??? ??? ???.');
+      throw new UnauthorizedException('\u062d\u0633\u0627\u0628 \u0634\u0645\u0627 \u0645\u0648\u0642\u062a\u0627\u064b \u0642\u0641\u0644 \u0634\u062f\u0647 \u0627\u0633\u062a.');
     }
 
     const user = await this.usersService.findByUsernameWithRoles(username);
     if (!user || user.status !== 'ACTIVE') {
       await this.registerFailedLogin(username);
-      throw new UnauthorizedException('??? ?????? ?? ??? ???? ?????? ???.');
+      throw new UnauthorizedException('\u0646\u0627\u0645 \u06a9\u0627\u0631\u0628\u0631\u06cc \u06cc\u0627 \u0631\u0645\u0632 \u0639\u0628\u0648\u0631 \u0646\u0627\u062f\u0631\u0633\u062a \u0627\u0633\u062a.');
     }
 
     const verified = await argon2.verify(user.passwordHash, password);
     if (!verified) {
       await this.registerFailedLogin(username);
-      throw new UnauthorizedException('??? ?????? ?? ??? ???? ?????? ???.');
+      throw new UnauthorizedException('\u0646\u0627\u0645 \u06a9\u0627\u0631\u0628\u0631\u06cc \u06cc\u0627 \u0631\u0645\u0632 \u0639\u0628\u0648\u0631 \u0646\u0627\u062f\u0631\u0633\u062a \u0627\u0633\u062a.');
     }
 
     await this.authRepository.resetLoginAttempt(username);
@@ -93,7 +93,7 @@ export class AuthService extends BaseService {
       entityType: 'Auth',
       entityId: user.id,
       action: 'LOGIN',
-      description: '???? ?????'
+      description: '\u0648\u0631\u0648\u062f \u06a9\u0627\u0631\u0628\u0631'
     });
 
     return {
@@ -114,12 +114,12 @@ export class AuthService extends BaseService {
     const session = await this.sessionsService.verifyRefreshToken(payload.sid, refreshToken);
 
     if (!session) {
-      throw new UnauthorizedException('???? ???? ????? ????.');
+      throw new UnauthorizedException('\u0631\u0641\u0631\u0634 \u062a\u0648\u06a9\u0646 \u0645\u0639\u062a\u0628\u0631 \u0646\u06cc\u0633\u062a.');
     }
 
     const user = await this.usersService.findByIdWithRoles(payload.sub);
     if (!user || user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('????? ????? ????.');
+      throw new UnauthorizedException('\u06a9\u0627\u0631\u0628\u0631 \u0645\u0639\u062a\u0628\u0631 \u0646\u06cc\u0633\u062a.');
     }
 
     const roleKeys = user.userRoles.map((item) => item.role.key);
@@ -163,7 +163,7 @@ export class AuthService extends BaseService {
       entityType: 'Auth',
       entityId: sessionId,
       action: 'LOGOUT',
-      description: '???? ?????'
+      description: '\u062e\u0631\u0648\u062c \u06a9\u0627\u0631\u0628\u0631'
     });
     return { success: true };
   }
@@ -203,12 +203,12 @@ export class AuthService extends BaseService {
       }) as AuthTokenPayload;
 
       if (payload.type !== expectedType) {
-        throw new UnauthorizedException('??? ???? ??????? ???.');
+        throw new UnauthorizedException('\u0646\u0648\u0639 \u062a\u0648\u06a9\u0646 \u0646\u0627\u0645\u0639\u062a\u0628\u0631 \u0627\u0633\u062a.');
       }
 
       return payload;
     } catch {
-      throw new UnauthorizedException('???? ????? ????.');
+      throw new UnauthorizedException('\u062a\u0648\u06a9\u0646 \u0645\u0639\u062a\u0628\u0631 \u0646\u06cc\u0633\u062a.');
     }
   }
 

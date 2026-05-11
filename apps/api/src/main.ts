@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cors from '@fastify/cors';
 import { randomUUID } from 'crypto';
 import { AppModule } from './app.module';
@@ -34,6 +35,26 @@ async function bootstrap() {
 
   app.useGlobalInterceptors(new ResponseTransformInterceptor());
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('BEST API')
+    .setDescription('مستندات API پنل حسابداری تولیدی توری BEST')
+    .setVersion('1.0.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT'
+      },
+      'bearer'
+    )
+    .build();
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, swaggerDocument, {
+    swaggerOptions: {
+      persistAuthorization: true
+    }
+  });
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port, '0.0.0.0');

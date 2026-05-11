@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: best-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: best
+    ports:
+      - '5432:5432'
+    volumes:
+      - best_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d best']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: best-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/best?schema=public
+      AUTH_JWT_SECRET: change-this-super-secret-value
+      AUTH_JWT_ISSUER: best-api
+      AUTH_JWT_AUDIENCE: best-dashboard
+      AUTH_JWT_ACCESS_TTL: 15m
+      AUTH_JWT_REFRESH_TTL: 30d
+      BACKUP_DIRECTORY: ./backups
+      BACKUP_INTERVAL_MINUTES: 1440
+      SEED_SUPER_ADMIN_USERNAME: superadmin
+      SEED_SUPER_ADMIN_PASSWORD: Best@123456
+      SEED_SUPER_ADMIN_FIRSTNAME: Modir
+      SEED_SUPER_ADMIN_LASTNAME: Asli
+    ports:
+      - '3000:3000'
+
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+    container_name: best-dashboard
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '3002:80'
+
+volumes:
+  best_postgres_data:
