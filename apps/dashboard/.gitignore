@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.env
+npm-debug.log*
+playwright-report/
+artifacts/
+var/
+.tmp/
+*.tsbuildinfo

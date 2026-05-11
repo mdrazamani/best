@@ -1,0 +1,7 @@
+DO $$
+BEGIN
+  ALTER TYPE "InAppNotificationGroupType" ADD VALUE IF NOT EXISTS 'ORDER_COUNT_RANGE';
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;

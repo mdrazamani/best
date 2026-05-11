@@ -1,0 +1,298 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum WorkType {
+  NEW_CONSTRUCTION
+  REPAIR
+}
+
+enum OrderStage {
+  RECEIVED
+  STARTED
+  IN_PROGRESS
+  READY_IN_WAREHOUSE
+  DELIVERED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+model User {
+  id           String     @id @default(uuid())
+  firstName    String
+  lastName     String
+  username     String     @unique
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  locale       String     @default("fa")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  userRoles             UserRole[]
+  sessions              Session[]
+  createdCollaborators  Collaborator[] @relation("CollaboratorCreator")
+  createdCustomers      Customer[]     @relation("CustomerCreator")
+  createdMeshTypes      MeshType[]     @relation("MeshTypeCreator")
+  createdOrders         Order[]        @relation("OrderCreator")
+  createdInvoices       Invoice[]      @relation("InvoiceCreator")
+  operationLogs         OperationLog[] @relation("OperationActor")
+
+  @@index([firstName])
+  @@index([lastName])
+  @@index([status])
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userRoles        UserRole[]
+  rolePermissions  RolePermission[]
+
+  @@index([isSystem])
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  resource    String
+  apiName     String
+  method      String
+  path        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+
+  @@unique([resource, apiName])
+  @@index([resource])
+}
+
+model RolePermission {
+  id           String   @id @default(uuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String
+  deviceType       String?
+  deviceModel      String?
+  os               String?
+  browser          String?
+  timezone         String?
+  country          String?
+  language         String?
+  ipAddress        String?
+  userAgent        String?
+  lastActivityAt   DateTime @default(now())
+  expiresAt        DateTime
+  isRevoked        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([isRevoked])
+}
+
+model LoginAttempt {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  failedCount Int      @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime @updatedAt
+}
+
+model Collaborator {
+  id          String   @id @default(uuid())
+  firstName   String
+  lastName    String
+  phone       String?
+  address     String?
+  description String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User  @relation("CollaboratorCreator", fields: [createdById], references: [id])
+  orders    Order[]
+
+  @@index([firstName])
+  @@index([lastName])
+  @@index([phone])
+}
+
+model Customer {
+  id          String   @id @default(uuid())
+  firstName   String
+  lastName    String
+  phone       String?
+  address     String?
+  description String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User  @relation("CustomerCreator", fields: [createdById], references: [id])
+  orders    Order[]
+
+  @@index([firstName])
+  @@index([lastName])
+  @@index([phone])
+}
+
+model MeshType {
+  id          String   @id @default(uuid())
+  title       String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User  @relation("MeshTypeCreator", fields: [createdById], references: [id])
+  orders    Order[]
+
+  @@index([isActive])
+}
+
+model Order {
+  id              String     @id @default(uuid())
+  orderNumber     String     @unique
+  orderDateJalali String
+  collaboratorId  String?
+  customerId      String
+  createdById     String
+  workType        WorkType
+  meshTypeId      String
+  width           Decimal?   @db.Decimal(18, 2)
+  height          Decimal?   @db.Decimal(18, 2)
+  quantity        Decimal?   @db.Decimal(18, 2)
+  unitPrice       Decimal?   @db.Decimal(18, 2)
+  totalPrice      Decimal    @default(0) @db.Decimal(18, 2)
+  description     String?
+  stage           OrderStage @default(RECEIVED)
+  stageNote       String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  collaborator Collaborator? @relation(fields: [collaboratorId], references: [id])
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  createdBy    User          @relation("OrderCreator", fields: [createdById], references: [id])
+  meshType     MeshType      @relation(fields: [meshTypeId], references: [id])
+  invoices     Invoice[]
+  operationLogs OperationLog[]
+
+  @@index([orderDateJalali])
+  @@index([collaboratorId])
+  @@index([customerId])
+  @@index([stage])
+  @@index([workType])
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  orderId        String
+  invoiceNumber  String        @unique
+  createdById    String
+  amount         Decimal       @db.Decimal(18, 2)
+  paidAmount     Decimal       @default(0) @db.Decimal(18, 2)
+  status         InvoiceStatus @default(UNPAID)
+  dueDate        DateTime?
+  paidAt         DateTime?
+  description    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdBy User  @relation("InvoiceCreator", fields: [createdById], references: [id])
+
+  @@index([orderId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model OperationLog {
+  id          String   @id @default(uuid())
+  actorId      String
+  entityType   String
+  entityId     String
+  action       String
+  description  String?
+  payload      Json?
+  orderId      String?
+  createdAt    DateTime @default(now())
+
+  actor User  @relation("OperationActor", fields: [actorId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@index([entityType])
+  @@index([entityId])
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+model BackupLog {
+  id             String   @id @default(uuid())
+  backupDir      String
+  sqlFilePath    String
+  excelDirectory String
+  status         String
+  message        String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
