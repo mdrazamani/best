@@ -55,6 +55,7 @@ export type Person = {
 export type Order = {
   id: string;
   orderNumber: string;
+  title?: string | null;
   customerId: string;
   collaboratorId?: string | null;
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
@@ -64,9 +65,10 @@ export type Order = {
   createdAt: string;
   customer?: Person;
   collaborator?: Person | null;
-  meshType?: MeshType;
   lineItems?: Array<{
     id: string;
+    meshTypeId: string;
+    meshType?: MeshType;
     width: number;
     height: number;
     quantity: number;
@@ -85,6 +87,7 @@ export type Order = {
 export type Invoice = {
   id: string;
   invoiceNumber: string;
+  title?: string | null;
   amount: number;
   paidAmount: number;
   status: 'UNPAID' | 'PARTIAL' | 'PAID';

@@ -24,6 +24,7 @@ const INVOICE_STATUS_OPTIONS = [
 
 type LineItemForm = {
   id: string;
+  meshTypeId: string;
   width: string;
   height: string;
   quantity: string;
@@ -32,6 +33,7 @@ type LineItemForm = {
 
 const createLineItem = (): LineItemForm => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  meshTypeId: '',
   width: '',
   height: '',
   quantity: '',
@@ -48,6 +50,11 @@ const toNumber = (value: string) => {
 const payerTypeLabel = (value?: string) => {
   if (value === 'COLLABORATOR') return 'همکار';
   return 'مشتری';
+};
+
+const meshTypeLabelsFromItems = (lineItems?: Array<{ meshType?: { title?: string } | null }>) => {
+  const titles = Array.from(new Set((lineItems ?? []).map((item) => item?.meshType?.title).filter(Boolean)));
+  return titles.length ? titles.join('، ') : '-';
 };
 
 export function OrdersPage() {
@@ -78,10 +85,10 @@ export function OrdersPage() {
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
 
   const [form, setForm] = useState({
+    title: '',
     customerId: '',
     collaboratorId: '',
     workType: 'NEW_CONSTRUCTION',
-    meshTypeId: '',
     expectedCompletionDate: '',
     description: ''
   });
@@ -97,6 +104,7 @@ export function OrdersPage() {
   const [detailInvoiceOpen, setDetailInvoiceOpen] = useState(false);
   const [detailInvoiceSubmitting, setDetailInvoiceSubmitting] = useState(false);
   const [detailInvoiceForm, setDetailInvoiceForm] = useState({
+    title: '',
     amount: '',
     paidAmount: '0',
     status: 'UNPAID',
@@ -157,7 +165,7 @@ export function OrdersPage() {
 
   useEffect(() => {
     if (!createOpen) {
-      setForm({ customerId: '', collaboratorId: '', workType: 'NEW_CONSTRUCTION', meshTypeId: '', expectedCompletionDate: '', description: '' });
+      setForm({ title: '', customerId: '', collaboratorId: '', workType: 'NEW_CONSTRUCTION', expectedCompletionDate: '', description: '' });
       setLineItems([createLineItem()]);
       setFinalPrice('');
       setFinalPriceOverridden(false);
@@ -181,6 +189,7 @@ export function OrdersPage() {
     if (!orderDetail?.id) return;
     const remainingAmount = Number(orderDetail.paymentSummary?.remainingAmount ?? orderDetail.paymentSummary?.total ?? orderDetail.totalPrice ?? 0);
     setDetailInvoiceForm({
+      title: '',
       amount: remainingAmount > 0 ? String(remainingAmount) : '',
       paidAmount: '0',
       status: 'UNPAID',
@@ -205,21 +214,22 @@ export function OrdersPage() {
 
     const normalizedLineItems = lineItems
       .map((item) => ({
+        meshTypeId: item.meshTypeId,
         width: toNumber(item.width),
         height: toNumber(item.height),
         quantity: toNumber(item.quantity),
         unitPrice: toNumber(item.unitPrice)
       }))
-      .filter((item) => item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0);
+      .filter((item) => item.meshTypeId && item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0);
 
     const firstLine = normalizedLineItems[0];
     const payloadTotal = finalPrice.trim() ? Number(finalPrice) : calculatedTotal;
 
     await createOrder({
+      title: form.title || undefined,
       customerId: form.customerId,
       collaboratorId: form.collaboratorId || null,
       workType: form.workType,
-      meshTypeId: form.meshTypeId,
       expectedCompletionDate: form.expectedCompletionDate || undefined,
       width: firstLine?.width,
       height: firstLine?.height,
@@ -279,6 +289,7 @@ export function OrdersPage() {
     setDetailInvoiceSubmitting(true);
     try {
       await createInvoice({
+        title: detailInvoiceForm.title || undefined,
         orderId: orderDetail.id,
         amount,
         paidAmount,
@@ -297,6 +308,7 @@ export function OrdersPage() {
 
   if (orderDetail) {
     const detailLineItems = Array.isArray(orderDetail.lineItems) ? orderDetail.lineItems : [];
+    const detailMeshTypeText = meshTypeLabelsFromItems(detailLineItems);
     const detailInvoices = Array.isArray(orderDetail.invoices) ? orderDetail.invoices : [];
     const detailLogs = Array.isArray(orderDetail.operationLogs) ? orderDetail.operationLogs : [];
 
@@ -306,6 +318,7 @@ export function OrdersPage() {
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <div>
               <CardTitle className="text-2xl font-extrabold">جزئیات سفارش {orderDetail.orderNumber}</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">عنوان: {orderDetail.title || '-'}</p>
               <p className="mt-1 text-sm text-muted-foreground">تاریخ ثبت: {shamsiDate(orderDetail.createdAt)}</p>
             </div>
             <Button variant="outline" onClick={closeOrderDetail}>
@@ -329,7 +342,7 @@ export function OrdersPage() {
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">نوع کار / توری</p>
-                <p className="mt-1 font-bold">{WORK_TYPES.find((item) => item.value === orderDetail.workType)?.label ?? '-'} / {orderDetail.meshType?.title ?? '-'}</p>
+                <p className="mt-1 font-bold">{WORK_TYPES.find((item) => item.value === orderDetail.workType)?.label ?? '-'} / {detailMeshTypeText}</p>
               </div>
             </div>
             <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_auto]">
@@ -421,6 +434,7 @@ export function OrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>نوع توری</TableHead>
                     <TableHead>عرض</TableHead>
                     <TableHead>ارتفاع</TableHead>
                     <TableHead>تعداد</TableHead>
@@ -431,6 +445,7 @@ export function OrdersPage() {
                 <TableBody>
                   {detailLineItems.map((item: any, idx: number) => (
                     <TableRow key={item.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
+                      <TableCell>{item.meshType?.title || '-'}</TableCell>
                       <TableCell>{Number(item.width ?? 0)}</TableCell>
                       <TableCell>{Number(item.height ?? 0)}</TableCell>
                       <TableCell>{Number(item.quantity ?? 0)}</TableCell>
@@ -460,6 +475,7 @@ export function OrdersPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>شماره فاکتور</TableHead>
+                    <TableHead>عنوان</TableHead>
                     <TableHead>پرداخت‌کننده</TableHead>
                     <TableHead>وضعیت</TableHead>
                     <TableHead>پرداختی / کل</TableHead>
@@ -472,6 +488,7 @@ export function OrdersPage() {
                   {detailInvoices.map((invoice: any, idx: number) => (
                     <TableRow key={invoice.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
                       <TableCell className="font-medium">{invoice.invoiceNumber ?? '-'}</TableCell>
+                      <TableCell>{invoice.title || '-'}</TableCell>
                       <TableCell>{payerTypeLabel(invoice.payerType)}</TableCell>
                       <TableCell>
                         <Badge variant={invoice.status === 'PAID' ? 'success' : invoice.status === 'PARTIAL' ? 'warning' : 'outline'}>
@@ -519,6 +536,12 @@ export function OrdersPage() {
             </DialogHeader>
             <form onSubmit={submitDetailInvoice} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  value={detailInvoiceForm.title}
+                  placeholder="عنوان فاکتور (اختیاری)"
+                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, title: e.target.value }))}
+                  className="sm:col-span-2"
+                />
                 <Input
                   type="number"
                   min="0"
@@ -631,10 +654,10 @@ export function OrdersPage() {
               </DialogHeader>
               <form onSubmit={submit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
+                  <Input value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} placeholder="عنوان سفارش (اختیاری)" className="md:col-span-2" />
                   <SearchableSelect options={customerOptions} value={form.customerId} onChange={(value) => setForm((prev) => ({ ...prev, customerId: value }))} placeholder="انتخاب مشتری" />
                   <SearchableSelect options={collaboratorOptions} value={form.collaboratorId} onChange={(value) => setForm((prev) => ({ ...prev, collaboratorId: value }))} placeholder="انتخاب همکار" />
                   <SearchableSelect options={WORK_TYPES.map((item) => ({ value: item.value, label: item.label }))} value={form.workType} onChange={(value) => setForm((prev) => ({ ...prev, workType: value }))} placeholder="نوع کار" />
-                  <SearchableSelect options={meshOptions} value={form.meshTypeId} onChange={(value) => setForm((prev) => ({ ...prev, meshTypeId: value }))} placeholder="نوع توری" />
                   <div className="md:col-span-2">
                     <PersianDatePicker value={form.expectedCompletionDate} onChange={(value) => setForm((prev) => ({ ...prev, expectedCompletionDate: value ?? '' }))} placeholder="تاریخ تکمیل تقریبی" />
                   </div>
@@ -660,7 +683,8 @@ export function OrdersPage() {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
-                          <div className="grid gap-3 md:grid-cols-5">
+                          <div className="grid gap-3 md:grid-cols-6">
+                            <SearchableSelect options={meshOptions} value={item.meshTypeId} onChange={(value) => updateLineItem(item.id, 'meshTypeId', value)} placeholder="نوع توری" />
                             <Input type="number" min="0" step="0.01" value={item.width} placeholder="عرض" onChange={(e) => updateLineItem(item.id, 'width', e.target.value)} />
                             <Input type="number" min="0" step="0.01" value={item.height} placeholder="ارتفاع" onChange={(e) => updateLineItem(item.id, 'height', e.target.value)} />
                             <Input type="number" min="0" step="0.01" value={item.quantity} placeholder="تعداد" onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)} />
@@ -756,6 +780,7 @@ export function OrdersPage() {
                         <button type="button" className="font-medium text-primary hover:underline" onClick={() => void openDetail(order.id)}>
                           {order.orderNumber}
                         </button>
+                        <div className="text-xs text-muted-foreground">{order.title || '-'}</div>
                       </TableCell>
                       <TableCell>
                         {order.customer?.id ? (
@@ -793,7 +818,7 @@ export function OrdersPage() {
                           fullName(order.collaborator || undefined)
                         )}
                       </TableCell>
-                      <TableCell>{WORK_TYPES.find((item) => item.value === order.workType)?.label} / {order.meshType?.title || '-'}</TableCell>
+                      <TableCell>{WORK_TYPES.find((item) => item.value === order.workType)?.label} / {meshTypeLabelsFromItems(order.lineItems)}</TableCell>
                       <TableCell><Badge variant="secondary">{ORDER_STAGES.find((item) => item.value === order.stage)?.label ?? order.stage}</Badge></TableCell>
                       <TableCell>
                         <div className="text-xs text-muted-foreground">{order.paymentSummary.percent}%</div>

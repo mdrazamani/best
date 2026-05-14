@@ -1,6 +1,7 @@
 export type OrderEntity = {
   id: string;
   orderNumber: string;
+  title?: string | null;
   customerId: string;
   collaboratorId?: string | null;
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
@@ -9,6 +10,11 @@ export type OrderEntity = {
   expectedCompletionDate?: Date | null;
   lineItems?: Array<{
     id: string;
+    meshTypeId: string;
+    meshType?: {
+      id: string;
+      title: string;
+    };
     width: string;
     height: string;
     quantity: string;

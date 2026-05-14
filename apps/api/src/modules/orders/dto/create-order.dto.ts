@@ -2,6 +2,9 @@ import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
 
 class OrderLineItemDto {
+  @IsString()
+  meshTypeId!: string;
+
   @Type(() => Number)
   @IsNumber()
   width!: number;
@@ -22,6 +25,10 @@ class OrderLineItemDto {
 export class CreateOrderDto {
   @IsOptional()
   @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
   collaboratorId?: string;
 
   @IsString()
@@ -29,9 +36,6 @@ export class CreateOrderDto {
 
   @IsIn(['NEW_CONSTRUCTION', 'REPAIR'])
   workType!: 'NEW_CONSTRUCTION' | 'REPAIR';
-
-  @IsString()
-  meshTypeId!: string;
 
   @IsOptional()
   @Type(() => Number)

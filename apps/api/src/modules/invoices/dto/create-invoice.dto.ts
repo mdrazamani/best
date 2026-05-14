@@ -2,6 +2,10 @@ import { Type } from 'class-transformer';
 import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class CreateInvoiceDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
   @IsString()
   orderId!: string;
 

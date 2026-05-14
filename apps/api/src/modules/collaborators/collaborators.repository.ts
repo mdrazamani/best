@@ -47,7 +47,11 @@ export class CollaboratorsRepository extends BaseRepository {
                 deletedAt: null
               }
             },
-            meshType: true
+            lineItems: {
+              include: {
+                meshType: true
+              }
+            }
           },
           orderBy: { createdAt: 'desc' }
         }

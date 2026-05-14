@@ -391,7 +391,7 @@ export function CustomersPage() {
                   <Input placeholder="نام" value={form.firstName} onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))} />
                   <Input placeholder="نام خانوادگی" value={form.lastName} onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))} />
                   <Input placeholder="شماره تماس" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} />
-                  <Input placeholder="آدرس" value={form.address} onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))} />
+                  <Textarea placeholder="آدرس" value={form.address} onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))} className="md:col-span-2 min-h-[92px]" />
                   <SearchableSelect className="md:col-span-2" options={collaboratorOptions} value={form.referredByCollaboratorId} onChange={(value) => setForm((prev) => ({ ...prev, referredByCollaboratorId: value }))} placeholder="انتخاب معرف (اختیاری)" />
                 </div>
                 <Textarea placeholder="توضیحات" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />

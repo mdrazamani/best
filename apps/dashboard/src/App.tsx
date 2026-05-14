@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Heart, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
@@ -209,7 +209,6 @@ export function App() {
                 onToggleTheme={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
               />
 
-              {app.loading ? <p className="mb-4 text-sm text-muted-foreground">در حال بارگذاری...</p> : null}
               {app.error ? <p className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{app.error}</p> : null}
 
               <AnimatePresence mode="wait">
@@ -225,6 +224,14 @@ export function App() {
               </AnimatePresence>
             </main>
           </div>
+
+          {app.loading ? (
+            <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/28 backdrop-blur-[1.5px] dark:bg-slate-950/45">
+              <div className="rounded-2xl border border-slate-300/90 bg-white/96 p-5 shadow-xl dark:border-slate-700/90 dark:bg-slate-900/92">
+                <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-slate-300 border-t-primary dark:border-slate-700 dark:border-t-primary" />
+              </div>
+            </div>
+          ) : null}
 
           <Dialog open={comingSoonOpen} onOpenChange={setComingSoonOpen}>
             <DialogContent className="sm:max-w-md">

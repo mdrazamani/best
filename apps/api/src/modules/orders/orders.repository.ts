@@ -17,12 +17,19 @@ export class OrdersRepository extends BaseRepository {
       deletedAt: null,
       stage: filter.stage as any,
       workType: filter.workType as any,
-      meshTypeId: filter.meshTypeId,
+      lineItems: filter.meshTypeId
+        ? {
+            some: {
+              meshTypeId: filter.meshTypeId
+            }
+          }
+        : undefined,
       createdAt: filter.from || filter.to ? { gte: filter.from, lte: filter.to } : undefined,
       ...(filter.q
         ? {
             OR: [
               { orderNumber: { contains: filter.q, mode: 'insensitive' } },
+              { title: { contains: filter.q, mode: 'insensitive' } },
               { customer: { firstName: { contains: filter.q, mode: 'insensitive' } } },
               { customer: { lastName: { contains: filter.q, mode: 'insensitive' } } },
               { collaborator: { firstName: { contains: filter.q, mode: 'insensitive' } } },
@@ -37,8 +44,11 @@ export class OrdersRepository extends BaseRepository {
       include: {
         customer: true,
         collaborator: true,
-        meshType: true,
-        lineItems: true,
+        lineItems: {
+          include: {
+            meshType: true
+          }
+        },
         createdBy: { select: { id: true, firstName: true, lastName: true, username: true } },
         invoices: {
           where: {
@@ -56,8 +66,11 @@ export class OrdersRepository extends BaseRepository {
       include: {
         customer: true,
         collaborator: true,
-        meshType: true,
-        lineItems: true,
+        lineItems: {
+          include: {
+            meshType: true
+          }
+        },
         createdBy: { select: { id: true, firstName: true, lastName: true, username: true } },
         invoices: {
           where: {
@@ -95,18 +108,19 @@ export class OrdersRepository extends BaseRepository {
 
   create(data: {
     orderNumber: string;
+    title?: string;
     orderDateJalali: string;
     collaboratorId?: string | null;
     customerId: string;
     createdById: string;
     workType: 'NEW_CONSTRUCTION' | 'REPAIR';
-    meshTypeId: string;
     width?: number;
     height?: number;
     quantity?: number;
     unitPrice?: number;
     totalPrice: number;
     lineItems?: Array<{
+      meshTypeId: string;
       width: number;
       height: number;
       quantity: number;
@@ -121,12 +135,12 @@ export class OrdersRepository extends BaseRepository {
     return this.prisma.order.create({
       data: {
         orderNumber: data.orderNumber,
+        title: data.title,
         orderDateJalali: data.orderDateJalali,
         collaboratorId: data.collaboratorId,
         customerId: data.customerId,
         createdById: data.createdById,
         workType: data.workType as any,
-        meshTypeId: data.meshTypeId,
         width: data.width,
         height: data.height,
         quantity: data.quantity,
@@ -135,6 +149,7 @@ export class OrdersRepository extends BaseRepository {
         lineItems: data.lineItems?.length
           ? {
               create: data.lineItems.map((item) => ({
+                meshTypeId: item.meshTypeId,
                 width: item.width,
                 height: item.height,
                 quantity: item.quantity,
@@ -152,16 +167,17 @@ export class OrdersRepository extends BaseRepository {
   }
 
   update(id: string, data: {
+    title?: string | null;
     collaboratorId?: string | null;
     customerId?: string;
     workType?: 'NEW_CONSTRUCTION' | 'REPAIR';
-    meshTypeId?: string;
     width?: number | null;
     height?: number | null;
     quantity?: number | null;
     unitPrice?: number | null;
     totalPrice?: number;
     lineItems?: Array<{
+      meshTypeId: string;
       width: number;
       height: number;
       quantity: number;
@@ -176,10 +192,10 @@ export class OrdersRepository extends BaseRepository {
     return this.prisma.order.update({
       where: { id },
       data: {
+        title: data.title,
         collaboratorId: data.collaboratorId,
         customerId: data.customerId,
         workType: data.workType as any,
-        meshTypeId: data.meshTypeId,
         width: data.width,
         height: data.height,
         quantity: data.quantity,
@@ -189,6 +205,7 @@ export class OrdersRepository extends BaseRepository {
           ? {
               deleteMany: {},
               create: data.lineItems.map((item) => ({
+                meshTypeId: item.meshTypeId,
                 width: item.width,
                 height: item.height,
                 quantity: item.quantity,

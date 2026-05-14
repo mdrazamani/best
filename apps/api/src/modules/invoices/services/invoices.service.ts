@@ -53,6 +53,7 @@ export class InvoicesService extends BaseService {
         created = await this.invoicesRepository.create({
           orderId: dto.orderId,
           invoiceNumber: this.generateInvoiceNumber(jalaliCode),
+          title: dto.title?.trim(),
           createdById: actorId,
           amount,
           paidAmount,
@@ -100,6 +101,7 @@ export class InvoicesService extends BaseService {
     const payerId = dto.payerId === undefined ? existing.payerId : dto.payerId || null;
 
     await this.invoicesRepository.update(id, {
+      title: dto.title === undefined ? undefined : dto.title?.trim() ?? null,
       amount: dto.amount,
       paidAmount: dto.paidAmount,
       status,
@@ -184,6 +186,9 @@ export class InvoicesService extends BaseService {
       const payerName = [payerRecord?.firstName, payerRecord?.lastName].filter(Boolean).join(' ') || '-';
       const payerPhone = payerRecord?.phone || '-';
       const payerAddress = payerRecord?.address || '-';
+      const lineItems = Array.isArray(invoice.order?.lineItems) ? invoice.order.lineItems : [];
+      const meshTypeTitles = Array.from(new Set(lineItems.map((item: any) => item?.meshType?.title).filter(Boolean)));
+      const meshTypeText = meshTypeTitles.length ? meshTypeTitles.join(', ') : '-';
       const dueDate = invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-CA') : '-';
       const paidAt = invoice.paidAt ? new Date(invoice.paidAt).toLocaleString('en-CA', { hour12: false }) : '-';
 
@@ -195,12 +200,14 @@ export class InvoicesService extends BaseService {
       doc.moveDown();
       doc.fontSize(11).text('Mesh Workshop');
       doc.text(`Invoice Number: ${invoice.invoiceNumber}`);
+      doc.text(`Invoice Title: ${invoice.title ?? '-'}`);
       doc.text(`Order Number: ${invoice.order.orderNumber}`);
+      doc.text(`Order Title: ${invoice.order.title ?? '-'}`);
       doc.text(`Customer: ${invoice.order.customer.firstName} ${invoice.order.customer.lastName}`);
       doc.text(
         `Collaborator: ${invoice.order.collaborator ? `${invoice.order.collaborator.firstName} ${invoice.order.collaborator.lastName}` : '-'}`
       );
-      doc.text(`Mesh Type: ${invoice.order.meshType.title}`);
+      doc.text(`Mesh Types: ${meshTypeText}`);
       doc.text(`Description: ${invoice.description ?? '-'}`);
       doc.text(`Amount: ${Number(invoice.amount).toLocaleString('en-US')} IRR`);
       doc.text(`Paid Amount: ${Number(invoice.paidAmount).toLocaleString('en-US')} IRR`);

@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Download, MoreHorizontal, Plus, Search } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { INVOICE_STATUS, money, shamsiDate } from '../lib/format';
+import { INVOICE_STATUS, fullName, money, shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -25,6 +25,7 @@ export function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'UNPAID' | 'PARTIAL' | 'PAID'>('all');
   const [payerFilter, setPayerFilter] = useState<'all' | 'CUSTOMER' | 'COLLABORATOR'>('all');
   const [form, setForm] = useState({
+    title: '',
     orderId: '',
     amount: '',
     paidAmount: '',
@@ -69,12 +70,34 @@ export function InvoicesPage() {
     return options;
   }, [selectedOrder]);
 
+  const getPayerInfo = (invoice: (typeof invoices)[number]) => {
+    const payerType = invoice.payerType === 'COLLABORATOR' ? 'COLLABORATOR' : 'CUSTOMER';
+    const typeLabel = payerType === 'COLLABORATOR' ? 'همکار' : 'مشتری';
+    const payerRecord = payerType === 'COLLABORATOR' ? invoice.order?.collaborator : invoice.order?.customer;
+    const name = fullName(payerRecord || undefined);
+    return {
+      typeLabel,
+      name,
+      display: `${typeLabel} - ${name || '-'}`
+    };
+  };
+
   const filteredInvoices = useMemo(() => {
     const q = search.trim().toLowerCase();
     return invoices.filter((item) => {
       const invoiceNo = item.invoiceNumber.toLowerCase();
       const orderNo = item.order.orderNumber.toLowerCase();
-      const matchesSearch = !q || invoiceNo.includes(q) || orderNo.includes(q);
+      const invoiceTitle = (item.title ?? '').toLowerCase();
+      const orderTitle = (item.order?.title ?? '').toLowerCase();
+      const payerInfo = getPayerInfo(item);
+      const matchesSearch =
+        !q ||
+        invoiceNo.includes(q) ||
+        orderNo.includes(q) ||
+        invoiceTitle.includes(q) ||
+        orderTitle.includes(q) ||
+        payerInfo.typeLabel.toLowerCase().includes(q) ||
+        (payerInfo.name || '').toLowerCase().includes(q);
       const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
       const effectivePayer = item.payerType ?? 'CUSTOMER';
       const matchesPayer = payerFilter === 'all' || effectivePayer === payerFilter;
@@ -92,6 +115,7 @@ export function InvoicesPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     await createInvoice({
+      title: form.title || undefined,
       orderId: form.orderId,
       amount: Number(form.amount || 0),
       paidAmount: Number(form.paidAmount || 0),
@@ -102,7 +126,7 @@ export function InvoicesPage() {
       description: form.description || undefined
     });
 
-    setForm({ orderId: '', amount: '', paidAmount: '', status: 'UNPAID', payerType: 'CUSTOMER', payerId: '', dueDate: '', description: '' });
+    setForm({ title: '', orderId: '', amount: '', paidAmount: '', status: 'UNPAID', payerType: 'CUSTOMER', payerId: '', dueDate: '', description: '' });
     setCreateOpen(false);
   };
 
@@ -125,6 +149,7 @@ export function InvoicesPage() {
               </DialogHeader>
               <form onSubmit={submit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
+                  <Input placeholder="عنوان فاکتور (اختیاری)" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} className="md:col-span-2" />
                   <SearchableSelect options={orderOptions} value={form.orderId} onChange={(value) => setForm((prev) => ({ ...prev, orderId: value }))} placeholder="انتخاب سفارش" />
                   <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value }))} placeholder="وضعیت فاکتور" />
                   <Input placeholder="مبلغ کل" value={form.amount} onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))} />
@@ -156,7 +181,7 @@ export function InvoicesPage() {
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pr-9" placeholder="جستجو: شماره فاکتور یا سفارش" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+              <Input className="pr-9" placeholder="جستجو: شماره، عنوان، نوع پرداخت‌کننده یا نام پرداخت‌کننده" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
             <SearchableSelect
               value={statusFilter}
@@ -182,6 +207,7 @@ export function InvoicesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>شماره فاکتور</TableHead>
+                    <TableHead>عنوان</TableHead>
                     <TableHead>شماره سفارش</TableHead>
                     <TableHead>مبلغ</TableHead>
                     <TableHead>پرداخت‌کننده</TableHead>
@@ -195,9 +221,20 @@ export function InvoicesPage() {
                   {pageItems.map((invoice, idx) => (
                     <TableRow key={invoice.id} className={idx % 2 ? 'bg-muted/10' : ''}>
                       <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                      <TableCell>{invoice.title || '-'}</TableCell>
                       <TableCell>{invoice.order.orderNumber}</TableCell>
                       <TableCell>{money(invoice.paidAmount)} / {money(invoice.amount)}</TableCell>
-                      <TableCell>{invoice.payerType === 'COLLABORATOR' ? 'همکار' : 'مشتری'}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          const payerInfo = getPayerInfo(invoice);
+                          return (
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground">{payerInfo.typeLabel}</div>
+                              <div className="font-medium">{payerInfo.name || '-'}</div>
+                            </div>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
                       <TableCell>
                         <Badge variant={invoice.status === 'PAID' ? 'success' : invoice.status === 'PARTIAL' ? 'warning' : 'outline'}>

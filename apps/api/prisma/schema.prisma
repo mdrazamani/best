@@ -217,7 +217,7 @@ model MeshType {
   deletedAt   DateTime?
 
   createdBy User  @relation("MeshTypeCreator", fields: [createdById], references: [id])
-  orders    Order[]
+  lineItems OrderLineItem[]
 
   @@index([isActive])
   @@index([deletedAt])
@@ -226,12 +226,12 @@ model MeshType {
 model Order {
   id              String     @id @default(uuid())
   orderNumber     String     @unique
+  title           String?
   orderDateJalali String
   collaboratorId  String?
   customerId      String
   createdById     String
   workType        WorkType
-  meshTypeId      String
   width           Decimal?   @db.Decimal(18, 2)
   height          Decimal?   @db.Decimal(18, 2)
   quantity        Decimal?   @db.Decimal(18, 2)
@@ -248,7 +248,6 @@ model Order {
   collaborator Collaborator? @relation(fields: [collaboratorId], references: [id])
   customer     Customer      @relation(fields: [customerId], references: [id])
   createdBy    User          @relation("OrderCreator", fields: [createdById], references: [id])
-  meshType     MeshType      @relation(fields: [meshTypeId], references: [id])
   lineItems    OrderLineItem[]
   invoices     Invoice[]
   operationLogs OperationLog[]
@@ -264,6 +263,7 @@ model Order {
 model OrderLineItem {
   id        String   @id @default(uuid())
   orderId   String
+  meshTypeId String
   width     Decimal  @db.Decimal(18, 2)
   height    Decimal  @db.Decimal(18, 2)
   quantity  Decimal  @db.Decimal(18, 2)
@@ -272,15 +272,18 @@ model OrderLineItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  meshType  MeshType @relation(fields: [meshTypeId], references: [id])
 
   @@index([orderId])
+  @@index([meshTypeId])
 }
 
 model Invoice {
   id            String        @id @default(uuid())
   orderId        String
   invoiceNumber  String        @unique
+  title          String?
   createdById    String
   amount         Decimal       @db.Decimal(18, 2)
   paidAmount     Decimal       @default(0) @db.Decimal(18, 2)

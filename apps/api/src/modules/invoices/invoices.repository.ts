@@ -23,9 +23,13 @@ export class InvoicesRepository extends BaseRepository {
         ? {
             OR: [
               { invoiceNumber: { contains: filter.q, mode: 'insensitive' } },
+              { title: { contains: filter.q, mode: 'insensitive' } },
               { order: { orderNumber: { contains: filter.q, mode: 'insensitive' } } },
+              { order: { title: { contains: filter.q, mode: 'insensitive' } } },
               { order: { customer: { firstName: { contains: filter.q, mode: 'insensitive' } } } },
-              { order: { customer: { lastName: { contains: filter.q, mode: 'insensitive' } } } }
+              { order: { customer: { lastName: { contains: filter.q, mode: 'insensitive' } } } },
+              { order: { collaborator: { firstName: { contains: filter.q, mode: 'insensitive' } } } },
+              { order: { collaborator: { lastName: { contains: filter.q, mode: 'insensitive' } } } }
             ]
           }
         : {})
@@ -39,7 +43,11 @@ export class InvoicesRepository extends BaseRepository {
           include: {
             customer: true,
             collaborator: true,
-            meshType: true
+            lineItems: {
+              include: {
+                meshType: true
+              }
+            }
           }
         }
       },
@@ -56,7 +64,11 @@ export class InvoicesRepository extends BaseRepository {
           include: {
             customer: true,
             collaborator: true,
-            meshType: true
+            lineItems: {
+              include: {
+                meshType: true
+              }
+            }
           }
         }
       }
@@ -70,6 +82,7 @@ export class InvoicesRepository extends BaseRepository {
   create(data: {
     orderId: string;
     invoiceNumber: string;
+    title?: string;
     createdById: string;
     amount: number;
     paidAmount: number;
@@ -84,6 +97,7 @@ export class InvoicesRepository extends BaseRepository {
       data: {
         orderId: data.orderId,
         invoiceNumber: data.invoiceNumber,
+        title: data.title,
         createdById: data.createdById,
         amount: data.amount,
         paidAmount: data.paidAmount,
@@ -97,10 +111,11 @@ export class InvoicesRepository extends BaseRepository {
     });
   }
 
-  update(id: string, data: { amount?: number; paidAmount?: number; status?: 'UNPAID' | 'PARTIAL' | 'PAID'; payerType?: 'CUSTOMER' | 'COLLABORATOR'; payerId?: string | null; description?: string | null; dueDate?: Date | null; paidAt?: Date | null }) {
+  update(id: string, data: { title?: string | null; amount?: number; paidAmount?: number; status?: 'UNPAID' | 'PARTIAL' | 'PAID'; payerType?: 'CUSTOMER' | 'COLLABORATOR'; payerId?: string | null; description?: string | null; dueDate?: Date | null; paidAt?: Date | null }) {
     return this.prisma.invoice.update({
       where: { id },
       data: {
+        title: data.title,
         amount: data.amount,
         paidAmount: data.paidAmount,
         status: data.status as any,

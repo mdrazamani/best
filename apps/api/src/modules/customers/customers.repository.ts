@@ -53,7 +53,11 @@ export class CustomersRepository extends BaseRepository {
                 deletedAt: null
               }
             },
-            meshType: true
+            lineItems: {
+              include: {
+                meshType: true
+              }
+            }
           },
           orderBy: { createdAt: 'desc' }
         }

@@ -3,6 +3,10 @@ import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class UpdateInvoiceDto {
   @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   amount?: number;

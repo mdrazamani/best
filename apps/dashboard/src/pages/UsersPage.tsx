@@ -60,6 +60,8 @@ export function UsersPage() {
   }, [selectedRoleKey]);
 
   const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) ?? null, [users, selectedUserId]);
+  const isSuperAdminUser = (user: { userRoles?: Array<{ role?: { key?: string } }> }) =>
+    (user.userRoles ?? []).some((entry) => entry.role?.key === 'super_admin');
 
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -183,10 +185,12 @@ export function UsersPage() {
                         <Eye className="h-4 w-4" />
                         مشاهده
                       </Button>
-                      <Button size="sm" variant="destructive" className="flex-1" onClick={() => void removeUser(item.id)}>
-                        <Trash2 className="h-4 w-4" />
-                        حذف
-                      </Button>
+                      {isSuperAdminUser(item) ? null : (
+                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => void removeUser(item.id)}>
+                          <Trash2 className="h-4 w-4" />
+                          حذف
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -231,10 +235,12 @@ export function UsersPage() {
                                 <Eye className="h-4 w-4" />
                                 مشاهده
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeUser(item.id)}>
-                                <Trash2 className="h-4 w-4" />
-                                حذف
-                              </DropdownMenuItem>
+                              {isSuperAdminUser(item) ? null : (
+                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeUser(item.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                                  حذف
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>

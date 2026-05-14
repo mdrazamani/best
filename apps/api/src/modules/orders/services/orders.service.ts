@@ -1,4 +1,4 @@
-﻿import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from '../../../common/services/base.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -43,7 +43,7 @@ export class OrdersService extends BaseService {
   async detail(id: string) {
     const row = await this.ordersRepository.findById(id);
     if (!row) {
-      throw new NotFoundException('سفارش پيدا نشد.');
+      throw new NotFoundException('سفارش پیدا نشد.');
     }
     return this.withPaymentSummary(row);
   }
@@ -52,6 +52,10 @@ export class OrdersService extends BaseService {
     const orderDateJalali = this.jalaliDateCode(new Date());
 
     const lineItems = this.normalizeLineItems(dto.lineItems);
+    if (!lineItems.length) {
+      throw new BadRequestException('برای هر سفارش حداقل یک ردیف معتبر با نوع توری لازم است.');
+    }
+
     const lineItemsTotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
     const fallbackTotal = (dto.width ?? 0) * (dto.height ?? 0) * (dto.quantity ?? 0) * (dto.unitPrice ?? 0);
     const totalPrice = dto.totalPrice ?? (lineItems.length ? lineItemsTotal : fallbackTotal);
@@ -62,12 +66,12 @@ export class OrdersService extends BaseService {
       try {
         created = await this.ordersRepository.create({
           orderNumber: this.generateOrderNumber(orderDateJalali),
+          title: dto.title?.trim(),
           orderDateJalali,
           collaboratorId: dto.collaboratorId ?? null,
           customerId: dto.customerId,
           createdById: actorId,
           workType: dto.workType,
-          meshTypeId: dto.meshTypeId,
           width: firstLine?.width ?? dto.width,
           height: firstLine?.height ?? dto.height,
           quantity: firstLine?.quantity ?? dto.quantity,
@@ -120,10 +124,14 @@ export class OrdersService extends BaseService {
   async update(actorId: string, id: string, dto: UpdateOrderDto) {
     const existing = await this.ordersRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException('سفارش پيدا نشد.');
+      throw new NotFoundException('سفارش پیدا نشد.');
     }
 
     const lineItems = dto.lineItems ? this.normalizeLineItems(dto.lineItems) : undefined;
+    if (dto.lineItems && !lineItems?.length) {
+      throw new BadRequestException('ردیف‌های سفارش معتبر نیستند.');
+    }
+
     const lineItemsTotal = lineItems?.reduce((sum, item) => sum + item.lineTotal, 0);
     const totalPrice =
       dto.totalPrice !== undefined
@@ -137,10 +145,10 @@ export class OrdersService extends BaseService {
     const firstLine = lineItems?.[0];
 
     await this.ordersRepository.update(id, {
+      title: dto.title === undefined ? undefined : dto.title?.trim() ?? null,
       collaboratorId: dto.collaboratorId === undefined ? undefined : dto.collaboratorId ?? null,
       customerId: dto.customerId,
       workType: dto.workType,
-      meshTypeId: dto.meshTypeId,
       width: firstLine ? firstLine.width : dto.width,
       height: firstLine ? firstLine.height : dto.height,
       quantity: firstLine ? firstLine.quantity : dto.quantity,
@@ -168,7 +176,7 @@ export class OrdersService extends BaseService {
   async remove(actorId: string, id: string) {
     const existing = await this.ordersRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException('سفارش پيدا نشد.');
+      throw new NotFoundException('سفارش پیدا نشد.');
     }
 
     await this.ordersRepository.softDelete(id);
@@ -222,19 +230,24 @@ export class OrdersService extends BaseService {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
 
-  private normalizeLineItems(items?: Array<{ width: number; height: number; quantity: number; unitPrice: number }>) {
+  private normalizeLineItems(items?: Array<{ meshTypeId: string; width: number; height: number; quantity: number; unitPrice: number }>) {
     if (!items?.length) return [];
 
     return items
       .map((item) => ({
+        meshTypeId: item.meshTypeId?.trim(),
         width: Number(item.width ?? 0),
         height: Number(item.height ?? 0),
         quantity: Number(item.quantity ?? 0),
         unitPrice: Number(item.unitPrice ?? 0)
       }))
-      .filter((item) => item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0)
+      .filter((item) => Boolean(item.meshTypeId) && item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0)
       .map((item) => ({
-        ...item,
+        meshTypeId: item.meshTypeId as string,
+        width: item.width,
+        height: item.height,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
         lineTotal: item.width * item.height * item.quantity * item.unitPrice
       }));
   }
