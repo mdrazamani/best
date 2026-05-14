@@ -39,6 +39,8 @@ export function SearchableSelect({
         isSearchable={isSearchable}
         placeholder={placeholder}
         noOptionsMessage={() => emptyLabel ?? 'موردی پیدا نشد.'}
+        menuPortalTarget={typeof document !== 'undefined' ? document.body : undefined}
+        menuPosition="fixed"
         classNamePrefix="best-select"
         styles={{
           control: (base, state) => ({
@@ -61,6 +63,10 @@ export function SearchableSelect({
             border: '1px solid hsl(var(--border))',
             backgroundColor: 'hsl(var(--card))',
             overflow: 'hidden'
+          }),
+          menuPortal: (base) => ({
+            ...base,
+            zIndex: 220
           }),
           menuList: (base) => ({ ...base, paddingBlock: 4 }),
           option: (base, state) => ({

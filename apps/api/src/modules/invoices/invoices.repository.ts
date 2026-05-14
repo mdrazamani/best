@@ -70,6 +70,17 @@ export class InvoicesRepository extends BaseRepository {
               include: {
                 meshType: true
               }
+            },
+            invoices: {
+              where: {
+                deletedAt: null
+              },
+              select: {
+                id: true,
+                amount: true,
+                createdAt: true
+              },
+              orderBy: { createdAt: 'asc' }
             }
           }
         }

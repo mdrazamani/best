@@ -84,9 +84,26 @@ export function App() {
     }
   }, [app.token, tab]);
 
+  const resetTabDetails = (targetTab: AppTab) => {
+    if (targetTab === 'orders') {
+      app.closeOrderDetail();
+      return;
+    }
+    if (targetTab === 'collaborators') {
+      app.closeCollaboratorDetail();
+      return;
+    }
+    if (targetTab === 'customers') {
+      app.closeCustomerDetail();
+    }
+  };
+
   const navigateToTab = (nextTab: AppTab) => {
+    resetTabDetails(nextTab);
     setTab((prev) => {
-      if (prev === nextTab) return prev;
+      if (prev === nextTab) {
+        return prev;
+      }
       setTabHistory((history) => [...history, prev]);
       return nextTab;
     });
