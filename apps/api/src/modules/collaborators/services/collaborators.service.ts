@@ -1,4 +1,4 @@
-﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from '../../../common/services/base.service';
 import { CollaboratorsRepository } from '../collaborators.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
@@ -25,10 +25,12 @@ export class CollaboratorsService extends BaseService {
     }
 
     const totalOrderAmount = collaborator.orders.reduce((sum, order) => sum + Number(order.totalPrice), 0);
-    const totalReceived = collaborator.orders.reduce(
-      (sum, order) => sum + order.invoices.reduce((inner, invoice) => inner + Number(invoice.paidAmount), 0),
-      0
-    );
+    const allInvoices = collaborator.orders.flatMap((order) => order.invoices.map((invoice) => ({ ...invoice, order })));
+    const collaboratorInvoices = allInvoices.filter((invoice) => invoice.payerType === 'COLLABORATOR');
+    const totalInvoiced = collaboratorInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
+    const totalPaid = collaboratorInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount), 0);
+    const completedOrders = collaborator.orders.filter((order) => order.stage === 'DELIVERED').length;
+    const inProgressOrders = collaborator.orders.filter((order) => ['STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
 
     const customers = Array.from(
       new Map(
@@ -49,10 +51,14 @@ export class CollaboratorsService extends BaseService {
       summary: {
         totalOrders: collaborator.orders.length,
         totalOrderAmount,
-        totalReceived,
-        totalRemaining: Math.max(totalOrderAmount - totalReceived, 0)
+        totalInvoiced,
+        totalPaid,
+        totalRemaining: Math.max(totalInvoiced - totalPaid, 0),
+        completedOrders,
+        inProgressOrders
       },
-      customers
+      customers,
+      invoices: collaboratorInvoices
     };
   }
 
@@ -103,18 +109,18 @@ export class CollaboratorsService extends BaseService {
   }
 
   async remove(actorId: string, id: string) {
-    const count = await this.collaboratorsRepository.orderCount(id);
-    if (count > 0) {
-      throw new BadRequestException('همکار داراي سفارش قابل حذف نيست.');
+    const existing = await this.collaboratorsRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException('همکار پيدا نشد.');
     }
 
-    await this.collaboratorsRepository.delete(id);
+    await this.collaboratorsRepository.softDelete(id);
     await this.operationLogsService.log({
       actorId,
       entityType: 'Collaborator',
       entityId: id,
       action: 'DELETE',
-      description: 'Collaborator deleted'
+      description: 'Collaborator soft deleted'
     });
 
     return { success: true };

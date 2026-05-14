@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { BestContext } from './contexts/best-context';
@@ -15,6 +15,7 @@ import { MeshTypesPage } from './pages/MeshTypesPage';
 import { UsersPage } from './pages/UsersPage';
 import { BackupsPage } from './pages/BackupsPage';
 import { ActivityPage } from './pages/ActivityPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { Button } from './components/ui/button';
 
 const THEME_KEY = 'best_theme';
@@ -23,6 +24,7 @@ const SIDEBAR_KEY = 'best_sidebar_collapsed';
 export function App() {
   const app = useBestApp();
   const [tab, setTab] = useState<AppTab>('dashboard');
+  const [tabHistory, setTabHistory] = useState<AppTab[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === '1');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -59,6 +61,8 @@ export function App() {
         return <UsersPage />;
       case 'backups':
         return <BackupsPage />;
+      case 'notifications':
+        return <NotificationsPage />;
       case 'activity':
         return <ActivityPage />;
       default:
@@ -66,20 +70,57 @@ export function App() {
     }
   }, [app.token, tab]);
 
+  const navigateToTab = (nextTab: AppTab) => {
+    setTab((prev) => {
+      if (prev === nextTab) return prev;
+      setTabHistory((history) => [...history, prev]);
+      return nextTab;
+    });
+    setMobileSidebarOpen(false);
+  };
+
+  const goBack = () => {
+    setTabHistory((history) => {
+      if (!history.length) return history;
+      const nextHistory = [...history];
+      const previousTab = nextHistory.pop() as AppTab;
+      setTab(previousTab);
+      return nextHistory;
+    });
+  };
+
+  const openNotificationTarget = (item: { type: 'INVOICE_DUE' | 'ORDER_DUE'; orderId?: string }) => {
+    if (item.orderId) {
+      void app.openOrderDetail(item.orderId);
+      navigateToTab('orders');
+      return;
+    }
+    navigateToTab(item.type === 'ORDER_DUE' ? 'orders' : 'invoices');
+  };
+
+  const contextValue = {
+    ...app,
+    currentTab: tab,
+    canGoBack: tabHistory.length > 0,
+    navigateToTab,
+    goBack,
+    openNotificationTarget
+  };
+
   return (
-    <BestContext.Provider value={app}>
+    <BestContext.Provider value={contextValue}>
       {app.token ? (
-        <div className="min-h-screen" dir="rtl">
-          <div className="mx-auto flex w-full max-w-[1700px] gap-4 p-4 lg:p-6">
+        <div className="relative min-h-screen" dir="rtl">
+          <div className="mx-auto w-full max-w-[1760px] px-3 pb-5 pt-3 sm:px-4 sm:pb-6 sm:pt-4 lg:px-6 lg:pt-6">
             <aside
-              className={`fixed inset-y-4 right-4 z-40 w-72 rounded-2xl border bg-card/95 p-4 shadow-soft backdrop-blur transition-transform duration-300 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] ${
-                mobileSidebarOpen ? 'translate-x-0' : 'translate-x-[120%] lg:translate-x-0'
-              } ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}
+              className={`fixed bottom-3 right-3 top-3 z-[80] w-[84vw] max-w-[20rem] overflow-y-auto rounded-xl border border-slate-300/95 bg-white p-3 shadow-[0_28px_48px_-34px_rgba(15,23,42,0.85)] transition-all duration-300 dark:border-slate-700/95 dark:bg-card lg:bottom-6 lg:right-6 lg:top-6 lg:max-w-none ${
+                mobileSidebarOpen ? 'translate-x-0' : 'translate-x-[112%] lg:translate-x-0'
+              } ${sidebarCollapsed ? 'lg:w-[5.25rem] lg:px-2.5 lg:py-3' : 'lg:w-[18rem] lg:p-4'}`}
             >
-              <div className="mb-4 flex items-center justify-between gap-2">
+              <div className={`mb-4 flex items-center gap-2 ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
                 {!sidebarCollapsed ? (
                   <div>
-                    <p className="text-lg font-bold tracking-tight text-primary">BEST</p>
+                    <p className="text-xl font-extrabold tracking-tight text-primary">BEST</p>
                     <p className="text-xs text-muted-foreground">پنل حسابداری تولیدی توری</p>
                   </div>
                 ) : null}
@@ -96,7 +137,7 @@ export function App() {
 
               <AppTabs
                 active={tab}
-                onChange={setTab}
+                onChange={navigateToTab}
                 collapsed={sidebarCollapsed}
                 onItemClick={() => setMobileSidebarOpen(false)}
               />
@@ -105,13 +146,13 @@ export function App() {
             {mobileSidebarOpen ? (
               <button
                 type="button"
-                className="fixed inset-0 z-30 bg-slate-950/45 lg:hidden"
+                className="fixed inset-0 z-[70] bg-slate-950/56 backdrop-blur-[1px] lg:hidden"
                 onClick={() => setMobileSidebarOpen(false)}
                 aria-label="بستن منو"
               />
             ) : null}
 
-            <main className="w-full min-w-0 flex-1">
+            <main className={`min-w-0 transition-[padding] duration-300 ${sidebarCollapsed ? 'lg:pr-[5.9rem]' : 'lg:pr-[19.5rem]'}`}>
               <AppHeader
                 onToggleSidebar={() => setMobileSidebarOpen((prev) => !prev)}
                 theme={theme}

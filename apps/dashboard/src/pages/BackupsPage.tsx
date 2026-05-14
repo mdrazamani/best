@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Download, MoreHorizontal, Play, Save } from 'lucide-react';
+﻿import { useEffect, useMemo, useState } from 'react';
+import { Download, MoreHorizontal, Play, Save, Search } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
@@ -16,53 +16,103 @@ const PAGE_SIZE = 8;
 export function BackupsPage() {
   const { backups, backupInterval, updateBackupSettings, runBackup, downloadProtected } = useBestContext();
   const [intervalInput, setIntervalInput] = useState(String(backupInterval));
+  const [runningBackup, setRunningBackup] = useState(false);
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'SUCCESS' | 'FAILED' | 'PENDING'>('all');
 
   useEffect(() => {
     setIntervalInput(String(backupInterval));
   }, [backupInterval]);
 
-  const totalPages = Math.max(1, Math.ceil(backups.length / PAGE_SIZE));
+  const filteredBackups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return backups.filter((backup) => {
+      const matchesSearch =
+        !q ||
+        backup.id.toLowerCase().includes(q) ||
+        shamsiDate(backup.createdAt).toLowerCase().includes(q) ||
+        backup.excelFiles.some((file) => file.toLowerCase().includes(q));
+      const matchesStatus = statusFilter === 'all' || backup.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [backups, search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredBackups.length / PAGE_SIZE));
   const pageItems = useMemo(() => {
     const safePage = Math.min(page, totalPages);
     const start = (safePage - 1) * PAGE_SIZE;
-    return backups.slice(start, start + PAGE_SIZE);
-  }, [backups, page, totalPages]);
+    return filteredBackups.slice(start, start + PAGE_SIZE);
+  }, [filteredBackups, page, totalPages]);
+
+  const runAndDownloadBackup = async () => {
+    setRunningBackup(true);
+    try {
+      const result = await runBackup();
+      if (result?.backupId) {
+        await downloadProtected(`/backups/${result.backupId}/archive`, `backup-${result.backupId}.zip`);
+      }
+    } finally {
+      setRunningBackup(false);
+    }
+  };
 
   return (
     <section className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>تنظیمات بکاپ</CardTitle>
+          <CardTitle className="text-2xl font-extrabold">تنظیمات بکاپ</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
-          <Input value={intervalInput} onChange={(e) => setIntervalInput(e.target.value)} placeholder="دقیقه" className="md:w-56" />
+          <Input
+            value={intervalInput}
+            onChange={(e) => setIntervalInput(e.target.value)}
+            placeholder="دقیقه"
+            className="md:w-56"
+          />
           <Button variant="secondary" onClick={() => void updateBackupSettings(Number(intervalInput || 1440))}>
             <Save className="h-4 w-4" />
-            ذخیره زمان بندی
+            ذخیره بازه زمانی
           </Button>
-          <Button onClick={() => void runBackup()}>
+          <Button onClick={() => void runAndDownloadBackup()} disabled={runningBackup}>
             <Play className="h-4 w-4" />
-            اجرای بکاپ دستی
+            {runningBackup ? 'در حال تهیه بکاپ...' : 'اجرای دستی بکاپ و دریافت ZIP'}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>لیست بکاپ ها</CardTitle>
+          <CardTitle className="text-2xl font-extrabold">آرشیو فایل‌های بکاپ</CardTitle>
         </CardHeader>
-        <CardContent>
-          {backups.length === 0 ? (
-            <EmptyState title="بکاپی موجود نیست" />
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="relative md:col-span-3">
+              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input className="pr-9" placeholder="جستجو: شناسه بکاپ، تاریخ، نام فایل" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value as 'all' | 'SUCCESS' | 'FAILED' | 'PENDING'); setPage(1); }}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="all">همه وضعیت‌ها</option>
+              <option value="SUCCESS">موفق</option>
+              <option value="FAILED">ناموفق</option>
+              <option value="PENDING">در حال انجام</option>
+            </select>
+          </div>
+
+          {filteredBackups.length === 0 ? (
+            <EmptyState title="هنوز بکاپی تولید نشده است" />
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>زمان</TableHead>
+                    <TableHead>تاریخ تولید</TableHead>
                     <TableHead>وضعیت</TableHead>
-                    <TableHead>فایل ها</TableHead>
+                    <TableHead>فایل‌های اکسل</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
@@ -71,7 +121,9 @@ export function BackupsPage() {
                     <TableRow key={backup.id} className={idx % 2 ? 'bg-muted/10' : ''}>
                       <TableCell>{shamsiDate(backup.createdAt)}</TableCell>
                       <TableCell>
-                        <Badge variant={backup.status === 'SUCCESS' ? 'success' : backup.status === 'FAILED' ? 'destructive' : 'outline'}>{backup.status}</Badge>
+                        <Badge variant={backup.status === 'SUCCESS' ? 'success' : backup.status === 'FAILED' ? 'destructive' : 'outline'}>
+                          {backup.status}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -86,12 +138,19 @@ export function BackupsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => void downloadProtected(`/backups/${backup.id}/sql`)}>
+                            <DropdownMenuItem onClick={() => void downloadProtected(`/backups/${backup.id}/archive`, `backup-${backup.id}.zip`)}>
                               <Download className="ml-2 h-4 w-4" />
-                              دریافت SQL
+                              دانلود ZIP کامل
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void downloadProtected(`/backups/${backup.id}/sql`, `backup-${backup.id}.sql`)}>
+                              <Download className="ml-2 h-4 w-4" />
+                              دانلود SQL
                             </DropdownMenuItem>
                             {backup.excelFiles?.map((file) => (
-                              <DropdownMenuItem key={file} onClick={() => void downloadProtected(`/backups/${backup.id}/excel?file=${encodeURIComponent(file)}`, file)}>
+                              <DropdownMenuItem
+                                key={file}
+                                onClick={() => void downloadProtected(`/backups/${backup.id}/excel?file=${encodeURIComponent(file)}`, file)}
+                              >
                                 <Download className="ml-2 h-4 w-4" />
                                 {file}
                               </DropdownMenuItem>
@@ -103,7 +162,7 @@ export function BackupsPage() {
                   ))}
                 </TableBody>
               </Table>
-              <Pagination page={Math.min(page, totalPages)} total={backups.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+              <Pagination page={Math.min(page, totalPages)} total={filteredBackups.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
             </>
           )}
         </CardContent>

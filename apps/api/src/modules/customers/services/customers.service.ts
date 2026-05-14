@@ -1,4 +1,4 @@
-﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from '../../../common/services/base.service';
 import { CustomersRepository } from '../customers.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
@@ -21,14 +21,16 @@ export class CustomersService extends BaseService {
   async detail(id: string) {
     const customer = await this.customersRepository.findById(id);
     if (!customer) {
-      throw new NotFoundException('مشتري پيدا نشد.');
+      throw new NotFoundException('مشتری پيدا نشد.');
     }
 
     const totalOrderAmount = customer.orders.reduce((sum, order) => sum + Number(order.totalPrice), 0);
-    const totalReceived = customer.orders.reduce(
-      (sum, order) => sum + order.invoices.reduce((inner, invoice) => inner + Number(invoice.paidAmount), 0),
-      0
-    );
+    const allInvoices = customer.orders.flatMap((order) => order.invoices.map((invoice) => ({ ...invoice, order })));
+    const customerInvoices = allInvoices.filter((invoice) => invoice.payerType === 'CUSTOMER' || !invoice.payerType);
+    const totalInvoiced = customerInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
+    const totalPaid = customerInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount), 0);
+    const completedOrders = customer.orders.filter((order) => order.stage === 'DELIVERED').length;
+    const inProgressOrders = customer.orders.filter((order) => ['STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
 
     const collaborators = Array.from(
       new Map(
@@ -51,10 +53,14 @@ export class CustomersService extends BaseService {
       summary: {
         totalOrders: customer.orders.length,
         totalOrderAmount,
-        totalReceived,
-        totalRemaining: Math.max(totalOrderAmount - totalReceived, 0)
+        totalInvoiced,
+        totalPaid,
+        totalRemaining: Math.max(totalInvoiced - totalPaid, 0),
+        completedOrders,
+        inProgressOrders
       },
-      collaborators
+      collaborators,
+      invoices: customerInvoices
     };
   }
 
@@ -65,7 +71,8 @@ export class CustomersService extends BaseService {
       phone: dto.phone?.trim(),
       address: dto.address?.trim(),
       description: dto.description?.trim(),
-      createdById: actorId
+      createdById: actorId,
+      referredByCollaboratorId: dto.referredByCollaboratorId ?? null
     });
 
     await this.operationLogsService.log({
@@ -82,7 +89,7 @@ export class CustomersService extends BaseService {
   async update(actorId: string, id: string, dto: UpdateCustomerDto) {
     const existing = await this.customersRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException('مشتري پيدا نشد.');
+      throw new NotFoundException('مشتری پيدا نشد.');
     }
 
     const updated = await this.customersRepository.update(id, {
@@ -90,7 +97,8 @@ export class CustomersService extends BaseService {
       lastName: dto.lastName?.trim(),
       phone: dto.phone === undefined ? undefined : dto.phone?.trim() ?? null,
       address: dto.address === undefined ? undefined : dto.address?.trim() ?? null,
-      description: dto.description === undefined ? undefined : dto.description?.trim() ?? null
+      description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
+      referredByCollaboratorId: dto.referredByCollaboratorId === undefined ? undefined : dto.referredByCollaboratorId ?? null
     });
 
     await this.operationLogsService.log({
@@ -105,18 +113,18 @@ export class CustomersService extends BaseService {
   }
 
   async remove(actorId: string, id: string) {
-    const count = await this.customersRepository.orderCount(id);
-    if (count > 0) {
-      throw new BadRequestException('مشتري داراي سفارش قابل حذف نيست.');
+    const existing = await this.customersRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException('مشتری پيدا نشد.');
     }
 
-    await this.customersRepository.delete(id);
+    await this.customersRepository.softDelete(id);
     await this.operationLogsService.log({
       actorId,
       entityType: 'Customer',
       entityId: id,
       action: 'DELETE',
-      description: 'Customer deleted'
+      description: 'Customer soft deleted'
     });
 
     return { success: true };

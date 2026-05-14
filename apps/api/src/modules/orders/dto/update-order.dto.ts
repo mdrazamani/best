@@ -1,5 +1,23 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsOptional, IsString, IsNumber } from 'class-validator';
+import { IsArray, IsIn, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+
+class OrderLineItemDto {
+  @Type(() => Number)
+  @IsNumber()
+  width!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  height!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  quantity!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  unitPrice!: number;
+}
 
 export class UpdateOrderDto {
   @IsOptional()
@@ -44,6 +62,12 @@ export class UpdateOrderDto {
   totalPrice?: number;
 
   @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderLineItemDto)
+  lineItems?: OrderLineItemDto[];
+
+  @IsOptional()
   @IsString()
   description?: string;
 
@@ -54,4 +78,8 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsString()
   stageNote?: string;
+
+  @IsOptional()
+  @IsString()
+  expectedCompletionDate?: string;
 }

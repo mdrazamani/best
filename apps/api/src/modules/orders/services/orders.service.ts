@@ -50,7 +50,11 @@ export class OrdersService extends BaseService {
     const count = await this.ordersRepository.countByOrderPrefix(prefix);
     const orderNumber = `${prefix}${String(count + 1).padStart(3, '0')}`;
 
-    const totalPrice = dto.totalPrice ?? (dto.unitPrice ?? 0) * (dto.quantity ?? 0);
+    const lineItems = this.normalizeLineItems(dto.lineItems);
+    const lineItemsTotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
+    const fallbackTotal = (dto.width ?? 0) * (dto.height ?? 0) * (dto.quantity ?? 0) * (dto.unitPrice ?? 0);
+    const totalPrice = dto.totalPrice ?? (lineItems.length ? lineItemsTotal : fallbackTotal);
+    const firstLine = lineItems[0];
 
     const created = await this.ordersRepository.create({
       orderNumber,
@@ -60,14 +64,16 @@ export class OrdersService extends BaseService {
       createdById: actorId,
       workType: dto.workType,
       meshTypeId: dto.meshTypeId,
-      width: dto.width,
-      height: dto.height,
-      quantity: dto.quantity,
-      unitPrice: dto.unitPrice,
+      width: firstLine?.width ?? dto.width,
+      height: firstLine?.height ?? dto.height,
+      quantity: firstLine?.quantity ?? dto.quantity,
+      unitPrice: firstLine?.unitPrice ?? dto.unitPrice,
       totalPrice,
+      lineItems,
       description: dto.description?.trim(),
       stage: dto.stage,
-      stageNote: dto.stageNote?.trim()
+      stageNote: dto.stageNote?.trim(),
+      expectedCompletionDate: dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : undefined
     });
 
     await this.operationLogsService.log({
@@ -88,26 +94,34 @@ export class OrdersService extends BaseService {
       throw new NotFoundException('سفارش پيدا نشد.');
     }
 
+    const lineItems = dto.lineItems ? this.normalizeLineItems(dto.lineItems) : undefined;
+    const lineItemsTotal = lineItems?.reduce((sum, item) => sum + item.lineTotal, 0);
     const totalPrice =
       dto.totalPrice !== undefined
         ? dto.totalPrice
+        : lineItems && lineItems.length
+        ? lineItemsTotal
         : dto.unitPrice !== undefined || dto.quantity !== undefined
-        ? Number(dto.unitPrice ?? existing.unitPrice ?? 0) * Number(dto.quantity ?? existing.quantity ?? 0)
+        ? Number(dto.width ?? existing.width ?? 0) * Number(dto.height ?? existing.height ?? 0) * Number(dto.quantity ?? existing.quantity ?? 0) * Number(dto.unitPrice ?? existing.unitPrice ?? 0)
         : undefined;
+
+    const firstLine = lineItems?.[0];
 
     await this.ordersRepository.update(id, {
       collaboratorId: dto.collaboratorId === undefined ? undefined : dto.collaboratorId ?? null,
       customerId: dto.customerId,
       workType: dto.workType,
       meshTypeId: dto.meshTypeId,
-      width: dto.width,
-      height: dto.height,
-      quantity: dto.quantity,
-      unitPrice: dto.unitPrice,
+      width: firstLine ? firstLine.width : dto.width,
+      height: firstLine ? firstLine.height : dto.height,
+      quantity: firstLine ? firstLine.quantity : dto.quantity,
+      unitPrice: firstLine ? firstLine.unitPrice : dto.unitPrice,
       totalPrice,
+      lineItems,
       description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
       stage: dto.stage,
-      stageNote: dto.stageNote === undefined ? undefined : dto.stageNote?.trim() ?? null
+      stageNote: dto.stageNote === undefined ? undefined : dto.stageNote?.trim() ?? null,
+      expectedCompletionDate: dto.expectedCompletionDate === undefined ? undefined : dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : null
     });
 
     await this.operationLogsService.log({
@@ -123,13 +137,18 @@ export class OrdersService extends BaseService {
   }
 
   async remove(actorId: string, id: string) {
-    await this.ordersRepository.delete(id);
+    const existing = await this.ordersRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException('سفارش پيدا نشد.');
+    }
+
+    await this.ordersRepository.softDelete(id);
     await this.operationLogsService.log({
       actorId,
       entityType: 'Order',
       entityId: id,
       action: 'DELETE',
-      description: 'Order removed',
+      description: 'Order soft deleted',
       orderId: id
     });
     return { success: true };
@@ -162,5 +181,22 @@ export class OrdersService extends BaseService {
     })
       .format(date)
       .replace(/[^0-9]/g, '');
+  }
+
+  private normalizeLineItems(items?: Array<{ width: number; height: number; quantity: number; unitPrice: number }>) {
+    if (!items?.length) return [];
+
+    return items
+      .map((item) => ({
+        width: Number(item.width ?? 0),
+        height: Number(item.height ?? 0),
+        quantity: Number(item.quantity ?? 0),
+        unitPrice: Number(item.unitPrice ?? 0)
+      }))
+      .filter((item) => item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0)
+      .map((item) => ({
+        ...item,
+        lineTotal: item.width * item.height * item.quantity * item.unitPrice
+      }));
   }
 }

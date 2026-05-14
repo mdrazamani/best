@@ -14,6 +14,7 @@ export class OrdersRepository extends BaseRepository {
     to?: Date;
   }) {
     const where: Prisma.OrderWhereInput = {
+      deletedAt: null,
       stage: filter.stage as any,
       workType: filter.workType as any,
       meshTypeId: filter.meshTypeId,
@@ -37,22 +38,31 @@ export class OrdersRepository extends BaseRepository {
         customer: true,
         collaborator: true,
         meshType: true,
+        lineItems: true,
         createdBy: { select: { id: true, firstName: true, lastName: true, username: true } },
-        invoices: true
+        invoices: {
+          where: {
+            deletedAt: null
+          }
+        }
       },
       orderBy: { createdAt: 'desc' }
     });
   }
 
   findById(id: string) {
-    return this.prisma.order.findUnique({
-      where: { id },
+    return this.prisma.order.findFirst({
+      where: { id, deletedAt: null },
       include: {
         customer: true,
         collaborator: true,
         meshType: true,
+        lineItems: true,
         createdBy: { select: { id: true, firstName: true, lastName: true, username: true } },
         invoices: {
+          where: {
+            deletedAt: null
+          },
           include: {
             createdBy: {
               select: { id: true, firstName: true, lastName: true, username: true }
@@ -75,6 +85,7 @@ export class OrdersRepository extends BaseRepository {
   countByOrderPrefix(prefix: string) {
     return this.prisma.order.count({
       where: {
+        deletedAt: null,
         orderNumber: {
           startsWith: prefix
         }
@@ -95,9 +106,17 @@ export class OrdersRepository extends BaseRepository {
     quantity?: number;
     unitPrice?: number;
     totalPrice: number;
+    lineItems?: Array<{
+      width: number;
+      height: number;
+      quantity: number;
+      unitPrice: number;
+      lineTotal: number;
+    }>;
     description?: string;
     stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
     stageNote?: string;
+    expectedCompletionDate?: Date;
   }) {
     return this.prisma.order.create({
       data: {
@@ -113,9 +132,21 @@ export class OrdersRepository extends BaseRepository {
         quantity: data.quantity,
         unitPrice: data.unitPrice,
         totalPrice: data.totalPrice,
+        lineItems: data.lineItems?.length
+          ? {
+              create: data.lineItems.map((item) => ({
+                width: item.width,
+                height: item.height,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                lineTotal: item.lineTotal
+              }))
+            }
+          : undefined,
         description: data.description,
         stage: data.stage as any,
-        stageNote: data.stageNote
+        stageNote: data.stageNote,
+        expectedCompletionDate: data.expectedCompletionDate
       }
     });
   }
@@ -130,9 +161,17 @@ export class OrdersRepository extends BaseRepository {
     quantity?: number | null;
     unitPrice?: number | null;
     totalPrice?: number;
+    lineItems?: Array<{
+      width: number;
+      height: number;
+      quantity: number;
+      unitPrice: number;
+      lineTotal: number;
+    }>;
     description?: string | null;
     stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
     stageNote?: string | null;
+    expectedCompletionDate?: Date | null;
   }) {
     return this.prisma.order.update({
       where: { id },
@@ -146,14 +185,32 @@ export class OrdersRepository extends BaseRepository {
         quantity: data.quantity,
         unitPrice: data.unitPrice,
         totalPrice: data.totalPrice,
+        lineItems: data.lineItems
+          ? {
+              deleteMany: {},
+              create: data.lineItems.map((item) => ({
+                width: item.width,
+                height: item.height,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                lineTotal: item.lineTotal
+              }))
+            }
+          : undefined,
         description: data.description,
         stage: data.stage as any,
-        stageNote: data.stageNote
+        stageNote: data.stageNote,
+        expectedCompletionDate: data.expectedCompletionDate
       }
     });
   }
 
-  delete(id: string) {
-    return this.prisma.order.delete({ where: { id } });
+  softDelete(id: string) {
+    return this.prisma.order.update({
+      where: { id },
+      data: {
+        deletedAt: new Date()
+      }
+    });
   }
 }

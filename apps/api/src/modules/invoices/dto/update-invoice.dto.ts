@@ -21,6 +21,14 @@ export class UpdateInvoiceDto {
   dueDate?: string;
 
   @IsOptional()
+  @IsIn(['CUSTOMER', 'COLLABORATOR'])
+  payerType?: 'CUSTOMER' | 'COLLABORATOR';
+
+  @IsOptional()
+  @IsString()
+  payerId?: string;
+
+  @IsOptional()
   @IsString()
   description?: string;
 }

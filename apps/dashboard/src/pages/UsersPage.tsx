@@ -1,7 +1,7 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Eye, MoreHorizontal, Plus } from 'lucide-react';
+﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { fullName } from '../lib/format';
+import { fullName, permissionLabel } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
@@ -16,12 +16,15 @@ import { Badge } from '../components/ui/badge';
 const PAGE_SIZE = 10;
 
 export function UsersPage() {
-  const { users, roles, permissions, createUser, updateRolePermissions } = useBestContext();
+  const { users, roles, permissions, createUser, removeUser, updateRolePermissions } = useBestContext();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ACTIVE' | 'DISABLED'>('all');
 
   const [form, setForm] = useState({
     firstName: '',
@@ -49,12 +52,25 @@ export function UsersPage() {
 
   const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) ?? null, [users, selectedUserId]);
 
-  const totalPages = Math.max(1, Math.ceil(users.length / PAGE_SIZE));
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter((user) => {
+      const name = fullName(user).toLowerCase();
+      const username = user.username.toLowerCase();
+      const roleKeys = (user.userRoles ?? []).map((entry) => entry.role?.key).filter(Boolean) as string[];
+      const matchesSearch = !q || name.includes(q) || username.includes(q);
+      const matchesRole = roleFilter === 'all' || roleKeys.includes(roleFilter);
+      const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [users, search, roleFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
   const pageItems = useMemo(() => {
     const safePage = Math.min(page, totalPages);
     const start = (safePage - 1) * PAGE_SIZE;
-    return users.slice(start, start + PAGE_SIZE);
-  }, [users, page, totalPages]);
+    return filteredUsers.slice(start, start + PAGE_SIZE);
+  }, [filteredUsers, page, totalPages]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -73,8 +89,8 @@ export function UsersPage() {
   return (
     <section className="grid gap-4 xl:grid-cols-3">
       <Card className="xl:col-span-2">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>کاربران سیستم</CardTitle>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-2xl font-extrabold">کاربران سیستم</CardTitle>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -96,17 +112,41 @@ export function UsersPage() {
                   <SearchableSelect options={roleOptions} value={form.roleKey} onChange={(value) => setForm((prev) => ({ ...prev, roleKey: value }))} placeholder="انتخاب نقش" className="md:col-span-2" />
                 </div>
                 <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
-                    انصراف
-                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>انصراف</Button>
                   <Button type="submit">ثبت کاربر</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
         </CardHeader>
-        <CardContent>
-          {users.length === 0 ? (
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="relative md:col-span-2">
+              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input className="pr-9" placeholder="جستجو: نام یا نام کاربری" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            </div>
+            <select
+              value={roleFilter}
+              onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="all">همه نقش‌ها</option>
+              {roles.map((role) => (
+                <option key={role.id} value={role.key}>{role.name}</option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value as 'all' | 'ACTIVE' | 'DISABLED'); setPage(1); }}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="all">همه وضعیت‌ها</option>
+              <option value="ACTIVE">فعال</option>
+              <option value="DISABLED">غیرفعال</option>
+            </select>
+          </div>
+
+          {filteredUsers.length === 0 ? (
             <EmptyState title="کاربری وجود ندارد" description="با دکمه کاربر جدید شروع کنید." />
           ) : (
             <>
@@ -115,7 +155,7 @@ export function UsersPage() {
                   <TableRow>
                     <TableHead>نام</TableHead>
                     <TableHead>نام کاربری</TableHead>
-                    <TableHead>نقش ها</TableHead>
+                    <TableHead>نقش‌ها</TableHead>
                     <TableHead>وضعیت</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
@@ -137,14 +177,13 @@ export function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedUserId(item.id);
-                                setViewOpen(true);
-                              }}
-                            >
+                            <DropdownMenuItem onClick={() => { setSelectedUserId(item.id); setViewOpen(true); }}>
                               <Eye className="ml-2 h-4 w-4" />
                               مشاهده
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeUser(item.id)}>
+                              <Trash2 className="ml-2 h-4 w-4" />
+                              حذف (نرم)
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -153,7 +192,7 @@ export function UsersPage() {
                   ))}
                 </TableBody>
               </Table>
-              <Pagination page={Math.min(page, totalPages)} total={users.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+              <Pagination page={Math.min(page, totalPages)} total={filteredUsers.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
             </>
           )}
         </CardContent>
@@ -161,7 +200,7 @@ export function UsersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>تنظیم دسترسی نقش ها</CardTitle>
+          <CardTitle className="text-xl font-bold">تنظیم دسترسی نقش‌ها</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <SearchableSelect
@@ -180,22 +219,17 @@ export function UsersPage() {
                   checked={effectivePermissionSet.has(permission.key)}
                   onChange={(e) => {
                     const current = new Set(effectivePermissionSet);
-                    if (e.target.checked) {
-                      current.add(permission.key);
-                    } else {
-                      current.delete(permission.key);
-                    }
+                    if (e.target.checked) current.add(permission.key);
+                    else current.delete(permission.key);
                     setPendingPermissionKeys(Array.from(current));
                   }}
                 />
-                <span className="truncate">{permission.key}</span>
+                <span className="truncate">{permissionLabel(permission.key)}</span>
               </label>
             ))}
           </div>
 
-          <Button className="w-full" onClick={() => void saveRolePermissions()}>
-            ذخیره دسترسی ها
-          </Button>
+          <Button className="w-full" onClick={() => void saveRolePermissions()}>ذخیره دسترسی‌ها</Button>
         </CardContent>
       </Card>
 
@@ -206,15 +240,9 @@ export function UsersPage() {
           </DialogHeader>
           {selectedUser ? (
             <div className="space-y-2 text-sm">
-              <p>
-                <span className="font-semibold">نام:</span> {fullName(selectedUser)}
-              </p>
-              <p>
-                <span className="font-semibold">نام کاربری:</span> {selectedUser.username}
-              </p>
-              <p>
-                <span className="font-semibold">نقش ها:</span> {selectedUser.userRoles?.map((role) => role.role?.name).join('، ') || '-'}
-              </p>
+              <p><span className="font-semibold">نام:</span> {fullName(selectedUser)}</p>
+              <p><span className="font-semibold">نام کاربری:</span> {selectedUser.username}</p>
+              <p><span className="font-semibold">نقش‌ها:</span> {selectedUser.userRoles?.map((role) => role.role?.name).join('، ') || '-'}</p>
             </div>
           ) : null}
         </DialogContent>

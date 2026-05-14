@@ -8,7 +8,7 @@ describe('OrdersService', () => {
     countByOrderPrefix: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
-    delete: jest.fn()
+    softDelete: jest.fn()
   };
 
   const operationLogsService = {
@@ -39,5 +39,26 @@ describe('OrdersService', () => {
     ordersRepository.findById.mockResolvedValue(null);
 
     await expect(service.detail('missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('soft deletes order on remove', async () => {
+    ordersRepository.findById.mockResolvedValue({
+      id: 'order-1',
+      totalPrice: 100,
+      invoices: []
+    });
+
+    const result = await service.remove('actor-1', 'order-1');
+
+    expect(ordersRepository.softDelete).toHaveBeenCalledWith('order-1');
+    expect(operationLogsService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'actor-1',
+        entityType: 'Order',
+        entityId: 'order-1',
+        action: 'DELETE'
+      })
+    );
+    expect(result).toEqual({ success: true });
   });
 });

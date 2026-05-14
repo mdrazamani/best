@@ -5,6 +5,9 @@ import { BaseRepository } from '../../common/repositories/base.repository';
 export class UsersRepository extends BaseRepository {
   list() {
     return this.prisma.user.findMany({
+      where: {
+        deletedAt: null
+      },
       select: {
         id: true,
         firstName: true,
@@ -25,8 +28,8 @@ export class UsersRepository extends BaseRepository {
   }
 
   findById(id: string) {
-    return this.prisma.user.findUnique({
-      where: { id },
+    return this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
       select: {
         id: true,
         firstName: true,
@@ -42,8 +45,8 @@ export class UsersRepository extends BaseRepository {
   }
 
   findByUsername(username: string) {
-    return this.prisma.user.findUnique({
-      where: { username },
+    return this.prisma.user.findFirst({
+      where: { username, deletedAt: null },
       include: {
         userRoles: { include: { role: true } }
       }
@@ -91,6 +94,16 @@ export class UsersRepository extends BaseRepository {
       where: {
         userId,
         roleId
+      }
+    });
+  }
+
+  softDelete(id: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        status: 'DISABLED'
       }
     });
   }

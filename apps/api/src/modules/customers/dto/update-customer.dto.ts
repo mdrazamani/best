@@ -20,4 +20,8 @@ export class UpdateCustomerDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  referredByCollaboratorId?: string;
 }

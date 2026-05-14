@@ -102,6 +102,25 @@ export class UsersService extends BaseService {
     return this.usersRepository.findById(userId);
   }
 
+  async remove(actorId: string, id: string) {
+    const existing = await this.usersRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException('کاربر پیدا نشد.');
+    }
+
+    await this.usersRepository.softDelete(id);
+
+    await this.operationLogsService.log({
+      actorId,
+      entityType: 'User',
+      entityId: id,
+      action: 'DELETE',
+      description: 'Soft delete user'
+    });
+
+    return { success: true };
+  }
+
   findByIdWithRoles(id: string) {
     return this.usersRepository.findById(id);
   }

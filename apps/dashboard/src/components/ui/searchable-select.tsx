@@ -1,8 +1,4 @@
-import { useState } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
-import { Button } from './button';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './command';
-import { Popover, PopoverContent, PopoverTrigger } from './popover';
+﻿import Select from 'react-select';
 import { cn } from '../../lib/utils';
 
 export type SearchableSelectOption = {
@@ -15,10 +11,10 @@ export function SearchableSelect({
   value,
   onChange,
   placeholder,
-  searchPlaceholder,
   emptyLabel,
   className,
-  disabled
+  disabled,
+  isSearchable = true
 }: {
   options: SearchableSelectOption[];
   value?: string;
@@ -28,47 +24,60 @@ export function SearchableSelect({
   emptyLabel?: string;
   className?: string;
   disabled?: boolean;
+  isSearchable?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find((option) => option.value === value);
+  const selected = options.find((option) => option.value === value) ?? null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={false}
-          className={cn('w-full justify-between text-right font-normal', !selected && 'text-muted-foreground', className)}
-          disabled={disabled}
-        >
-          <span className="truncate">{selected ? selected.label : placeholder}</span>
-          <ChevronDown className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder ?? 'جستجو...'} />
-          <CommandList>
-            <CommandEmpty>{emptyLabel ?? 'موردی پیدا نشد.'}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.value}`}
-                  onSelect={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  <Check className={cn('ml-2 h-4 w-4', option.value === value ? 'opacity-100' : 'opacity-0')} />
-                  <span>{option.label}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <div className={cn('w-full text-right', className)}>
+      <Select<SearchableSelectOption, false>
+        isRtl
+        options={options}
+        value={selected}
+        onChange={(option) => onChange(option?.value ?? '')}
+        isDisabled={disabled}
+        isSearchable={isSearchable}
+        placeholder={placeholder}
+        noOptionsMessage={() => emptyLabel ?? 'موردی پیدا نشد.'}
+        classNamePrefix="best-select"
+        styles={{
+          control: (base, state) => ({
+            ...base,
+            minHeight: 40,
+            borderRadius: 8,
+            borderColor: state.isFocused ? 'hsl(var(--ring))' : 'hsl(var(--input))',
+            backgroundColor: 'hsl(var(--background))',
+            boxShadow: state.isFocused ? '0 0 0 2px hsl(var(--ring) / 0.18)' : 'none',
+            '&:hover': { borderColor: state.isFocused ? 'hsl(var(--ring))' : 'hsl(var(--input))' }
+          }),
+          valueContainer: (base) => ({ ...base, paddingInline: 12 }),
+          placeholder: (base) => ({ ...base, color: 'hsl(var(--muted-foreground))' }),
+          singleValue: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
+          input: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
+          menu: (base) => ({
+            ...base,
+            zIndex: 130,
+            borderRadius: 10,
+            border: '1px solid hsl(var(--border))',
+            backgroundColor: 'hsl(var(--card))',
+            overflow: 'hidden'
+          }),
+          menuList: (base) => ({ ...base, paddingBlock: 4 }),
+          option: (base, state) => ({
+            ...base,
+            backgroundColor: state.isSelected
+              ? 'hsl(var(--primary))'
+              : state.isFocused
+                ? 'hsl(var(--muted))'
+                : 'transparent',
+            color: state.isSelected ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))',
+            cursor: 'pointer',
+            fontSize: 14
+          }),
+          indicatorSeparator: () => ({ display: 'none' }),
+          dropdownIndicator: (base) => ({ ...base, color: 'hsl(var(--muted-foreground))', paddingInline: 8 })
+        }}
+      />
+    </div>
   );
 }

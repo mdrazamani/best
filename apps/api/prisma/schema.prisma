@@ -32,6 +32,11 @@ enum InvoiceStatus {
   PAID
 }
 
+enum InvoicePayerType {
+  CUSTOMER
+  COLLABORATOR
+}
+
 model User {
   id           String     @id @default(uuid())
   firstName    String
@@ -42,6 +47,7 @@ model User {
   locale       String     @default("fa")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
 
   userRoles             UserRole[]
   sessions              Session[]
@@ -55,6 +61,7 @@ model User {
   @@index([firstName])
   @@index([lastName])
   @@index([status])
+  @@index([deletedAt])
 }
 
 model Role {
@@ -160,13 +167,16 @@ model Collaborator {
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   createdBy User  @relation("CollaboratorCreator", fields: [createdById], references: [id])
   orders    Order[]
+  referredCustomers Customer[] @relation("CustomerReferrer")
 
   @@index([firstName])
   @@index([lastName])
   @@index([phone])
+  @@index([deletedAt])
 }
 
 model Customer {
@@ -177,15 +187,20 @@ model Customer {
   address     String?
   description String?
   createdById String
+  referredByCollaboratorId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   createdBy User  @relation("CustomerCreator", fields: [createdById], references: [id])
+  referredByCollaborator Collaborator? @relation("CustomerReferrer", fields: [referredByCollaboratorId], references: [id])
   orders    Order[]
 
   @@index([firstName])
   @@index([lastName])
   @@index([phone])
+  @@index([referredByCollaboratorId])
+  @@index([deletedAt])
 }
 
 model MeshType {
@@ -196,11 +211,13 @@ model MeshType {
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   createdBy User  @relation("MeshTypeCreator", fields: [createdById], references: [id])
   orders    Order[]
 
   @@index([isActive])
+  @@index([deletedAt])
 }
 
 model Order {
@@ -220,13 +237,16 @@ model Order {
   description     String?
   stage           OrderStage @default(RECEIVED)
   stageNote       String?
+  expectedCompletionDate DateTime?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
 
   collaborator Collaborator? @relation(fields: [collaboratorId], references: [id])
   customer     Customer      @relation(fields: [customerId], references: [id])
   createdBy    User          @relation("OrderCreator", fields: [createdById], references: [id])
   meshType     MeshType      @relation(fields: [meshTypeId], references: [id])
+  lineItems    OrderLineItem[]
   invoices     Invoice[]
   operationLogs OperationLog[]
 
@@ -235,6 +255,23 @@ model Order {
   @@index([customerId])
   @@index([stage])
   @@index([workType])
+  @@index([deletedAt])
+}
+
+model OrderLineItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  width     Decimal  @db.Decimal(18, 2)
+  height    Decimal  @db.Decimal(18, 2)
+  quantity  Decimal  @db.Decimal(18, 2)
+  unitPrice Decimal  @db.Decimal(18, 2)
+  lineTotal Decimal  @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }
 
 model Invoice {
@@ -245,11 +282,14 @@ model Invoice {
   amount         Decimal       @db.Decimal(18, 2)
   paidAmount     Decimal       @default(0) @db.Decimal(18, 2)
   status         InvoiceStatus @default(UNPAID)
+  payerType      InvoicePayerType @default(CUSTOMER)
+  payerId        String?
   dueDate        DateTime?
   paidAt         DateTime?
   description    String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
 
   order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   createdBy User  @relation("InvoiceCreator", fields: [createdById], references: [id])
@@ -257,6 +297,8 @@ model Invoice {
   @@index([orderId])
   @@index([status])
   @@index([dueDate])
+  @@index([payerType, payerId])
+  @@index([deletedAt])
 }
 
 model OperationLog {

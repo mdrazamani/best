@@ -5,20 +5,23 @@ import { BaseRepository } from '../../common/repositories/base.repository';
 export class MeshTypesRepository extends BaseRepository {
   list(query?: string) {
     return this.prisma.meshType.findMany({
-      where: query
-        ? {
-            OR: [
-              { title: { contains: query, mode: 'insensitive' } },
-              { description: { contains: query, mode: 'insensitive' } }
-            ]
-          }
-        : undefined,
+      where: {
+        deletedAt: null,
+        ...(query
+          ? {
+              OR: [
+                { title: { contains: query, mode: 'insensitive' } },
+                { description: { contains: query, mode: 'insensitive' } }
+              ]
+            }
+          : {})
+      },
       orderBy: { createdAt: 'desc' }
     });
   }
 
   findById(id: string) {
-    return this.prisma.meshType.findUnique({ where: { id } });
+    return this.prisma.meshType.findFirst({ where: { id, deletedAt: null } });
   }
 
   create(data: { title: string; description?: string; isActive?: boolean; createdById: string }) {
@@ -34,5 +37,15 @@ export class MeshTypesRepository extends BaseRepository {
 
   update(id: string, data: { title?: string; description?: string | null; isActive?: boolean }) {
     return this.prisma.meshType.update({ where: { id }, data });
+  }
+
+  softDelete(id: string) {
+    return this.prisma.meshType.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        isActive: false
+      }
+    });
   }
 }

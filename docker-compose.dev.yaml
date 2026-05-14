@@ -20,3 +20,4 @@ services:
 
 volumes:
   best_postgres_data:
+    name: best_postgres_data

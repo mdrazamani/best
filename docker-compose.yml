@@ -28,6 +28,7 @@
         condition: service_healthy
     environment:
       NODE_ENV: production
+      TZ: Asia/Tehran
       PORT: 3000
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/best?schema=public
       AUTH_JWT_SECRET: change-this-super-secret-value
@@ -35,14 +36,18 @@
       AUTH_JWT_AUDIENCE: best-dashboard
       AUTH_JWT_ACCESS_TTL: 15m
       AUTH_JWT_REFRESH_TTL: 30d
-      BACKUP_DIRECTORY: ./backups
+      BACKUP_DIRECTORY: /app/backups
       BACKUP_INTERVAL_MINUTES: 1440
+      BACKUP_CRON: 0 0 * * *
+      BACKUP_TIMEZONE: Asia/Tehran
       SEED_SUPER_ADMIN_USERNAME: superadmin
       SEED_SUPER_ADMIN_PASSWORD: Best@123456
       SEED_SUPER_ADMIN_FIRSTNAME: مدیر
       SEED_SUPER_ADMIN_LASTNAME: اصلی
     ports:
       - '3000:3000'
+    volumes:
+      - best_api_backups:/app/backups
 
   dashboard:
     build:
@@ -57,4 +62,7 @@
 
 volumes:
   best_postgres_data:
+    name: best_postgres_data
+  best_api_backups:
+    name: best_api_backups
 

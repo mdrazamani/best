@@ -5,19 +5,26 @@ import { BaseRepository } from '../../common/repositories/base.repository';
 export class CollaboratorsRepository extends BaseRepository {
   list(query?: string) {
     return this.prisma.collaborator.findMany({
-      where: query
-        ? {
-            OR: [
-              { firstName: { contains: query, mode: 'insensitive' } },
-              { lastName: { contains: query, mode: 'insensitive' } },
-              { phone: { contains: query, mode: 'insensitive' } }
-            ]
-          }
-        : undefined,
+      where: {
+        deletedAt: null,
+        ...(query
+          ? {
+              OR: [
+                { firstName: { contains: query, mode: 'insensitive' } },
+                { lastName: { contains: query, mode: 'insensitive' } },
+                { phone: { contains: query, mode: 'insensitive' } }
+              ]
+            }
+          : {})
+      },
       include: {
         _count: {
           select: {
-            orders: true
+            orders: {
+              where: {
+                deletedAt: null
+              }
+            }
           }
         }
       },
@@ -26,13 +33,20 @@ export class CollaboratorsRepository extends BaseRepository {
   }
 
   findById(id: string) {
-    return this.prisma.collaborator.findUnique({
-      where: { id },
+    return this.prisma.collaborator.findFirst({
+      where: { id, deletedAt: null },
       include: {
         orders: {
+          where: {
+            deletedAt: null
+          },
           include: {
             customer: true,
-            invoices: true,
+            invoices: {
+              where: {
+                deletedAt: null
+              }
+            },
             meshType: true
           },
           orderBy: { createdAt: 'desc' }
@@ -58,11 +72,16 @@ export class CollaboratorsRepository extends BaseRepository {
     return this.prisma.collaborator.update({ where: { id }, data });
   }
 
-  delete(id: string) {
-    return this.prisma.collaborator.delete({ where: { id } });
+  softDelete(id: string) {
+    return this.prisma.collaborator.update({
+      where: { id },
+      data: {
+        deletedAt: new Date()
+      }
+    });
   }
 
   orderCount(id: string) {
-    return this.prisma.order.count({ where: { collaboratorId: id } });
+    return this.prisma.order.count({ where: { collaboratorId: id, deletedAt: null } });
   }
 }

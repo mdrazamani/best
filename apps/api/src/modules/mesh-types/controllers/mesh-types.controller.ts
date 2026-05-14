@@ -1,4 +1,4 @@
-﻿import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+﻿import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Resource } from '../../../common/decorators/resource.decorator';
 import { Permission } from '../../../common/decorators/permission.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../../common/decorators/current-user.decorator';
@@ -30,5 +30,11 @@ export class MeshTypesController {
   @Permission('mesh_types.all')
   update(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: UpdateMeshTypeDto) {
     return this.meshTypesService.update(user.userId, id, dto);
+  }
+
+  @Delete(':id')
+  @Permission('mesh_types.all')
+  remove(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
+    return this.meshTypesService.remove(user.userId, id);
   }
 }

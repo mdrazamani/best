@@ -34,7 +34,22 @@ export type User = {
 };
 
 export type MeshType = { id: string; title: string; description?: string; isActive: boolean };
-export type Person = { id: string; firstName?: string; lastName?: string; phone?: string; address?: string; description?: string; _count?: { orders: number } };
+export type Person = {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  address?: string;
+  description?: string;
+  createdAt?: string;
+  referredByCollaborator?: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+  } | null;
+  _count?: { orders: number };
+};
 
 export type Order = {
   id: string;
@@ -44,10 +59,19 @@ export type Order = {
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
   stage: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
   totalPrice: number;
+  expectedCompletionDate?: string | null;
   createdAt: string;
   customer?: Person;
   collaborator?: Person | null;
   meshType?: MeshType;
+  lineItems?: Array<{
+    id: string;
+    width: number;
+    height: number;
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
   paymentSummary: {
     total: number;
     paidAmount: number;
@@ -63,6 +87,8 @@ export type Invoice = {
   amount: number;
   paidAmount: number;
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
+  payerType?: 'CUSTOMER' | 'COLLABORATOR';
+  payerId?: string | null;
   dueDate?: string;
   description?: string;
   createdAt: string;
@@ -93,4 +119,15 @@ export type ActivityLog = {
   description?: string;
   createdAt: string;
   actor?: UserRef;
+};
+
+export type NotificationItem = {
+  id: string;
+  type: 'INVOICE_DUE' | 'ORDER_DUE';
+  orderId?: string;
+  invoiceId?: string;
+  level: 'warning' | 'critical';
+  title: string;
+  description: string;
+  dueDate: string;
 };

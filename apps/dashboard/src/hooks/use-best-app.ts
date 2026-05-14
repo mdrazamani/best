@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
-import { apiBasePath, apiCall } from '../lib/api';
-import { ActivityLog, BackupLog, DashboardStats, Invoice, MeshType, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ApiError, apiBasePath, apiCall, configureApiAuth } from '../lib/api';
+import { ActivityLog, BackupLog, DashboardStats, Invoice, MeshType, NotificationItem, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
 
-const TOKEN_KEY = 'best_admin_token';
-const IDLE_MS = 30 * 60 * 1000;
+const ACCESS_TOKEN_KEY = 'best_admin_token';
+const REFRESH_TOKEN_KEY = 'best_admin_refresh_token';
+const DISMISSED_NOTIFICATIONS_KEY = 'best_dismissed_notifications';
 
 export function useBestApp() {
-  const [token, setTokenState] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setTokenState] = useState<string | null>(() => localStorage.getItem(ACCESS_TOKEN_KEY));
+  const [refreshToken, setRefreshTokenState] = useState<string | null>(() => localStorage.getItem(REFRESH_TOKEN_KEY));
   const [session, setSession] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
   const [dashboard, setDashboard] = useState<DashboardStats | null>(null);
   const [meshTypes, setMeshTypes] = useState<MeshType[]>([]);
   const [collaborators, setCollaborators] = useState<Person[]>([]);
@@ -25,23 +26,54 @@ export function useBestApp() {
   const [backupInterval, setBackupInterval] = useState(1440);
   const [collaboratorDetail, setCollaboratorDetail] = useState<any>(null);
   const [customerDetail, setCustomerDetail] = useState<any>(null);
+  const [orderDetail, setOrderDetail] = useState<any>(null);
+  const [dismissedNotifications, setDismissedNotifications] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const tokenRef = useRef<string | null>(token);
+  const refreshTokenRef = useRef<string | null>(refreshToken);
+
+  const setAuthTokens = (nextAccess: string | null, nextRefresh: string | null) => {
+    tokenRef.current = nextAccess;
+    refreshTokenRef.current = nextRefresh;
+
+    if (nextAccess) localStorage.setItem(ACCESS_TOKEN_KEY, nextAccess);
+    else localStorage.removeItem(ACCESS_TOKEN_KEY);
+
+    if (nextRefresh) localStorage.setItem(REFRESH_TOKEN_KEY, nextRefresh);
+    else localStorage.removeItem(REFRESH_TOKEN_KEY);
+
+    setTokenState(nextAccess);
+    setRefreshTokenState(nextRefresh);
+  };
+
+  const clearDetails = () => {
+    setCollaboratorDetail(null);
+    setCustomerDetail(null);
+    setOrderDetail(null);
+  };
 
   const setToken = (value: string | null) => {
-    if (value) {
-      localStorage.setItem(TOKEN_KEY, value);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-    }
-    setTokenState(value);
+    setAuthTokens(value, value ? refreshTokenRef.current : null);
   };
 
   const logout = () => {
-    setToken(null);
+    setAuthTokens(null, null);
     setSession(null);
+    clearDetails();
   };
 
   const reload = async () => {
-    if (!token) return;
+    const accessToken = tokenRef.current;
+    if (!accessToken) return;
 
     setLoading(true);
     setError('');
@@ -62,19 +94,19 @@ export function useBestApp() {
         permissionData,
         settings
       ] = await Promise.all([
-        apiCall<SessionUser>('/auth/me', token),
-        apiCall<DashboardStats>('/reports/dashboard', token),
-        apiCall<MeshType[]>(`/mesh-types${search ? `?q=${encodeURIComponent(search)}` : ''}`, token),
-        apiCall<Person[]>(`/collaborators${search ? `?q=${encodeURIComponent(search)}` : ''}`, token),
-        apiCall<Person[]>(`/customers${search ? `?q=${encodeURIComponent(search)}` : ''}`, token),
-        apiCall<Order[]>(`/orders${search ? `?q=${encodeURIComponent(search)}` : ''}`, token),
-        apiCall<Invoice[]>(`/invoices${search ? `?q=${encodeURIComponent(search)}` : ''}`, token),
-        apiCall<BackupLog[]>('/backups/logs', token),
-        apiCall<ActivityLog[]>('/operation-logs?limit=100', token),
-        apiCall<User[]>('/users', token),
-        apiCall<Role[]>('/roles', token),
-        apiCall<Permission[]>('/permissions', token),
-        apiCall<{ backupIntervalMinutes: number }>('/backups/settings', token)
+        apiCall<SessionUser>('/auth/me', accessToken),
+        apiCall<DashboardStats>('/reports/dashboard', accessToken),
+        apiCall<MeshType[]>('/mesh-types', accessToken),
+        apiCall<Person[]>('/collaborators', accessToken),
+        apiCall<Person[]>('/customers', accessToken),
+        apiCall<Order[]>('/orders', accessToken),
+        apiCall<Invoice[]>('/invoices', accessToken),
+        apiCall<BackupLog[]>('/backups/logs', accessToken),
+        apiCall<ActivityLog[]>('/operation-logs?limit=100', accessToken),
+        apiCall<User[]>('/users', accessToken),
+        apiCall<Role[]>('/roles', accessToken),
+        apiCall<Permission[]>('/permissions', accessToken),
+        apiCall<{ backupIntervalMinutes: number }>('/backups/settings', accessToken)
       ]);
 
       setSession(me);
@@ -91,43 +123,63 @@ export function useBestApp() {
       setPermissions(permissionData);
       setBackupInterval(settings.backupIntervalMinutes);
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : '\u062e\u0637\u0627 \u062f\u0631 \u062f\u0631\u06cc\u0627\u0641\u062a \u0627\u0637\u0644\u0627\u0639\u0627\u062a'
-      );
-      logout();
+      if (e instanceof ApiError && e.status === 401) {
+        logout();
+      }
+      setError(e instanceof Error ? e.message : '??? ?? ?????? ???????');
     } finally {
       setLoading(false);
     }
   };
 
   const login = async (username: string, password: string) => {
-    const result = await apiCall<{ accessToken: string }>('/auth/login', null, {
+    const result = await apiCall<{ accessToken: string; refreshToken: string }>('/auth/login', null, {
       method: 'POST',
       body: JSON.stringify({ username, password })
     });
-    setToken(result.accessToken);
+    setAuthTokens(result.accessToken, result.refreshToken);
   };
 
   const postAndReload = async (url: string, payload: Record<string, unknown>, method: 'POST' | 'PATCH' | 'PUT' = 'POST') => {
-    if (!token) return;
-    await apiCall(url, token, {
+    const accessToken = tokenRef.current;
+    if (!accessToken) return;
+    await apiCall(url, accessToken, {
       method,
       body: JSON.stringify(payload)
     });
     await reload();
   };
 
+  const deleteAndReload = async (url: string) => {
+    const accessToken = tokenRef.current;
+    if (!accessToken) return;
+    await apiCall(url, accessToken, { method: 'DELETE' });
+    await reload();
+  };
+
+  const runBackup = async () => {
+    const accessToken = tokenRef.current;
+    if (!accessToken) return null;
+    const result = await apiCall<{ backupId: string }>('/backups/run', accessToken, {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    await reload();
+    return result;
+  };
+
   const downloadProtected = async (url: string, fileName?: string) => {
-    if (!token) return;
+    const accessToken = tokenRef.current;
+    if (!accessToken) return;
 
     const response = await fetch(`${apiBasePath()}${url}`, {
       headers: {
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${accessToken}`
       }
     });
 
     if (!response.ok) {
-      throw new Error('\u062e\u0637\u0627 \u062f\u0631 \u062f\u0631\u06cc\u0627\u0641\u062a \u0641\u0627\u06cc\u0644');
+      throw new Error('??? ?? ?????? ????');
     }
 
     const blob = await response.blob();
@@ -142,94 +194,175 @@ export function useBestApp() {
   };
 
   const loadCollaboratorDetail = async (id: string) => {
-    if (!token) return;
-    const data = await apiCall<any>(`/collaborators/${id}`, token);
+    const accessToken = tokenRef.current;
+    if (!accessToken) return;
+    const data = await apiCall<any>(`/collaborators/${id}`, accessToken);
     setCollaboratorDetail(data);
   };
 
   const loadCustomerDetail = async (id: string) => {
-    if (!token) return;
-    const data = await apiCall<any>(`/customers/${id}`, token);
+    const accessToken = tokenRef.current;
+    if (!accessToken) return;
+    const data = await apiCall<any>(`/customers/${id}`, accessToken);
     setCustomerDetail(data);
   };
 
-  useEffect(() => {
-    void reload();
-  }, [token, search]);
+  const loadOrderDetail = async (id: string) => {
+    const accessToken = tokenRef.current;
+    if (!accessToken) return;
+    const data = await apiCall<any>(`/orders/${id}`, accessToken);
+    setOrderDetail(data);
+  };
+
+  const openCollaboratorDetail = async (id: string) => {
+    setCustomerDetail(null);
+    setOrderDetail(null);
+    await loadCollaboratorDetail(id);
+  };
+
+  const openCustomerDetail = async (id: string) => {
+    setCollaboratorDetail(null);
+    setOrderDetail(null);
+    await loadCustomerDetail(id);
+  };
+
+  const openOrderDetail = async (id: string) => {
+    setCollaboratorDetail(null);
+    setCustomerDetail(null);
+    await loadOrderDetail(id);
+  };
+
+  const acknowledgeNotification = (notificationId: string) => {
+    setDismissedNotifications((prev) => {
+      if (prev.includes(notificationId)) return prev;
+      const next = [...prev, notificationId];
+      localStorage.setItem(DISMISSED_NOTIFICATIONS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
-    if (!token) return;
-
-    let timer = window.setTimeout(logout, IDLE_MS);
-    const reset = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(logout, IDLE_MS);
-    };
-
-    ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'].forEach((eventName) => {
-      window.addEventListener(eventName, reset);
+    configureApiAuth({
+      getAccessToken: () => tokenRef.current,
+      getRefreshToken: () => refreshTokenRef.current,
+      setTokens: ({ accessToken, refreshToken: newRefreshToken }) => setAuthTokens(accessToken, newRefreshToken),
+      onAuthFailure: () => logout()
     });
 
     return () => {
-      window.clearTimeout(timer);
-      ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'].forEach((eventName) => {
-        window.removeEventListener(eventName, reset);
-      });
+      configureApiAuth(null);
     };
+  }, []);
+
+  useEffect(() => {
+    tokenRef.current = token;
   }, [token]);
 
-  const filteredOrders = useMemo(() => {
-    if (!search.trim()) return orders;
-    return orders.filter((item) =>
-      item.orderNumber.includes(search) ||
-      `${item.customer?.firstName ?? ''} ${item.customer?.lastName ?? ''}`.includes(search) ||
-      `${item.collaborator?.firstName ?? ''} ${item.collaborator?.lastName ?? ''}`.includes(search)
-    );
-  }, [orders, search]);
+  useEffect(() => {
+    refreshTokenRef.current = refreshToken;
+  }, [refreshToken]);
 
-  const filteredInvoices = useMemo(() => {
-    if (!search.trim()) return invoices;
-    return invoices.filter((item) => item.invoiceNumber.includes(search) || item.order.orderNumber.includes(search));
-  }, [invoices, search]);
+  useEffect(() => {
+    void reload();
+  }, [token]);
+
+  const notifications = useMemo<NotificationItem[]>(() => {
+    const now = new Date();
+    const soonThreshold = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const normalized = (date?: string | null) => (date ? new Date(date) : null);
+
+    const invoiceItems: NotificationItem[] = invoices
+      .filter((invoice) => invoice.status !== 'PAID')
+      .flatMap((invoice) => {
+        const due = normalized(invoice.dueDate);
+        if (!due || due > soonThreshold) return [];
+        const level: NotificationItem['level'] = due < now ? 'critical' : 'warning';
+        return [{
+          id: `inv-${invoice.id}`,
+          type: 'INVOICE_DUE',
+          invoiceId: invoice.id,
+          orderId: invoice.order.id,
+          level,
+          title: `???? ?????? ${invoice.invoiceNumber}`,
+          description: `???? ?????? ?????? ????? ${invoice.order.orderNumber} ?? ????? ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} ???.`,
+          dueDate: due.toISOString()
+        }];
+      });
+
+    const orderItems: NotificationItem[] = orders
+      .filter((order) => order.stage !== 'DELIVERED' && order.stage !== 'CANCELLED')
+      .flatMap((order) => {
+        const due = normalized(order.expectedCompletionDate);
+        if (!due || due > soonThreshold) return [];
+        const level: NotificationItem['level'] = due < now ? 'critical' : 'warning';
+        return [{
+          id: `ord-${order.id}`,
+          type: 'ORDER_DUE',
+          orderId: order.id,
+          level,
+          title: `???? ????? ????? ${order.orderNumber}`,
+          description: `???? ????? ????? ?? ????? ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} ???.`,
+          dueDate: due.toISOString()
+        }];
+      });
+
+    return [...invoiceItems, ...orderItems]
+      .filter((item) => !dismissedNotifications.includes(item.id))
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  }, [invoices, orders, dismissedNotifications]);
 
   return {
     token,
     session,
     loading,
     error,
-    search,
     dashboard,
     meshTypes,
     collaborators,
     customers,
-    orders: filteredOrders,
-    invoices: filteredInvoices,
+    orders,
+    invoices,
     backups,
     activity,
     users,
     roles,
     permissions,
     backupInterval,
+    notifications,
     collaboratorDetail,
     customerDetail,
-    setSearch,
+    orderDetail,
     setToken,
     login,
     logout,
     reload,
     createUser: (payload: { firstName: string; lastName: string; username: string; password: string; roleKey: string }) => postAndReload('/users', payload),
+    removeUser: (userId: string) => deleteAndReload(`/users/${userId}`),
     updateRolePermissions: (roleKey: string, permissionKeys: string[]) => postAndReload(`/permissions/roles/${roleKey}`, { permissionKeys }, 'PUT'),
     createMeshType: (payload: Record<string, unknown>) => postAndReload('/mesh-types', payload),
+    removeMeshType: (meshTypeId: string) => deleteAndReload(`/mesh-types/${meshTypeId}`),
     createCollaborator: (payload: Record<string, unknown>) => postAndReload('/collaborators', payload),
+    removeCollaborator: (collaboratorId: string) => deleteAndReload(`/collaborators/${collaboratorId}`),
     createCustomer: (payload: Record<string, unknown>) => postAndReload('/customers', payload),
+    removeCustomer: (customerId: string) => deleteAndReload(`/customers/${customerId}`),
     createOrder: (payload: Record<string, unknown>) => postAndReload('/orders', payload),
+    removeOrder: (orderId: string) => deleteAndReload(`/orders/${orderId}`),
     updateOrder: (orderId: string, payload: Record<string, unknown>) => postAndReload(`/orders/${orderId}`, payload, 'PATCH'),
     createInvoice: (payload: Record<string, unknown>) => postAndReload('/invoices', payload),
+    removeInvoice: (invoiceId: string) => deleteAndReload(`/invoices/${invoiceId}`),
     updateInvoice: (invoiceId: string, payload: Record<string, unknown>) => postAndReload(`/invoices/${invoiceId}`, payload, 'PATCH'),
-    runBackup: () => postAndReload('/backups/run', {}),
+    runBackup,
     updateBackupSettings: (minutes: number) => postAndReload('/backups/settings', { backupIntervalMinutes: minutes }, 'PUT'),
     loadCollaboratorDetail,
     loadCustomerDetail,
+    loadOrderDetail,
+    openCollaboratorDetail,
+    openCustomerDetail,
+    openOrderDetail,
+    closeCollaboratorDetail: () => setCollaboratorDetail(null),
+    closeCustomerDetail: () => setCustomerDetail(null),
+    closeOrderDetail: () => setOrderDetail(null),
+    acknowledgeNotification,
     downloadProtected
   };
 }

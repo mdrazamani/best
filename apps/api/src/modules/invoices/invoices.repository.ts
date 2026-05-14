@@ -6,6 +6,10 @@ import { BaseRepository } from '../../common/repositories/base.repository';
 export class InvoicesRepository extends BaseRepository {
   list(filter: { q?: string; status?: 'UNPAID' | 'PARTIAL' | 'PAID'; orderId?: string; overdue?: boolean; from?: Date; to?: Date }) {
     const where: Prisma.InvoiceWhereInput = {
+      deletedAt: null,
+      order: {
+        deletedAt: null
+      },
       orderId: filter.orderId,
       status: filter.status as any,
       createdAt: filter.from || filter.to ? { gte: filter.from, lte: filter.to } : undefined,
@@ -44,8 +48,8 @@ export class InvoicesRepository extends BaseRepository {
   }
 
   findById(id: string) {
-    return this.prisma.invoice.findUnique({
-      where: { id },
+    return this.prisma.invoice.findFirst({
+      where: { id, deletedAt: null, order: { deletedAt: null } },
       include: {
         createdBy: { select: { id: true, firstName: true, lastName: true, username: true } },
         order: {
@@ -60,7 +64,7 @@ export class InvoicesRepository extends BaseRepository {
   }
 
   countByPrefix(prefix: string) {
-    return this.prisma.invoice.count({ where: { invoiceNumber: { startsWith: prefix } } });
+    return this.prisma.invoice.count({ where: { deletedAt: null, invoiceNumber: { startsWith: prefix } } });
   }
 
   create(data: {
@@ -70,6 +74,8 @@ export class InvoicesRepository extends BaseRepository {
     amount: number;
     paidAmount: number;
     status: 'UNPAID' | 'PARTIAL' | 'PAID';
+    payerType: 'CUSTOMER' | 'COLLABORATOR';
+    payerId?: string;
     description?: string;
     dueDate?: Date;
     paidAt?: Date;
@@ -82,6 +88,8 @@ export class InvoicesRepository extends BaseRepository {
         amount: data.amount,
         paidAmount: data.paidAmount,
         status: data.status as any,
+        payerType: data.payerType as any,
+        payerId: data.payerId,
         description: data.description,
         dueDate: data.dueDate,
         paidAt: data.paidAt
@@ -89,13 +97,15 @@ export class InvoicesRepository extends BaseRepository {
     });
   }
 
-  update(id: string, data: { amount?: number; paidAmount?: number; status?: 'UNPAID' | 'PARTIAL' | 'PAID'; description?: string | null; dueDate?: Date | null; paidAt?: Date | null }) {
+  update(id: string, data: { amount?: number; paidAmount?: number; status?: 'UNPAID' | 'PARTIAL' | 'PAID'; payerType?: 'CUSTOMER' | 'COLLABORATOR'; payerId?: string | null; description?: string | null; dueDate?: Date | null; paidAt?: Date | null }) {
     return this.prisma.invoice.update({
       where: { id },
       data: {
         amount: data.amount,
         paidAmount: data.paidAmount,
         status: data.status as any,
+        payerType: data.payerType as any,
+        payerId: data.payerId,
         description: data.description,
         dueDate: data.dueDate,
         paidAt: data.paidAt
@@ -103,7 +113,23 @@ export class InvoicesRepository extends BaseRepository {
     });
   }
 
-  delete(id: string) {
-    return this.prisma.invoice.delete({ where: { id } });
+  findOrderForPayer(orderId: string) {
+    return this.prisma.order.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: {
+        id: true,
+        customerId: true,
+        collaboratorId: true
+      }
+    });
+  }
+
+  softDelete(id: string) {
+    return this.prisma.invoice.update({
+      where: { id },
+      data: {
+        deletedAt: new Date()
+      }
+    });
   }
 }

@@ -30,17 +30,20 @@ export function DashboardPage() {
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <Card key={item.label} className="border-slate-200/80 bg-gradient-to-br from-card to-slate-50/60 dark:to-slate-900/40">
+          <Card
+            key={item.label}
+            className="group border-slate-300/70 bg-gradient-to-br from-card via-slate-50/75 to-slate-100/80 hover:-translate-y-0.5 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/70"
+          >
             <CardHeader className="pb-3">
-              <CardTitle className="flex items-center justify-between text-sm font-medium text-muted-foreground">
+              <CardTitle className="flex items-center justify-between text-sm font-semibold text-muted-foreground">
                 {item.label}
-                <span className="rounded-lg bg-primary/10 p-2 text-primary">
+                <span className="rounded-xl border border-primary/30 bg-primary/10 p-2 text-primary transition-colors group-hover:bg-primary/20">
                   <Icon className="h-4 w-4" />
                 </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-extrabold tracking-tight">{item.value}</p>
+              <p className="text-[1.65rem] font-extrabold tracking-tight">{item.value}</p>
             </CardContent>
           </Card>
         );

@@ -18,4 +18,8 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  referredByCollaboratorId?: string;
 }

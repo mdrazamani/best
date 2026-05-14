@@ -39,9 +39,20 @@ export class InvoicesService extends BaseService {
     const prefix = `INV-${code}-`;
     const count = await this.invoicesRepository.countByPrefix(prefix);
 
+    const orderRef = await this.invoicesRepository.findOrderForPayer(dto.orderId);
+    if (!orderRef) {
+      throw new NotFoundException('سفارش پيدا نشد.');
+    }
+
     const amount = Number(dto.amount ?? 0);
     const paidAmount = Number(dto.paidAmount ?? 0);
     const status = dto.status ?? (paidAmount <= 0 ? 'UNPAID' : paidAmount >= amount ? 'PAID' : 'PARTIAL');
+    const payerType = dto.payerType ?? (orderRef.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER');
+    const payerId = dto.payerId ?? (payerType === 'COLLABORATOR' ? orderRef.collaboratorId : orderRef.customerId);
+
+    if (payerType === 'COLLABORATOR' && !orderRef.collaboratorId) {
+      throw new NotFoundException('برای این سفارش همکار ثبت نشده است.');
+    }
 
     const created = await this.invoicesRepository.create({
       orderId: dto.orderId,
@@ -50,6 +61,8 @@ export class InvoicesService extends BaseService {
       amount,
       paidAmount,
       status,
+      payerType,
+      payerId: payerId ?? undefined,
       description: dto.description?.trim(),
       dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
       paidAt: status === 'PAID' ? new Date() : undefined
@@ -76,11 +89,15 @@ export class InvoicesService extends BaseService {
     const amount = dto.amount ?? Number(existing.amount);
     const paidAmount = dto.paidAmount ?? Number(existing.paidAmount);
     const status = dto.status ?? (paidAmount <= 0 ? 'UNPAID' : paidAmount >= amount ? 'PAID' : 'PARTIAL');
+    const payerType = dto.payerType ?? existing.payerType;
+    const payerId = dto.payerId === undefined ? existing.payerId : dto.payerId || null;
 
     await this.invoicesRepository.update(id, {
       amount: dto.amount,
       paidAmount: dto.paidAmount,
       status,
+      payerType,
+      payerId,
       description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
       dueDate: dto.dueDate === undefined ? undefined : dto.dueDate ? new Date(dto.dueDate) : null,
       paidAt: status === 'PAID' ? new Date() : null
@@ -104,13 +121,13 @@ export class InvoicesService extends BaseService {
       throw new NotFoundException('فاکتور پيدا نشد.');
     }
 
-    await this.invoicesRepository.delete(id);
+    await this.invoicesRepository.softDelete(id);
     await this.operationLogsService.log({
       actorId,
       entityType: 'Invoice',
       entityId: id,
       action: 'DELETE',
-      description: 'Invoice deleted',
+      description: 'Invoice soft deleted',
       orderId: existing.orderId
     });
 
@@ -154,6 +171,7 @@ export class InvoicesService extends BaseService {
       doc.text(`Amount: ${Number(invoice.amount).toLocaleString('en-US')} IRR`);
       doc.text(`Paid Amount: ${Number(invoice.paidAmount).toLocaleString('en-US')} IRR`);
       doc.text(`Status: ${invoice.status}`);
+      doc.text(`Payer Type: ${invoice.payerType}`);
       doc.text(`Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toISOString() : '-'}`);
       doc.text(`Paid At: ${invoice.paidAt ? new Date(invoice.paidAt).toISOString() : '-'}`);
       doc.moveDown(2);

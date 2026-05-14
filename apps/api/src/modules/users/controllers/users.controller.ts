@@ -1,4 +1,4 @@
-﻿import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+﻿import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { Resource } from '../../../common/decorators/resource.decorator';
 import { Permission } from '../../../common/decorators/permission.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../../common/decorators/current-user.decorator';
@@ -37,5 +37,11 @@ export class UsersController {
   @Permission('users.create')
   assignRole(@CurrentUser() actor: CurrentUserPayload, @Param('id') id: string, @Body() dto: AssignRoleDto) {
     return this.usersService.assignRole(actor.userId, id, dto.roleKey);
+  }
+
+  @Delete(':id')
+  @Permission('users.create')
+  remove(@CurrentUser() actor: CurrentUserPayload, @Param('id') id: string) {
+    return this.usersService.remove(actor.userId, id);
   }
 }

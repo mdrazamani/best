@@ -59,4 +59,23 @@ export class MeshTypesService extends BaseService {
 
     return updated;
   }
+
+  async remove(actorId: string, id: string) {
+    const existing = await this.meshTypesRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException('نوع توری پیدا نشد.');
+    }
+
+    await this.meshTypesRepository.softDelete(id);
+
+    await this.operationLogsService.log({
+      actorId,
+      entityType: 'MeshType',
+      entityId: id,
+      action: 'DELETE',
+      description: 'Soft delete mesh type'
+    });
+
+    return { success: true };
+  }
 }
