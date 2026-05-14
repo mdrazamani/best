@@ -65,4 +65,78 @@ describe('OrdersService', () => {
     );
     expect(result).toEqual({ success: true });
   });
+
+  it('applies discount and extra amounts to auto invoice when creating order', async () => {
+    ordersRepository.create.mockResolvedValue({
+      id: 'order-1',
+      collaboratorId: null,
+      customerId: 'customer-1'
+    });
+    ordersRepository.findById.mockResolvedValue({
+      id: 'order-1',
+      totalPrice: 570,
+      invoices: []
+    });
+
+    await service.create('actor-1', {
+      customerId: 'customer-1',
+      workType: 'NEW_CONSTRUCTION',
+      lineItems: [{ meshTypeId: 'mesh-1', width: 2, height: 3, quantity: 1, unitPrice: 100 }],
+      discountAmount: 50,
+      extraAmount: 20
+    } as any);
+
+    expect(ordersRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        totalPrice: 570,
+        discountAmount: 50,
+        extraAmount: 20
+      })
+    );
+
+    expect(invoicesService.create).toHaveBeenCalledWith(
+      'actor-1',
+      expect.objectContaining({
+        orderId: 'order-1',
+        amount: 570,
+        discountAmount: 50,
+        extraAmount: 20
+      })
+    );
+  });
+
+  it('uses 10 percent vat by default when extra amount is not provided', async () => {
+    ordersRepository.create.mockResolvedValue({
+      id: 'order-2',
+      collaboratorId: null,
+      customerId: 'customer-1'
+    });
+    ordersRepository.findById.mockResolvedValue({
+      id: 'order-2',
+      totalPrice: 660,
+      invoices: []
+    });
+
+    await service.create('actor-1', {
+      customerId: 'customer-1',
+      workType: 'NEW_CONSTRUCTION',
+      lineItems: [{ meshTypeId: 'mesh-1', width: 2, height: 3, quantity: 1, unitPrice: 100 }]
+    } as any);
+
+    expect(ordersRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        totalPrice: 660,
+        extraAmount: 60
+      })
+    );
+
+    expect(invoicesService.create).toHaveBeenCalledWith(
+      'actor-1',
+      expect.objectContaining({
+        orderId: 'order-2',
+        amount: 660,
+        extraAmount: 60
+      })
+    );
+  });
 });

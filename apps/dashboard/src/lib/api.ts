@@ -11,6 +11,20 @@ type AuthConfig = {
 let authConfig: AuthConfig | null = null;
 let refreshPromise: Promise<string | null> | null = null;
 
+function normalizeApiMessage(input: unknown, fallback: string): string {
+  if (typeof input === 'string' && input.trim()) return input;
+  if (Array.isArray(input)) {
+    const merged = input.filter((item) => typeof item === 'string').join(' | ').trim();
+    if (merged) return merged;
+  }
+  if (input && typeof input === 'object') {
+    const obj = input as Record<string, unknown>;
+    const nested = normalizeApiMessage(obj.message ?? obj.error ?? obj.details, '');
+    if (nested) return nested;
+  }
+  return fallback;
+}
+
 export function configureApiAuth(config: AuthConfig | null) {
   authConfig = config;
 }
@@ -132,11 +146,11 @@ export async function apiCall<T>(path: string, token: string | null, init?: Requ
     try {
       const json = await response.json();
       payload = json;
-      message = json?.message || json?.error || message;
+      message = normalizeApiMessage(json?.message ?? json?.error ?? json, message);
     } catch {
       const text = await response.text();
       payload = text;
-      message = text || message;
+      message = normalizeApiMessage(text, message);
     }
     throw new ApiError(message, response.status, payload);
   }

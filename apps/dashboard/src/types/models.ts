@@ -61,6 +61,8 @@ export type Order = {
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
   stage: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
   totalPrice: number;
+  discountAmount: number;
+  extraAmount: number;
   expectedCompletionDate?: string | null;
   createdAt: string;
   customer?: Person;
@@ -89,6 +91,8 @@ export type Invoice = {
   invoiceNumber: string;
   title?: string | null;
   amount: number;
+  discountAmount: number;
+  extraAmount: number;
   paidAmount: number;
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
   payerType?: 'CUSTOMER' | 'COLLABORATOR';

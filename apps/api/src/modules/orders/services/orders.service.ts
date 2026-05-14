@@ -58,7 +58,11 @@ export class OrdersService extends BaseService {
 
     const lineItemsTotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
     const fallbackTotal = (dto.width ?? 0) * (dto.height ?? 0) * (dto.quantity ?? 0) * (dto.unitPrice ?? 0);
-    const totalPrice = dto.totalPrice ?? (lineItems.length ? lineItemsTotal : fallbackTotal);
+    const discountAmount = Number(dto.discountAmount ?? 0);
+    const calculatedBaseTotal = lineItems.length ? lineItemsTotal : fallbackTotal;
+    const defaultVatAmount = calculatedBaseTotal * 0.1;
+    const extraAmount = Number(dto.extraAmount ?? defaultVatAmount);
+    const totalPrice = dto.totalPrice ?? Math.max(calculatedBaseTotal + extraAmount - discountAmount, 0);
     const firstLine = lineItems[0];
 
     let created: Awaited<ReturnType<OrdersRepository['create']>> | null = null;
@@ -77,6 +81,8 @@ export class OrdersService extends BaseService {
           quantity: firstLine?.quantity ?? dto.quantity,
           unitPrice: firstLine?.unitPrice ?? dto.unitPrice,
           totalPrice,
+          discountAmount,
+          extraAmount,
           lineItems,
           description: dto.description?.trim(),
           stage: dto.stage,
@@ -109,6 +115,8 @@ export class OrdersService extends BaseService {
       await this.invoicesService.create(actorId, {
         orderId: created.id,
         amount: invoiceAmount,
+        discountAmount,
+        extraAmount,
         paidAmount: 0,
         status: 'UNPAID',
         payerType: created.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
@@ -132,14 +140,26 @@ export class OrdersService extends BaseService {
       throw new BadRequestException('ردیف‌های سفارش معتبر نیستند.');
     }
 
+    const currentDiscountAmount = Number(existing.discountAmount ?? 0);
+    const currentExtraAmount = Number(existing.extraAmount ?? 0);
+    const nextDiscountAmount = dto.discountAmount ?? currentDiscountAmount;
+    const nextExtraAmount = dto.extraAmount ?? currentExtraAmount;
+
     const lineItemsTotal = lineItems?.reduce((sum, item) => sum + item.lineTotal, 0);
+    const recalculatedBaseTotal =
+      lineItems && lineItems.length
+        ? lineItemsTotal
+        : dto.unitPrice !== undefined || dto.quantity !== undefined || dto.width !== undefined || dto.height !== undefined
+        ? Number(dto.width ?? existing.width ?? 0) * Number(dto.height ?? existing.height ?? 0) * Number(dto.quantity ?? existing.quantity ?? 0) * Number(dto.unitPrice ?? existing.unitPrice ?? 0)
+        : dto.discountAmount !== undefined || dto.extraAmount !== undefined
+        ? Number(existing.totalPrice ?? 0) - currentExtraAmount + currentDiscountAmount
+        : undefined;
+
     const totalPrice =
       dto.totalPrice !== undefined
         ? dto.totalPrice
-        : lineItems && lineItems.length
-        ? lineItemsTotal
-        : dto.unitPrice !== undefined || dto.quantity !== undefined
-        ? Number(dto.width ?? existing.width ?? 0) * Number(dto.height ?? existing.height ?? 0) * Number(dto.quantity ?? existing.quantity ?? 0) * Number(dto.unitPrice ?? existing.unitPrice ?? 0)
+        : recalculatedBaseTotal !== undefined
+        ? Math.max(recalculatedBaseTotal + nextExtraAmount - nextDiscountAmount, 0)
         : undefined;
 
     const firstLine = lineItems?.[0];
@@ -154,6 +174,8 @@ export class OrdersService extends BaseService {
       quantity: firstLine ? firstLine.quantity : dto.quantity,
       unitPrice: firstLine ? firstLine.unitPrice : dto.unitPrice,
       totalPrice,
+      discountAmount: dto.discountAmount,
+      extraAmount: dto.extraAmount,
       lineItems,
       description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
       stage: dto.stage,

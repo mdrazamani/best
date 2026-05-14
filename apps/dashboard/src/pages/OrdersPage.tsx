@@ -16,6 +16,7 @@ import { Pagination } from '../components/shared/pagination';
 import { PersianDatePicker } from '../components/ui/persian-date-picker';
 
 const PAGE_SIZE = 10;
+const DEFAULT_VAT_RATE = 10;
 const INVOICE_STATUS_OPTIONS = [
   { value: 'UNPAID', label: 'پرداخت نشده' },
   { value: 'PARTIAL', label: 'ناقص' },
@@ -95,6 +96,9 @@ export function OrdersPage() {
   const [lineItems, setLineItems] = useState<LineItemForm[]>([createLineItem()]);
   const [finalPrice, setFinalPrice] = useState('');
   const [finalPriceOverridden, setFinalPriceOverridden] = useState(false);
+  const [discountAmount, setDiscountAmount] = useState('');
+  const [vatEnabled, setVatEnabled] = useState(true);
+  const [vatRate, setVatRate] = useState(String(DEFAULT_VAT_RATE));
   const [createInitialInvoice, setCreateInitialInvoice] = useState(true);
 
   const [selectedStage, setSelectedStage] = useState('RECEIVED');
@@ -106,6 +110,8 @@ export function OrdersPage() {
   const [detailInvoiceForm, setDetailInvoiceForm] = useState({
     title: '',
     amount: '',
+    discountAmount: '',
+    extraAmount: '',
     paidAmount: '0',
     status: 'UNPAID',
     payerType: 'CUSTOMER',
@@ -137,9 +143,19 @@ export function OrdersPage() {
     const q = search.trim().toLowerCase();
     return orders.filter((item) => {
       const orderNo = item.orderNumber.toLowerCase();
+      const orderTitle = (item.title ?? '').toLowerCase();
       const customerName = `${item.customer?.firstName ?? ''} ${item.customer?.lastName ?? ''}`.toLowerCase();
+      const customerPhone = (item.customer?.phone ?? '').toLowerCase();
       const collaboratorName = `${item.collaborator?.firstName ?? ''} ${item.collaborator?.lastName ?? ''}`.toLowerCase();
-      const matchesSearch = !q || orderNo.includes(q) || customerName.includes(q) || collaboratorName.includes(q);
+      const collaboratorPhone = (item.collaborator?.phone ?? '').toLowerCase();
+      const matchesSearch =
+        !q ||
+        orderNo.includes(q) ||
+        orderTitle.includes(q) ||
+        customerName.includes(q) ||
+        customerPhone.includes(q) ||
+        collaboratorName.includes(q) ||
+        collaboratorPhone.includes(q);
       const matchesStage = stageFilter === 'all' || item.stage === stageFilter;
       const matchesPayment = paymentFilter === 'all' || item.paymentSummary.status === paymentFilter;
       return matchesSearch && matchesStage && matchesPayment;
@@ -163,21 +179,29 @@ export function OrdersPage() {
     }, 0);
   }, [lineItems]);
 
+  const discountValue = useMemo(() => toNumber(discountAmount), [discountAmount]);
+  const vatRateValue = useMemo(() => Math.max(toNumber(vatRate), 0), [vatRate]);
+  const extraValue = useMemo(() => (vatEnabled ? (calculatedTotal * vatRateValue) / 100 : 0), [calculatedTotal, vatEnabled, vatRateValue]);
+  const adjustedTotal = useMemo(() => Math.max(calculatedTotal + extraValue - discountValue, 0), [calculatedTotal, extraValue, discountValue]);
+
   useEffect(() => {
     if (!createOpen) {
       setForm({ title: '', customerId: '', collaboratorId: '', workType: 'NEW_CONSTRUCTION', expectedCompletionDate: '', description: '' });
       setLineItems([createLineItem()]);
       setFinalPrice('');
       setFinalPriceOverridden(false);
+      setDiscountAmount('');
+      setVatEnabled(true);
+      setVatRate(String(DEFAULT_VAT_RATE));
       setCreateInitialInvoice(true);
     }
   }, [createOpen]);
 
   useEffect(() => {
     if (!finalPriceOverridden) {
-      setFinalPrice(calculatedTotal ? String(calculatedTotal) : '');
+      setFinalPrice(adjustedTotal ? String(adjustedTotal) : '');
     }
-  }, [calculatedTotal, finalPriceOverridden]);
+  }, [adjustedTotal, finalPriceOverridden]);
 
   useEffect(() => {
     if (orderDetail?.stage) {
@@ -191,6 +215,8 @@ export function OrdersPage() {
     setDetailInvoiceForm({
       title: '',
       amount: remainingAmount > 0 ? String(remainingAmount) : '',
+      discountAmount: '',
+      extraAmount: '',
       paidAmount: '0',
       status: 'UNPAID',
       payerType: orderDetail.collaborator?.id ? 'COLLABORATOR' : 'CUSTOMER',
@@ -223,7 +249,7 @@ export function OrdersPage() {
       .filter((item) => item.meshTypeId && item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0);
 
     const firstLine = normalizedLineItems[0];
-    const payloadTotal = finalPrice.trim() ? Number(finalPrice) : calculatedTotal;
+    const payloadTotal = finalPrice.trim() ? Number(finalPrice) : adjustedTotal;
 
     await createOrder({
       title: form.title || undefined,
@@ -237,6 +263,8 @@ export function OrdersPage() {
       unitPrice: firstLine?.unitPrice,
       lineItems: normalizedLineItems,
       totalPrice: Number.isFinite(payloadTotal) ? payloadTotal : 0,
+      discountAmount: discountValue,
+      extraAmount: extraValue,
       createInitialInvoice,
       description: form.description || undefined
     });
@@ -284,6 +312,8 @@ export function OrdersPage() {
     if (!orderDetail?.id) return;
 
     const amount = toNumber(detailInvoiceForm.amount);
+    const discountAmount = toNumber(detailInvoiceForm.discountAmount);
+    const extraAmount = toNumber(detailInvoiceForm.extraAmount);
     const paidAmount = toNumber(detailInvoiceForm.paidAmount);
 
     setDetailInvoiceSubmitting(true);
@@ -292,6 +322,8 @@ export function OrdersPage() {
         title: detailInvoiceForm.title || undefined,
         orderId: orderDetail.id,
         amount,
+        discountAmount,
+        extraAmount,
         paidAmount,
         status: detailInvoiceForm.status,
         payerType: detailInvoiceForm.payerType,
@@ -311,6 +343,10 @@ export function OrdersPage() {
     const detailMeshTypeText = meshTypeLabelsFromItems(detailLineItems);
     const detailInvoices = Array.isArray(orderDetail.invoices) ? orderDetail.invoices : [];
     const detailLogs = Array.isArray(orderDetail.operationLogs) ? orderDetail.operationLogs : [];
+    const detailTotal = Number(orderDetail.paymentSummary?.total ?? orderDetail.totalPrice ?? 0);
+    const detailDiscount = Number(orderDetail.discountAmount ?? 0);
+    const detailExtra = Number(orderDetail.extraAmount ?? 0);
+    const detailBase = detailTotal - detailExtra + detailDiscount;
 
     return (
       <section className="space-y-4">
@@ -361,12 +397,23 @@ export function OrdersPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مبلغ کل سفارش</p>
-                <p className="mt-1 text-lg font-bold">{money(Number(orderDetail.paymentSummary?.total ?? orderDetail.totalPrice ?? 0))}</p>
+                <p className="mt-1 text-lg font-bold">{money(detailTotal)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">پایه: {money(detailBase)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مبلغ افزوده</p>
+                <p className="mt-1 text-lg font-bold">{money(detailExtra)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">تخفیف</p>
+                <p className="mt-1 text-lg font-bold">{money(detailDiscount)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مبلغ پرداخت‌شده</p>
                 <p className="mt-1 text-lg font-bold">{money(Number(orderDetail.paymentSummary?.paidAmount ?? 0))}</p>
               </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مانده</p>
                 <p className="mt-1 text-lg font-bold text-destructive">{money(Number(orderDetail.paymentSummary?.remainingAmount ?? 0))}</p>
@@ -495,7 +542,12 @@ export function OrdersPage() {
                           {invoiceStatusLabel(invoice.status)}
                         </Badge>
                       </TableCell>
-                      <TableCell>{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</TableCell>
+                      <TableCell>
+                        <div>{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</div>
+                        <div className="text-xs text-muted-foreground">
+                          افزوده: {money(Number(invoice.extraAmount ?? 0))} | تخفیف: {money(Number(invoice.discountAmount ?? 0))}
+                        </div>
+                      </TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
                       <TableCell>{shamsiDate(invoice.createdAt)}</TableCell>
                       <TableCell>
@@ -549,6 +601,22 @@ export function OrdersPage() {
                   value={detailInvoiceForm.amount}
                   placeholder="مبلغ کل فاکتور"
                   onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, amount: e.target.value }))}
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={detailInvoiceForm.extraAmount}
+                  placeholder="مبلغ افزوده"
+                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, extraAmount: e.target.value }))}
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={detailInvoiceForm.discountAmount}
+                  placeholder="تخفیف"
+                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, discountAmount: e.target.value }))}
                 />
                 <Input
                   type="number"
@@ -697,14 +765,76 @@ export function OrdersPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <p className="mb-1 text-xs text-muted-foreground">جمع محاسباتی</p>
-                    <div className="flex h-10 items-center rounded-md border border-input bg-background px-3 text-sm font-semibold text-primary">{money(calculatedTotal)}</div>
+                <div className="space-y-3 rounded-lg border border-slate-300/70 bg-muted/10 p-3 dark:border-slate-700/80">
+                  <p className="text-sm font-semibold">جمع‌بندی مالی</p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <p className="mb-1 text-xs text-muted-foreground">جمع محاسباتی</p>
+                      <div className="flex h-10 items-center rounded-md border border-input bg-background px-3 text-sm font-semibold text-primary">{money(calculatedTotal)}</div>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs text-muted-foreground">تخفیف</p>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={discountAmount}
+                        placeholder="مبلغ تخفیف"
+                        onChange={(e) => {
+                          setDiscountAmount(e.target.value);
+                        }}
+                      />
+                    </div>
                   </div>
+
+                  <div className="grid gap-3 rounded-md border border-dashed border-slate-300/80 p-3 dark:border-slate-700/80 md:grid-cols-[auto_1fr_auto] md:items-end">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={vatEnabled}
+                        onChange={(e) => {
+                          setVatEnabled(e.target.checked);
+                          if (e.target.checked && !vatRate.trim()) {
+                            setVatRate(String(DEFAULT_VAT_RATE));
+                          }
+                        }}
+                      />
+                      اعمال مالیات ارزش افزوده
+                    </label>
+                    <div>
+                      <p className="mb-1 text-xs text-muted-foreground">درصد مالیات</p>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={vatRate}
+                        disabled={!vatEnabled}
+                        placeholder="درصد (پیش‌فرض 10)"
+                        onChange={(e) => setVatRate(e.target.value)}
+                      />
+                    </div>
+                    <div className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-primary">
+                      {money(extraValue)}
+                    </div>
+                  </div>
+
                   <div>
                     <p className="mb-1 text-xs text-muted-foreground">مبلغ نهایی (قابل تغییر)</p>
-                    <Input type="number" min="0" step="0.01" value={finalPrice} placeholder="مبلغ نهایی" onChange={(e) => { setFinalPrice(e.target.value); setFinalPriceOverridden(true); }} />
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={finalPrice}
+                      placeholder="مبلغ نهایی"
+                      onChange={(e) => {
+                        setFinalPrice(e.target.value);
+                        setFinalPriceOverridden(true);
+                      }}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      محاسبه خودکار: {money(adjustedTotal)} = {money(calculatedTotal)} + {money(extraValue)} - {money(discountValue)}
+                    </p>
                   </div>
                 </div>
 
@@ -731,7 +861,7 @@ export function OrdersPage() {
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pr-9" placeholder="جستجو: شماره سفارش، مشتری، همکار" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+              <Input className="pr-9" placeholder="جستجو: شماره سفارش، نام/شماره مشتری، نام/شماره همکار" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
             <SearchableSelect
               value={stageFilter}

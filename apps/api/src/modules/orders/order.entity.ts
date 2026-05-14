@@ -7,6 +7,8 @@ export type OrderEntity = {
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
   stage: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
   totalPrice: string;
+  discountAmount: string;
+  extraAmount: string;
   expectedCompletionDate?: Date | null;
   lineItems?: Array<{
     id: string;

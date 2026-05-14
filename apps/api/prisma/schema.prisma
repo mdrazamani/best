@@ -237,6 +237,8 @@ model Order {
   quantity        Decimal?   @db.Decimal(18, 2)
   unitPrice       Decimal?   @db.Decimal(18, 2)
   totalPrice      Decimal    @default(0) @db.Decimal(18, 2)
+  discountAmount  Decimal    @default(0) @db.Decimal(18, 2)
+  extraAmount     Decimal    @default(0) @db.Decimal(18, 2)
   description     String?
   stage           OrderStage @default(RECEIVED)
   stageNote       String?
@@ -286,6 +288,8 @@ model Invoice {
   title          String?
   createdById    String
   amount         Decimal       @db.Decimal(18, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(18, 2)
+  extraAmount    Decimal       @default(0) @db.Decimal(18, 2)
   paidAmount     Decimal       @default(0) @db.Decimal(18, 2)
   status         InvoiceStatus @default(UNPAID)
   payerType      InvoicePayerType @default(CUSTOMER)

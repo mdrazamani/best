@@ -28,8 +28,10 @@ export class InvoicesRepository extends BaseRepository {
               { order: { title: { contains: filter.q, mode: 'insensitive' } } },
               { order: { customer: { firstName: { contains: filter.q, mode: 'insensitive' } } } },
               { order: { customer: { lastName: { contains: filter.q, mode: 'insensitive' } } } },
+              { order: { customer: { phone: { contains: filter.q, mode: 'insensitive' } } } },
               { order: { collaborator: { firstName: { contains: filter.q, mode: 'insensitive' } } } },
-              { order: { collaborator: { lastName: { contains: filter.q, mode: 'insensitive' } } } }
+              { order: { collaborator: { lastName: { contains: filter.q, mode: 'insensitive' } } } },
+              { order: { collaborator: { phone: { contains: filter.q, mode: 'insensitive' } } } }
             ]
           }
         : {})
@@ -85,6 +87,8 @@ export class InvoicesRepository extends BaseRepository {
     title?: string;
     createdById: string;
     amount: number;
+    discountAmount?: number;
+    extraAmount?: number;
     paidAmount: number;
     status: 'UNPAID' | 'PARTIAL' | 'PAID';
     payerType: 'CUSTOMER' | 'COLLABORATOR';
@@ -100,6 +104,8 @@ export class InvoicesRepository extends BaseRepository {
         title: data.title,
         createdById: data.createdById,
         amount: data.amount,
+        discountAmount: data.discountAmount,
+        extraAmount: data.extraAmount,
         paidAmount: data.paidAmount,
         status: data.status as any,
         payerType: data.payerType as any,
@@ -111,12 +117,14 @@ export class InvoicesRepository extends BaseRepository {
     });
   }
 
-  update(id: string, data: { title?: string | null; amount?: number; paidAmount?: number; status?: 'UNPAID' | 'PARTIAL' | 'PAID'; payerType?: 'CUSTOMER' | 'COLLABORATOR'; payerId?: string | null; description?: string | null; dueDate?: Date | null; paidAt?: Date | null }) {
+  update(id: string, data: { title?: string | null; amount?: number; discountAmount?: number; extraAmount?: number; paidAmount?: number; status?: 'UNPAID' | 'PARTIAL' | 'PAID'; payerType?: 'CUSTOMER' | 'COLLABORATOR'; payerId?: string | null; description?: string | null; dueDate?: Date | null; paidAt?: Date | null }) {
     return this.prisma.invoice.update({
       where: { id },
       data: {
         title: data.title,
         amount: data.amount,
+        discountAmount: data.discountAmount,
+        extraAmount: data.extraAmount,
         paidAmount: data.paidAmount,
         status: data.status as any,
         payerType: data.payerType as any,
@@ -134,7 +142,10 @@ export class InvoicesRepository extends BaseRepository {
       select: {
         id: true,
         customerId: true,
-        collaboratorId: true
+        collaboratorId: true,
+        totalPrice: true,
+        discountAmount: true,
+        extraAmount: true
       }
     });
   }

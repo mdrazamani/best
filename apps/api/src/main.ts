@@ -38,7 +38,7 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('BEST API')
-    .setDescription('مستندات API پنل حسابداری تولیدی توری BEST')
+    .setDescription('BEST Api Documentaion')
     .setVersion('1.0.0')
     .addBearerAuth(
       {

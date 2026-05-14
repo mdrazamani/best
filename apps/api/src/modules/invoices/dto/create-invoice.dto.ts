@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateInvoiceDto {
   @IsOptional()
@@ -13,6 +13,18 @@ export class CreateInvoiceDto {
   @Type(() => Number)
   @IsNumber()
   amount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  extraAmount?: number;
 
   @IsOptional()
   @Type(() => Number)

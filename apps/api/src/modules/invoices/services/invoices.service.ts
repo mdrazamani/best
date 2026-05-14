@@ -37,7 +37,12 @@ export class InvoicesService extends BaseService {
       throw new NotFoundException('سفارش پيدا نشد.');
     }
 
-    const amount = Number(dto.amount ?? 0);
+    const discountAmount = Number(dto.discountAmount ?? 0);
+    const extraAmount = Number(dto.extraAmount ?? 0);
+    const amount =
+      dto.amount !== undefined && dto.amount !== null
+        ? Number(dto.amount)
+        : Math.max(Number(orderRef.totalPrice ?? 0) + extraAmount - discountAmount, 0);
     const paidAmount = Number(dto.paidAmount ?? 0);
     const status = dto.status ?? (paidAmount <= 0 ? 'UNPAID' : paidAmount >= amount ? 'PAID' : 'PARTIAL');
     const payerType = dto.payerType ?? (orderRef.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER');
@@ -56,6 +61,8 @@ export class InvoicesService extends BaseService {
           title: dto.title?.trim(),
           createdById: actorId,
           amount,
+          discountAmount,
+          extraAmount,
           paidAmount,
           status,
           payerType,
@@ -94,7 +101,16 @@ export class InvoicesService extends BaseService {
       throw new NotFoundException('فاکتور پيدا نشد.');
     }
 
-    const amount = dto.amount ?? Number(existing.amount);
+    const currentDiscountAmount = Number(existing.discountAmount ?? 0);
+    const currentExtraAmount = Number(existing.extraAmount ?? 0);
+    const nextDiscountAmount = dto.discountAmount ?? currentDiscountAmount;
+    const nextExtraAmount = dto.extraAmount ?? currentExtraAmount;
+    const amount =
+      dto.amount !== undefined
+        ? dto.amount
+        : dto.discountAmount !== undefined || dto.extraAmount !== undefined
+        ? Math.max(Number(existing.amount ?? 0) - currentExtraAmount + currentDiscountAmount + nextExtraAmount - nextDiscountAmount, 0)
+        : Number(existing.amount);
     const paidAmount = dto.paidAmount ?? Number(existing.paidAmount);
     const status = dto.status ?? (paidAmount <= 0 ? 'UNPAID' : paidAmount >= amount ? 'PAID' : 'PARTIAL');
     const payerType = dto.payerType ?? existing.payerType;
@@ -102,7 +118,9 @@ export class InvoicesService extends BaseService {
 
     await this.invoicesRepository.update(id, {
       title: dto.title === undefined ? undefined : dto.title?.trim() ?? null,
-      amount: dto.amount,
+      amount: dto.amount !== undefined || dto.discountAmount !== undefined || dto.extraAmount !== undefined ? amount : undefined,
+      discountAmount: dto.discountAmount,
+      extraAmount: dto.extraAmount,
       paidAmount: dto.paidAmount,
       status,
       payerType,
@@ -191,6 +209,10 @@ export class InvoicesService extends BaseService {
       const meshTypeText = meshTypeTitles.length ? meshTypeTitles.join(', ') : '-';
       const dueDate = invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-CA') : '-';
       const paidAt = invoice.paidAt ? new Date(invoice.paidAt).toLocaleString('en-CA', { hour12: false }) : '-';
+      const discountAmount = Number(invoice.discountAmount ?? 0);
+      const extraAmount = Number(invoice.extraAmount ?? 0);
+      const amount = Number(invoice.amount ?? 0);
+      const subtotalAmount = amount - extraAmount + discountAmount;
 
       doc.on('data', (chunk) => chunks.push(chunk as Buffer));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -209,7 +231,10 @@ export class InvoicesService extends BaseService {
       );
       doc.text(`Mesh Types: ${meshTypeText}`);
       doc.text(`Description: ${invoice.description ?? '-'}`);
-      doc.text(`Amount: ${Number(invoice.amount).toLocaleString('en-US')} IRR`);
+      doc.text(`Subtotal: ${subtotalAmount.toLocaleString('en-US')} IRR`);
+      doc.text(`Extra Amount: ${extraAmount.toLocaleString('en-US')} IRR`);
+      doc.text(`Discount Amount: ${discountAmount.toLocaleString('en-US')} IRR`);
+      doc.text(`Amount: ${amount.toLocaleString('en-US')} IRR`);
       doc.text(`Paid Amount: ${Number(invoice.paidAmount).toLocaleString('en-US')} IRR`);
       doc.text(`Status: ${invoice.status}`);
       doc.moveDown();

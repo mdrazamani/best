@@ -32,8 +32,10 @@ export class OrdersRepository extends BaseRepository {
               { title: { contains: filter.q, mode: 'insensitive' } },
               { customer: { firstName: { contains: filter.q, mode: 'insensitive' } } },
               { customer: { lastName: { contains: filter.q, mode: 'insensitive' } } },
+              { customer: { phone: { contains: filter.q, mode: 'insensitive' } } },
               { collaborator: { firstName: { contains: filter.q, mode: 'insensitive' } } },
-              { collaborator: { lastName: { contains: filter.q, mode: 'insensitive' } } }
+              { collaborator: { lastName: { contains: filter.q, mode: 'insensitive' } } },
+              { collaborator: { phone: { contains: filter.q, mode: 'insensitive' } } }
             ]
           }
         : {})
@@ -119,6 +121,8 @@ export class OrdersRepository extends BaseRepository {
     quantity?: number;
     unitPrice?: number;
     totalPrice: number;
+    discountAmount?: number;
+    extraAmount?: number;
     lineItems?: Array<{
       meshTypeId: string;
       width: number;
@@ -146,6 +150,8 @@ export class OrdersRepository extends BaseRepository {
         quantity: data.quantity,
         unitPrice: data.unitPrice,
         totalPrice: data.totalPrice,
+        discountAmount: data.discountAmount,
+        extraAmount: data.extraAmount,
         lineItems: data.lineItems?.length
           ? {
               create: data.lineItems.map((item) => ({
@@ -176,6 +182,8 @@ export class OrdersRepository extends BaseRepository {
     quantity?: number | null;
     unitPrice?: number | null;
     totalPrice?: number;
+    discountAmount?: number;
+    extraAmount?: number;
     lineItems?: Array<{
       meshTypeId: string;
       width: number;
@@ -201,6 +209,8 @@ export class OrdersRepository extends BaseRepository {
         quantity: data.quantity,
         unitPrice: data.unitPrice,
         totalPrice: data.totalPrice,
+        discountAmount: data.discountAmount,
+        extraAmount: data.extraAmount,
         lineItems: data.lineItems
           ? {
               deleteMany: {},
