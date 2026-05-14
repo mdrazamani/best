@@ -1,6 +1,8 @@
 ﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import { BaseService } from '../../../common/services/base.service';
+import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { InvoicesRepository } from '../invoices.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { CreateInvoiceDto } from '../dto/create-invoice.dto';
@@ -28,16 +30,7 @@ export class InvoicesService extends BaseService {
   }
 
   async create(actorId: string, dto: CreateInvoiceDto) {
-    const code = new Intl.DateTimeFormat('en-u-ca-persian', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    })
-      .format(new Date())
-      .replace(/[^0-9]/g, '');
-
-    const prefix = `INV-${code}-`;
-    const count = await this.invoicesRepository.countByPrefix(prefix);
+    const jalaliCode = this.jalaliDateCode(new Date());
 
     const orderRef = await this.invoicesRepository.findOrderForPayer(dto.orderId);
     if (!orderRef) {
@@ -54,19 +47,33 @@ export class InvoicesService extends BaseService {
       throw new NotFoundException('برای این سفارش همکار ثبت نشده است.');
     }
 
-    const created = await this.invoicesRepository.create({
-      orderId: dto.orderId,
-      invoiceNumber: `${prefix}${String(count + 1).padStart(3, '0')}`,
-      createdById: actorId,
-      amount,
-      paidAmount,
-      status,
-      payerType,
-      payerId: payerId ?? undefined,
-      description: dto.description?.trim(),
-      dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-      paidAt: status === 'PAID' ? new Date() : undefined
-    });
+    let created: Awaited<ReturnType<InvoicesRepository['create']>> | null = null;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      try {
+        created = await this.invoicesRepository.create({
+          orderId: dto.orderId,
+          invoiceNumber: this.generateInvoiceNumber(jalaliCode),
+          createdById: actorId,
+          amount,
+          paidAmount,
+          status,
+          payerType,
+          payerId: payerId ?? undefined,
+          description: dto.description?.trim(),
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+          paidAt: status === 'PAID' ? new Date() : undefined
+        });
+        break;
+      } catch (error) {
+        if (!this.isUniqueConstraintError(error) || attempt === 9) {
+          throw error;
+        }
+      }
+    }
+
+    if (!created) {
+      throw new Error('ثبت فاکتور با شماره یکتا انجام نشد.');
+    }
 
     await this.operationLogsService.log({
       actorId,
@@ -148,10 +155,37 @@ export class InvoicesService extends BaseService {
     };
   }
 
+  private jalaliDateCode(date: Date) {
+    return new Intl.DateTimeFormat('en-u-ca-persian', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+      .format(date)
+      .replace(/[^0-9]/g, '');
+  }
+
+  private generateInvoiceNumber(jalaliCode: string) {
+    const shortDate = jalaliCode.slice(-4);
+    const randomPart = randomUUID().replace(/-/g, '').slice(0, 5).toUpperCase();
+    return `IN-${shortDate}-${randomPart}`;
+  }
+
+  private isUniqueConstraintError(error: unknown) {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+  }
+
   private renderPdf(invoice: any): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'A4', margin: 40 });
       const chunks: Buffer[] = [];
+      const payerTypeLabel = invoice.payerType === 'COLLABORATOR' ? 'Collaborator' : 'Customer';
+      const payerRecord = invoice.payerType === 'COLLABORATOR' ? invoice.order?.collaborator : invoice.order?.customer;
+      const payerName = [payerRecord?.firstName, payerRecord?.lastName].filter(Boolean).join(' ') || '-';
+      const payerPhone = payerRecord?.phone || '-';
+      const payerAddress = payerRecord?.address || '-';
+      const dueDate = invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-CA') : '-';
+      const paidAt = invoice.paidAt ? new Date(invoice.paidAt).toLocaleString('en-CA', { hour12: false }) : '-';
 
       doc.on('data', (chunk) => chunks.push(chunk as Buffer));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -171,9 +205,14 @@ export class InvoicesService extends BaseService {
       doc.text(`Amount: ${Number(invoice.amount).toLocaleString('en-US')} IRR`);
       doc.text(`Paid Amount: ${Number(invoice.paidAmount).toLocaleString('en-US')} IRR`);
       doc.text(`Status: ${invoice.status}`);
-      doc.text(`Payer Type: ${invoice.payerType}`);
-      doc.text(`Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toISOString() : '-'}`);
-      doc.text(`Paid At: ${invoice.paidAt ? new Date(invoice.paidAt).toISOString() : '-'}`);
+      doc.moveDown();
+      doc.fontSize(12).text('Payer Information');
+      doc.fontSize(11).text(`Payer Type: ${payerTypeLabel}`);
+      doc.text(`Payer Name: ${payerName}`);
+      doc.text(`Payer Phone: ${payerPhone}`);
+      doc.text(`Payer Address: ${payerAddress}`);
+      doc.text(`Due Date: ${dueDate}`);
+      doc.text(`Paid At: ${paidAt}`);
       doc.moveDown(2);
       doc.text('Stamp and Signature');
 

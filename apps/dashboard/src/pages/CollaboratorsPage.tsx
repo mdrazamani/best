@@ -221,7 +221,7 @@ export function CollaboratorsPage() {
                       <TableCell>{shamsiDate(order.createdAt)}</TableCell>
                       <TableCell>
                         {order.id ? (
-                          <div className="flex min-w-[240px] items-center gap-2">
+                          <div className="flex w-full min-w-[170px] items-center gap-2 sm:min-w-[240px]">
                             <SearchableSelect
                               value={orderStageDrafts[order.id] ?? order.stage}
                               onChange={(value) => setOrderStageDrafts((prev) => ({ ...prev, [order.id]: value }))}
@@ -293,7 +293,7 @@ export function CollaboratorsPage() {
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
                       <TableCell>
                         {invoice.id ? (
-                          <div className="flex min-w-[230px] items-center gap-2">
+                          <div className="flex w-full min-w-[170px] items-center gap-2 sm:min-w-[230px]">
                             <SearchableSelect
                               value={invoiceStatusDrafts[invoice.id] ?? invoice.status}
                               onChange={(value) => setInvoiceStatusDrafts((prev) => ({ ...prev, [invoice.id]: value }))}
@@ -451,11 +451,11 @@ export function CollaboratorsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => void showDetail(item.id)}>
-                              <Eye className="ml-2 h-4 w-4" />
+                              <Eye className="h-4 w-4" />
                               مشاهده
                             </DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeCollaborator(item.id)}>
-                              <Trash2 className="ml-2 h-4 w-4" />
+                              <Trash2 className="h-4 w-4" />
                               حذف 
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -473,3 +473,4 @@ export function CollaboratorsPage() {
     </section>
   );
 }
+

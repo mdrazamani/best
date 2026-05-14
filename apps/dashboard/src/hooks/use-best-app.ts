@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'react-toastify';
 import { apiBasePath, apiCall, configureApiAuth } from '../lib/api';
 import { ActivityLog, BackupLog, DashboardStats, Invoice, MeshType, NotificationItem, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
 
@@ -19,6 +20,12 @@ const tokenIssuedAt = (token: string | null) => {
   } catch {
     return 0;
   }
+};
+
+const normalizeErrorMessage = (error: unknown, fallback = 'خطا در انجام عملیات') => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return fallback;
 };
 
 export function useBestApp() {
@@ -154,64 +161,113 @@ export function useBestApp() {
   };
 
   const login = async (username: string, password: string) => {
-    const result = await apiCall<{ accessToken: string; refreshToken: string }>('/auth/login', null, {
-      method: 'POST',
-      body: JSON.stringify({ username, password })
-    });
-    setAuthTokens(result.accessToken, result.refreshToken);
+    try {
+      const result = await apiCall<{ accessToken: string; refreshToken: string }>('/auth/login', null, {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+      });
+      setAuthTokens(result.accessToken, result.refreshToken);
+      toast.success('ورود با موفقیت انجام شد.');
+    } catch (error) {
+      const message = normalizeErrorMessage(error, 'خطا در ورود به سیستم');
+      setError(message);
+      toast.error(message);
+      throw error;
+    }
   };
 
-  const postAndReload = async (url: string, payload: Record<string, unknown>, method: 'POST' | 'PATCH' | 'PUT' = 'POST') => {
+  const postAndReload = async (
+    url: string,
+    payload: Record<string, unknown>,
+    method: 'POST' | 'PATCH' | 'PUT' = 'POST',
+    successMessage?: string
+  ) => {
     const accessToken = tokenRef.current;
     if (!accessToken) return;
-    await apiCall(url, accessToken, {
-      method,
-      body: JSON.stringify(payload)
-    });
-    await reload();
+    try {
+      await apiCall(url, accessToken, {
+        method,
+        body: JSON.stringify(payload)
+      });
+      await reload();
+      if (successMessage) {
+        toast.success(successMessage);
+      }
+    } catch (error) {
+      const message = normalizeErrorMessage(error);
+      setError(message);
+      toast.error(message);
+      throw error;
+    }
   };
 
-  const deleteAndReload = async (url: string) => {
+  const deleteAndReload = async (url: string, successMessage?: string) => {
     const accessToken = tokenRef.current;
     if (!accessToken) return;
-    await apiCall(url, accessToken, { method: 'DELETE' });
-    await reload();
+    try {
+      await apiCall(url, accessToken, { method: 'DELETE' });
+      await reload();
+      if (successMessage) {
+        toast.success(successMessage);
+      }
+    } catch (error) {
+      const message = normalizeErrorMessage(error);
+      setError(message);
+      toast.error(message);
+      throw error;
+    }
   };
 
   const runBackup = async () => {
     const accessToken = tokenRef.current;
     if (!accessToken) return null;
-    const result = await apiCall<{ backupId: string }>('/backups/run', accessToken, {
-      method: 'POST',
-      body: JSON.stringify({})
-    });
-    await reload();
-    return result;
+    try {
+      const result = await apiCall<{ backupId: string }>('/backups/run', accessToken, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      await reload();
+      toast.success('بکاپ با موفقیت اجرا شد.');
+      return result;
+    } catch (error) {
+      const message = normalizeErrorMessage(error, 'خطا در اجرای بکاپ');
+      setError(message);
+      toast.error(message);
+      throw error;
+    }
   };
 
   const downloadProtected = async (url: string, fileName?: string) => {
     const accessToken = tokenRef.current;
     if (!accessToken) return;
 
-    const response = await fetch(`${apiBasePath()}${url}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
+    try {
+      const response = await fetch(`${apiBasePath()}${url}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('خطا در دریافت فایل');
       }
-    });
 
-    if (!response.ok) {
-      throw new Error('خطا در دریافت فایل');
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      if (fileName) a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+      toast.success('دانلود فایل انجام شد.');
+    } catch (error) {
+      const message = normalizeErrorMessage(error, 'خطا در دریافت فایل');
+      setError(message);
+      toast.error(message);
+      throw error;
     }
-
-    const blob = await response.blob();
-    const href = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = href;
-    if (fileName) a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(href);
   };
 
   const loadCollaboratorDetail = async (id: string) => {
@@ -369,23 +425,28 @@ export function useBestApp() {
     login,
     logout,
     reload,
-    createUser: (payload: { firstName: string; lastName: string; username: string; password: string; roleKey: string }) => postAndReload('/users', payload),
-    removeUser: (userId: string) => deleteAndReload(`/users/${userId}`),
-    updateRolePermissions: (roleKey: string, permissionKeys: string[]) => postAndReload(`/permissions/roles/${roleKey}`, { permissionKeys }, 'PUT'),
-    createMeshType: (payload: Record<string, unknown>) => postAndReload('/mesh-types', payload),
-    removeMeshType: (meshTypeId: string) => deleteAndReload(`/mesh-types/${meshTypeId}`),
-    createCollaborator: (payload: Record<string, unknown>) => postAndReload('/collaborators', payload),
-    removeCollaborator: (collaboratorId: string) => deleteAndReload(`/collaborators/${collaboratorId}`),
-    createCustomer: (payload: Record<string, unknown>) => postAndReload('/customers', payload),
-    removeCustomer: (customerId: string) => deleteAndReload(`/customers/${customerId}`),
-    createOrder: (payload: Record<string, unknown>) => postAndReload('/orders', payload),
-    removeOrder: (orderId: string) => deleteAndReload(`/orders/${orderId}`),
-    updateOrder: (orderId: string, payload: Record<string, unknown>) => postAndReload(`/orders/${orderId}`, payload, 'PATCH'),
-    createInvoice: (payload: Record<string, unknown>) => postAndReload('/invoices', payload),
-    removeInvoice: (invoiceId: string) => deleteAndReload(`/invoices/${invoiceId}`),
-    updateInvoice: (invoiceId: string, payload: Record<string, unknown>) => postAndReload(`/invoices/${invoiceId}`, payload, 'PATCH'),
+    createUser: (payload: { firstName: string; lastName: string; username: string; password: string; roleKey: string }) =>
+      postAndReload('/users', payload, 'POST', 'کاربر جدید با موفقیت ایجاد شد.'),
+    removeUser: (userId: string) => deleteAndReload(`/users/${userId}`, 'کاربر با موفقیت حذف شد.'),
+    updateRolePermissions: (roleKey: string, permissionKeys: string[]) =>
+      postAndReload(`/permissions/roles/${roleKey}`, { permissionKeys }, 'PUT', 'دسترسی‌های نقش با موفقیت ذخیره شد.'),
+    createMeshType: (payload: Record<string, unknown>) => postAndReload('/mesh-types', payload, 'POST', 'نوع توری با موفقیت ایجاد شد.'),
+    removeMeshType: (meshTypeId: string) => deleteAndReload(`/mesh-types/${meshTypeId}`, 'نوع توری با موفقیت حذف شد.'),
+    createCollaborator: (payload: Record<string, unknown>) => postAndReload('/collaborators', payload, 'POST', 'همکار با موفقیت ایجاد شد.'),
+    removeCollaborator: (collaboratorId: string) => deleteAndReload(`/collaborators/${collaboratorId}`, 'همکار با موفقیت حذف شد.'),
+    createCustomer: (payload: Record<string, unknown>) => postAndReload('/customers', payload, 'POST', 'مشتری با موفقیت ایجاد شد.'),
+    removeCustomer: (customerId: string) => deleteAndReload(`/customers/${customerId}`, 'مشتری با موفقیت حذف شد.'),
+    createOrder: (payload: Record<string, unknown>) => postAndReload('/orders', payload, 'POST', 'سفارش با موفقیت ثبت شد.'),
+    removeOrder: (orderId: string) => deleteAndReload(`/orders/${orderId}`, 'سفارش با موفقیت حذف شد.'),
+    updateOrder: (orderId: string, payload: Record<string, unknown>) =>
+      postAndReload(`/orders/${orderId}`, payload, 'PATCH', 'سفارش با موفقیت به‌روزرسانی شد.'),
+    createInvoice: (payload: Record<string, unknown>) => postAndReload('/invoices', payload, 'POST', 'فاکتور با موفقیت ثبت شد.'),
+    removeInvoice: (invoiceId: string) => deleteAndReload(`/invoices/${invoiceId}`, 'فاکتور با موفقیت حذف شد.'),
+    updateInvoice: (invoiceId: string, payload: Record<string, unknown>) =>
+      postAndReload(`/invoices/${invoiceId}`, payload, 'PATCH', 'فاکتور با موفقیت به‌روزرسانی شد.'),
     runBackup,
-    updateBackupSettings: (minutes: number) => postAndReload('/backups/settings', { backupIntervalMinutes: minutes }, 'PUT'),
+    updateBackupSettings: (minutes: number) =>
+      postAndReload('/backups/settings', { backupIntervalMinutes: minutes }, 'PUT', 'تنظیمات بکاپ با موفقیت ذخیره شد.'),
     loadCollaboratorDetail,
     loadCustomerDetail,
     loadOrderDetail,

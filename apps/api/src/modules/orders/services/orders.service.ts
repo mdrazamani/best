@@ -1,5 +1,7 @@
 ﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from '../../../common/services/base.service';
+import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { OrdersRepository } from '../orders.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { InvoicesService } from '../../invoices/services/invoices.service';
@@ -48,9 +50,6 @@ export class OrdersService extends BaseService {
 
   async create(actorId: string, dto: CreateOrderDto) {
     const orderDateJalali = this.jalaliDateCode(new Date());
-    const prefix = `BEST-${orderDateJalali}-`;
-    const count = await this.ordersRepository.countByOrderPrefix(prefix);
-    const orderNumber = `${prefix}${String(count + 1).padStart(3, '0')}`;
 
     const lineItems = this.normalizeLineItems(dto.lineItems);
     const lineItemsTotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -58,25 +57,39 @@ export class OrdersService extends BaseService {
     const totalPrice = dto.totalPrice ?? (lineItems.length ? lineItemsTotal : fallbackTotal);
     const firstLine = lineItems[0];
 
-    const created = await this.ordersRepository.create({
-      orderNumber,
-      orderDateJalali,
-      collaboratorId: dto.collaboratorId ?? null,
-      customerId: dto.customerId,
-      createdById: actorId,
-      workType: dto.workType,
-      meshTypeId: dto.meshTypeId,
-      width: firstLine?.width ?? dto.width,
-      height: firstLine?.height ?? dto.height,
-      quantity: firstLine?.quantity ?? dto.quantity,
-      unitPrice: firstLine?.unitPrice ?? dto.unitPrice,
-      totalPrice,
-      lineItems,
-      description: dto.description?.trim(),
-      stage: dto.stage,
-      stageNote: dto.stageNote?.trim(),
-      expectedCompletionDate: dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : undefined
-    });
+    let created: Awaited<ReturnType<OrdersRepository['create']>> | null = null;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      try {
+        created = await this.ordersRepository.create({
+          orderNumber: this.generateOrderNumber(orderDateJalali),
+          orderDateJalali,
+          collaboratorId: dto.collaboratorId ?? null,
+          customerId: dto.customerId,
+          createdById: actorId,
+          workType: dto.workType,
+          meshTypeId: dto.meshTypeId,
+          width: firstLine?.width ?? dto.width,
+          height: firstLine?.height ?? dto.height,
+          quantity: firstLine?.quantity ?? dto.quantity,
+          unitPrice: firstLine?.unitPrice ?? dto.unitPrice,
+          totalPrice,
+          lineItems,
+          description: dto.description?.trim(),
+          stage: dto.stage,
+          stageNote: dto.stageNote?.trim(),
+          expectedCompletionDate: dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : undefined
+        });
+        break;
+      } catch (error) {
+        if (!this.isUniqueConstraintError(error) || attempt === 9) {
+          throw error;
+        }
+      }
+    }
+
+    if (!created) {
+      throw new Error('ثبت سفارش با شماره یکتا انجام نشد.');
+    }
 
     await this.operationLogsService.log({
       actorId,
@@ -197,6 +210,16 @@ export class OrdersService extends BaseService {
     })
       .format(date)
       .replace(/[^0-9]/g, '');
+  }
+
+  private generateOrderNumber(jalaliCode: string) {
+    const shortDate = jalaliCode.slice(-4);
+    const randomPart = randomUUID().replace(/-/g, '').slice(0, 5).toUpperCase();
+    return `OR-${shortDate}-${randomPart}`;
+  }
+
+  private isUniqueConstraintError(error: unknown) {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
 
   private normalizeLineItems(items?: Array<{ width: number; height: number; quantity: number; unitPrice: number }>) {

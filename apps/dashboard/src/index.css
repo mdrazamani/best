@@ -21,6 +21,7 @@
   --input: 216 23% 84%;
   --ring: 214 72% 33%;
   --radius: 0.6rem;
+  --toastify-font-family: 'Vazirmatn Variable', 'Inter Variable', sans-serif;
 }
 
 .dark {
@@ -80,4 +81,55 @@ body {
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--border));
   border-radius: 9999px;
+}
+
+.Toastify__toast-container {
+  width: min(94vw, 26rem);
+  padding: 0.4rem;
+}
+
+.Toastify__toast {
+  font-family: inherit;
+}
+
+.best-toast {
+  border-radius: 0.9rem;
+  border: 1px solid hsl(var(--border));
+  background: linear-gradient(155deg, hsl(var(--card)), hsl(var(--secondary) / 0.92));
+  box-shadow: 0 22px 44px -28px rgba(15, 23, 42, 0.65);
+  min-height: 4rem;
+}
+
+.best-toast .Toastify__toast-body {
+  font-family: inherit;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.6;
+  padding-block: 0.2rem;
+}
+
+.best-toast-progress {
+  height: 4px;
+  border-radius: 9999px;
+}
+
+.Toastify__toast-theme--dark.best-toast {
+  border-color: hsl(var(--border) / 0.82);
+  background: linear-gradient(155deg, hsl(var(--card)), hsl(var(--muted) / 0.5));
+}
+
+.Toastify__toast--success .best-toast-progress {
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+}
+
+.Toastify__toast--error .best-toast-progress {
+  background: linear-gradient(90deg, #dc2626, #ef4444);
+}
+
+.Toastify__toast--warning .best-toast-progress {
+  background: linear-gradient(90deg, #d97706, #f59e0b);
+}
+
+.Toastify__toast--info .best-toast-progress {
+  background: linear-gradient(90deg, #0284c7, #0ea5e9);
 }

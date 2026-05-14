@@ -160,50 +160,89 @@ export function UsersPage() {
             <EmptyState title="کاربری وجود ندارد" description="با دکمه کاربر جدید شروع کنید." />
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>نام</TableHead>
-                    <TableHead>نام کاربری</TableHead>
-                    <TableHead>نقش‌ها</TableHead>
-                    <TableHead>وضعیت</TableHead>
-                    <TableHead>تاریخ ثبت</TableHead>
-                    <TableHead className="w-[60px]" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pageItems.map((item, idx) => (
-                    <TableRow key={item.id} className={idx % 2 ? 'bg-muted/10' : ''}>
-                      <TableCell>{fullName(item)}</TableCell>
-                      <TableCell className="font-medium">{item.username}</TableCell>
-                      <TableCell>{item.userRoles?.map((role) => role.role?.name).join('، ') || '-'}</TableCell>
-                      <TableCell>
-                        <Badge variant={item.status === 'ACTIVE' ? 'success' : 'outline'}>{item.status === 'ACTIVE' ? 'فعال' : 'غیرفعال'}</Badge>
-                      </TableCell>
-                      <TableCell>{shamsiDate(item.createdAt)}</TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => { setSelectedUserId(item.id); setViewOpen(true); }}>
-                              <Eye className="ml-2 h-4 w-4" />
-                              مشاهده
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeUser(item.id)}>
-                              <Trash2 className="ml-2 h-4 w-4" />
-                              حذف 
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+              <div className="space-y-2 md:hidden">
+                {pageItems.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-slate-300/80 bg-card p-3 dark:border-slate-700/80">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="truncate font-semibold">{fullName(item)}</p>
+                      <Badge variant={item.status === 'ACTIVE' ? 'success' : 'outline'}>{item.status === 'ACTIVE' ? 'فعال' : 'غیرفعال'}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">نام کاربری: <span className="font-medium text-foreground">{item.username}</span></p>
+                    <p className="mt-1 text-xs text-muted-foreground">نقش‌ها: <span className="text-foreground">{item.userRoles?.map((role) => role.role?.name).join('، ') || '-'}</span></p>
+                    <p className="mt-1 text-xs text-muted-foreground">تاریخ ثبت: <span className="text-foreground">{shamsiDate(item.createdAt)}</span></p>
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setSelectedUserId(item.id);
+                          setViewOpen(true);
+                        }}
+                      >
+                        <Eye className="h-4 w-4" />
+                        مشاهده
+                      </Button>
+                      <Button size="sm" variant="destructive" className="flex-1" onClick={() => void removeUser(item.id)}>
+                        <Trash2 className="h-4 w-4" />
+                        حذف
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>نام</TableHead>
+                      <TableHead>نام کاربری</TableHead>
+                      <TableHead>نقش‌ها</TableHead>
+                      <TableHead>وضعیت</TableHead>
+                      <TableHead>تاریخ ثبت</TableHead>
+                      <TableHead className="w-[60px]" />
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {pageItems.map((item, idx) => (
+                      <TableRow key={item.id} className={idx % 2 ? 'bg-muted/10' : ''}>
+                        <TableCell>{fullName(item)}</TableCell>
+                        <TableCell className="font-medium">{item.username}</TableCell>
+                        <TableCell>{item.userRoles?.map((role) => role.role?.name).join('، ') || '-'}</TableCell>
+                        <TableCell>
+                          <Badge variant={item.status === 'ACTIVE' ? 'success' : 'outline'}>{item.status === 'ACTIVE' ? 'فعال' : 'غیرفعال'}</Badge>
+                        </TableCell>
+                        <TableCell>{shamsiDate(item.createdAt)}</TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedUserId(item.id);
+                                  setViewOpen(true);
+                                }}
+                              >
+                                <Eye className="h-4 w-4" />
+                                مشاهده
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeUser(item.id)}>
+                                <Trash2 className="h-4 w-4" />
+                                حذف
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
               <Pagination page={Math.min(page, totalPages)} total={filteredUsers.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
             </>
           )}

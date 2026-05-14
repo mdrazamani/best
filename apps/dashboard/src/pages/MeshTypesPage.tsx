@@ -1,4 +1,4 @@
-﻿import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { shamsiDate } from '../lib/format';
@@ -133,7 +133,7 @@ export function MeshTypesPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeMeshType(item.id)}>
-                              <Trash2 className="ml-2 h-4 w-4" />
+                              <Trash2 className="h-4 w-4" />
                               حذف 
                             </DropdownMenuItem>
                           </DropdownMenuContent>

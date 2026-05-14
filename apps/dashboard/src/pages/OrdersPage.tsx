@@ -483,7 +483,7 @@ export function OrdersPage() {
                       <TableCell>{shamsiDate(invoice.createdAt)}</TableCell>
                       <TableCell>
                         {invoice.id ? (
-                          <div className="flex min-w-[230px] items-center gap-2">
+                          <div className="flex w-full min-w-[170px] items-center gap-2 sm:min-w-[230px]">
                             <SearchableSelect
                               value={invoiceStatusDrafts[invoice.id] ?? invoice.status}
                               onChange={(value) => setInvoiceStatusDrafts((prev) => ({ ...prev, [invoice.id]: value }))}
@@ -704,7 +704,6 @@ export function OrdersPage() {
           </Dialog>
         </CardHeader>
         <CardContent>
-          <div className="mb-2 text-xs text-muted-foreground">تمام مبلغ‌ها به ریال و قابل پیگیری هستند.</div>
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -811,7 +810,7 @@ export function OrdersPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => void openDetail(order.id)}>
-                              <Eye className="ml-2 h-4 w-4" />
+                              <Eye className="h-4 w-4" />
                               مشاهده
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openStageDialog(order.id, order.stage)}>تغییر مرحله</DropdownMenuItem>
@@ -845,3 +844,4 @@ export function OrdersPage() {
     </section>
   );
 }
+

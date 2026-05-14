@@ -34,8 +34,8 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
 
   return (
     <header className="mb-4 rounded-xl border border-slate-300/90 bg-white px-3 py-2 shadow-sm dark:border-slate-700/80 dark:bg-card sm:px-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+      <div className="flex items-start justify-between gap-2 sm:items-center sm:gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:flex-nowrap sm:gap-2">
           <Button variant="outline" size="icon" className="lg:hidden" onClick={onToggleSidebar} aria-label="باز کردن منو">
             <Menu className="h-4 w-4" />
           </Button>
@@ -67,7 +67,7 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
                 ) : null}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-[19rem] sm:w-[24rem]">
+            <DropdownMenuContent align="start" className="w-[min(24rem,calc(100vw-1.25rem))] sm:w-[24rem]">
               <DropdownMenuLabel>اعلان‌های اخیر</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {notifications.length === 0 ? (
@@ -104,7 +104,7 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onClick={logout}>
-                  <LogOut className="ml-2 h-4 w-4" />
+                  <LogOut className="h-4 w-4" />
                   خروج
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -113,10 +113,11 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
         </div>
 
         <div className="min-w-0 text-left">
-          <p className="truncate text-lg font-extrabold tracking-tight text-foreground sm:text-2xl">پنل مدیریت بست</p>
-          <p className="truncate text-[11px] text-muted-foreground sm:text-xs">به نام خدا | {todayShamsi}</p>
+          <p className="truncate text-base font-extrabold tracking-tight text-foreground sm:text-2xl">پنل مدیریت بست</p>
+          <p className="truncate text-[10px] text-muted-foreground sm:text-xs">به نام خدا | {todayShamsi}</p>
         </div>
       </div>
     </header>
   );
 }
+

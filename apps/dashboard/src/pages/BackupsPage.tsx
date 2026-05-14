@@ -145,11 +145,11 @@ export function BackupsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => void downloadProtected(`/backups/${backup.id}/archive`, `backup-${backup.id}.zip`)}>
-                              <Download className="ml-2 h-4 w-4" />
+                              <Download className="h-4 w-4" />
                               دانلود ZIP کامل
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => void downloadProtected(`/backups/${backup.id}/sql`, `backup-${backup.id}.sql`)}>
-                              <Download className="ml-2 h-4 w-4" />
+                              <Download className="h-4 w-4" />
                               دانلود SQL
                             </DropdownMenuItem>
                             {backup.excelFiles?.map((file) => (
@@ -157,7 +157,7 @@ export function BackupsPage() {
                                 key={file}
                                 onClick={() => void downloadProtected(`/backups/${backup.id}/excel?file=${encodeURIComponent(file)}`, file)}
                               >
-                                <Download className="ml-2 h-4 w-4" />
+                                <Download className="h-4 w-4" />
                                 {file}
                               </DropdownMenuItem>
                             ))}
@@ -176,3 +176,4 @@ export function BackupsPage() {
     </section>
   );
 }
+

@@ -1,4 +1,4 @@
-﻿import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { Download, MoreHorizontal, Plus, Search } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { INVOICE_STATUS, money, shamsiDate } from '../lib/format';
@@ -214,7 +214,7 @@ export function InvoicesPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber}.pdf`)}>
-                              <Download className="ml-2 h-4 w-4" />
+                              <Download className="h-4 w-4" />
                               دانلود PDF
                             </DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeInvoice(invoice.id)}>

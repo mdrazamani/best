@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Heart, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { ToastContainer } from 'react-toastify';
 import { BestContext } from './contexts/best-context';
 import { useBestApp } from './hooks/use-best-app';
 import { AppHeader } from './components/layout/AppHeader';
@@ -21,11 +22,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 const THEME_KEY = 'best_theme';
 const SIDEBAR_KEY = 'best_sidebar_collapsed';
+const ACTIVE_TAB_KEY = 'best_active_tab';
 const PROJECT_VERSION = '0.1.1';
+const APP_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'users', 'backups', 'notifications', 'activity'];
 
 export function App() {
   const app = useBestApp();
-  const [tab, setTab] = useState<AppTab>('dashboard');
+  const [tab, setTab] = useState<AppTab>(() => {
+    const stored = localStorage.getItem(ACTIVE_TAB_KEY);
+    return stored && APP_TABS.includes(stored as AppTab) ? (stored as AppTab) : 'dashboard';
+  });
   const [tabHistory, setTabHistory] = useState<AppTab[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === '1');
@@ -44,6 +50,10 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_TAB_KEY, tab);
+  }, [tab]);
 
   const content = useMemo(() => {
     if (!app.token) return <LoginPage />;
@@ -118,6 +128,21 @@ export function App() {
 
   return (
     <BestContext.Provider value={contextValue}>
+      <ToastContainer
+        position="top-left"
+        rtl
+        theme={theme}
+        autoClose={4300}
+        pauseOnHover
+        pauseOnFocusLoss
+        hideProgressBar={false}
+        closeOnClick
+        draggable
+        newestOnTop={false}
+        stacked
+        toastClassName="best-toast"
+        progressClassName="best-toast-progress"
+      />
       {app.token ? (
         <div className="relative min-h-screen" dir="rtl">
           <div className="mx-auto w-full max-w-[1760px] px-3 pb-5 pt-3 sm:px-4 sm:pb-6 sm:pt-4 lg:px-6 lg:pt-6">
