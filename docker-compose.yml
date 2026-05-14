@@ -1,4 +1,4 @@
-services:
+﻿services:
   postgres:
     image: postgres:16-alpine
     container_name: best-postgres
@@ -39,8 +39,8 @@ services:
       BACKUP_INTERVAL_MINUTES: 1440
       SEED_SUPER_ADMIN_USERNAME: superadmin
       SEED_SUPER_ADMIN_PASSWORD: Best@123456
-      SEED_SUPER_ADMIN_FIRSTNAME: Modir
-      SEED_SUPER_ADMIN_LASTNAME: Asli
+      SEED_SUPER_ADMIN_FIRSTNAME: مدیر
+      SEED_SUPER_ADMIN_LASTNAME: اصلی
     ports:
       - '3000:3000'
 
@@ -57,3 +57,4 @@ services:
 
 volumes:
   best_postgres_data:
+

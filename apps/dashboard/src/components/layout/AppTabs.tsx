@@ -1,36 +1,63 @@
-import { LayoutDashboard, ClipboardList, Receipt, Users2, UserRound, Grid2X2, ShieldCheck, HardDriveDownload, Activity } from 'lucide-react';
+import {
+  Activity,
+  ClipboardList,
+  Grid2X2,
+  HardDriveDownload,
+  LayoutDashboard,
+  Receipt,
+  ShieldCheck,
+  UserRound,
+  Users2
+} from 'lucide-react';
+import { cn } from '../../lib/utils';
 
 const TABS = [
-  { key: 'dashboard', label: '\u062f\u0627\u0634\u0628\u0648\u0631\u062f', icon: LayoutDashboard },
-  { key: 'orders', label: '\u0633\u0641\u0627\u0631\u0634\u0627\u062a', icon: ClipboardList },
-  { key: 'invoices', label: '\u0641\u0627\u06a9\u062a\u0648\u0631\u0647\u0627', icon: Receipt },
-  { key: 'collaborators', label: '\u0647\u0645\u06a9\u0627\u0631\u0627\u0646', icon: Users2 },
-  { key: 'customers', label: '\u0645\u0634\u062a\u0631\u06cc\u0627\u0646', icon: UserRound },
-  { key: 'mesh', label: '\u0646\u0648\u0639 \u062a\u0648\u0631\u06cc', icon: Grid2X2 },
-  { key: 'users', label: '\u06a9\u0627\u0631\u0628\u0631\u0627\u0646', icon: ShieldCheck },
-  { key: 'backups', label: '\u0628\u06a9\u0627\u067e', icon: HardDriveDownload },
-  { key: 'activity', label: '\u06af\u0632\u0627\u0631\u0634 \u0639\u0645\u0644\u06cc\u0627\u062a', icon: Activity }
+  { key: 'dashboard', label: 'داشبورد', icon: LayoutDashboard },
+  { key: 'orders', label: 'سفارشات', icon: ClipboardList },
+  { key: 'invoices', label: 'فاکتورها', icon: Receipt },
+  { key: 'collaborators', label: 'همکاران', icon: Users2 },
+  { key: 'customers', label: 'مشتریان', icon: UserRound },
+  { key: 'mesh', label: 'نوع توری', icon: Grid2X2 },
+  { key: 'users', label: 'کاربران', icon: ShieldCheck },
+  { key: 'backups', label: 'بکاپ', icon: HardDriveDownload },
+  { key: 'activity', label: 'گزارش عملیات', icon: Activity }
 ] as const;
 
 export type AppTab = (typeof TABS)[number]['key'];
 
-export function AppTabs({ active, onChange, onItemClick }: { active: AppTab; onChange: (tab: AppTab) => void; onItemClick?: () => void }) {
+export function AppTabs({
+  active,
+  onChange,
+  collapsed,
+  onItemClick
+}: {
+  active: AppTab;
+  onChange: (tab: AppTab) => void;
+  collapsed?: boolean;
+  onItemClick?: () => void;
+}) {
   return (
-    <nav className="sidebar-nav">
+    <nav className="space-y-1">
       {TABS.map((item) => {
         const Icon = item.icon;
+        const isActive = active === item.key;
         return (
           <button
             key={item.key}
-            className={`sidebar-link ${active === item.key ? 'active' : ''}`}
+            type="button"
             onClick={() => {
               onChange(item.key);
               onItemClick?.();
             }}
-            type="button"
+            className={cn(
+              'group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+              isActive ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              collapsed && 'justify-center px-2'
+            )}
+            title={collapsed ? item.label : undefined}
           >
-            <Icon size={18} />
-            <span>{item.label}</span>
+            <Icon className="h-4 w-4 shrink-0" />
+            {!collapsed ? <span className="truncate">{item.label}</span> : null}
           </button>
         );
       })}

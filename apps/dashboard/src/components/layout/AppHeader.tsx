@@ -1,5 +1,7 @@
-import { Menu, Moon, Sun } from 'lucide-react';
+import { BellRing, Menu, Moon, RefreshCcw, Search, Sun } from 'lucide-react';
 import { useBestContext } from '../../contexts/best-context';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 
 export function AppHeader({
   onToggleSidebar,
@@ -13,42 +15,37 @@ export function AppHeader({
   const { session, search, setSearch, reload, logout } = useBestContext();
 
   return (
-    <header className="topbar">
-      <div className="topbar-main">
-        <button
-          className="icon-btn mobile-only"
-          onClick={onToggleSidebar}
-          type="button"
-          aria-label={'\u0628\u0627\u0632 \u06a9\u0631\u062f\u0646 \u0645\u0646\u0648'}
-        >
-          <Menu size={18} />
-        </button>
-        <div>
-          <h1>BEST</h1>
-          <small>{session?.username ?? '-'}</small>
+    <header className="sticky top-0 z-30 mb-6 rounded-xl border bg-card/95 p-4 backdrop-blur">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="icon" className="lg:hidden" onClick={onToggleSidebar} aria-label="باز کردن منو">
+            <Menu className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">پنل مدیریت BEST</h1>
+            <p className="text-sm text-muted-foreground">کاربر فعال: {session?.username ?? '-'}</p>
+          </div>
         </div>
-      </div>
 
-      <div className="topbar-actions">
-        <input
-          placeholder={'\u062c\u0633\u062a\u062c\u0648 \u062f\u0631 \u062f\u0627\u062f\u0647\u200c\u0647\u0627'}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button className="ghost-btn" onClick={() => void reload()} type="button">
-          {'\u0628\u0631\u0648\u0632\u0631\u0633\u0627\u0646\u06cc'}
-        </button>
-        <button
-          className="icon-btn"
-          onClick={onToggleTheme}
-          type="button"
-          aria-label={'\u062a\u063a\u06cc\u06cc\u0631 \u062a\u0645'}
-        >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
-        <button onClick={logout} type="button">
-          {'\u062e\u0631\u0648\u062c'}
-        </button>
+        <div className="flex flex-1 items-center gap-2 lg:max-w-2xl">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pr-9" placeholder="جستجو در اطلاعات..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <Button variant="outline" onClick={() => void reload()}>
+            <RefreshCcw className="h-4 w-4" />
+            بروزرسانی
+          </Button>
+          <Button variant="outline" size="icon" onClick={onToggleTheme} aria-label="تغییر تم">
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
+          <Button variant="secondary" size="icon" aria-label="اعلان‌ها">
+            <BellRing className="h-4 w-4" />
+          </Button>
+          <Button variant="destructive" onClick={logout}>
+            خروج
+          </Button>
+        </div>
       </div>
     </header>
   );

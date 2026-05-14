@@ -49,12 +49,23 @@ async function bootstrap() {
       'bearer'
     )
     .build();
+
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, swaggerDocument, {
     swaggerOptions: {
       persistAuthorization: true
     }
   });
+
+  fastify.get('/', async () => ({
+    success: true,
+    data: {
+      service: 'BEST API',
+      version: '1.0.0',
+      docs: '/docs',
+      basePath: '/v1'
+    }
+  }));
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port, '0.0.0.0');

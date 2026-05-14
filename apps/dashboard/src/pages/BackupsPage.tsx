@@ -1,67 +1,113 @@
-import { useEffect, useState } from 'react';
-import { Panel } from '../components/shared/Panel';
+import { useEffect, useMemo, useState } from 'react';
+import { Download, MoreHorizontal, Play, Save } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { shamsiDate } from '../lib/format';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { Badge } from '../components/ui/badge';
+import { EmptyState } from '../components/shared/empty-state';
+import { Pagination } from '../components/shared/pagination';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+
+const PAGE_SIZE = 8;
 
 export function BackupsPage() {
   const { backups, backupInterval, updateBackupSettings, runBackup, downloadProtected } = useBestContext();
   const [intervalInput, setIntervalInput] = useState(String(backupInterval));
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setIntervalInput(String(backupInterval));
   }, [backupInterval]);
 
-  return (
-    <section className="grid-2">
-      <Panel>
-        <h2>{'\u062a\u0646\u0638\u06cc\u0645\u0627\u062a \u0628\u06a9\u0627\u067e'}</h2>
-        <input
-          value={intervalInput}
-          onChange={(e) => setIntervalInput(e.target.value)}
-          placeholder={'\u062f\u0642\u06cc\u0642\u0647'}
-        />
-        <div className="actions">
-          <button onClick={() => void updateBackupSettings(Number(intervalInput || 1440))}>
-            {'\u0630\u062e\u06cc\u0631\u0647 \u0632\u0645\u0627\u0646\u200c\u0628\u0646\u062f\u06cc'}
-          </button>
-          <button onClick={() => void runBackup()}>
-            {'\u0627\u062c\u0631\u0627\u06cc \u0628\u06a9\u0627\u067e \u062f\u0633\u062a\u06cc'}
-          </button>
-        </div>
-      </Panel>
+  const totalPages = Math.max(1, Math.ceil(backups.length / PAGE_SIZE));
+  const pageItems = useMemo(() => {
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * PAGE_SIZE;
+    return backups.slice(start, start + PAGE_SIZE);
+  }, [backups, page, totalPages]);
 
-      <Panel>
-        <h2>{'\u0644\u06cc\u0633\u062a \u0628\u06a9\u0627\u067e\u200c\u0647\u0627'}</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>{'\u0632\u0645\u0627\u0646'}</th>
-              <th>{'\u0648\u0636\u0639\u06cc\u062a'}</th>
-              <th>{'\u0641\u0627\u06cc\u0644\u200c\u0647\u0627'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {backups.map((backup) => (
-              <tr key={backup.id}>
-                <td>{shamsiDate(backup.createdAt)}</td>
-                <td>{backup.status}</td>
-                <td>
-                  <div className="actions">
-                    <button type="button" onClick={() => void downloadProtected(`/backups/${backup.id}/sql`)}>
-                      SQL
-                    </button>
-                    {backup.excelFiles?.map((file) => (
-                      <button key={file} type="button" onClick={() => void downloadProtected(`/backups/${backup.id}/excel?file=${encodeURIComponent(file)}`, file)}>
-                        {file}
-                      </button>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Panel>
+  return (
+    <section className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>تنظیمات بکاپ</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
+          <Input value={intervalInput} onChange={(e) => setIntervalInput(e.target.value)} placeholder="دقیقه" className="md:w-56" />
+          <Button variant="secondary" onClick={() => void updateBackupSettings(Number(intervalInput || 1440))}>
+            <Save className="h-4 w-4" />
+            ذخیره زمان بندی
+          </Button>
+          <Button onClick={() => void runBackup()}>
+            <Play className="h-4 w-4" />
+            اجرای بکاپ دستی
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>لیست بکاپ ها</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {backups.length === 0 ? (
+            <EmptyState title="بکاپی موجود نیست" />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>زمان</TableHead>
+                    <TableHead>وضعیت</TableHead>
+                    <TableHead>فایل ها</TableHead>
+                    <TableHead className="w-[60px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pageItems.map((backup, idx) => (
+                    <TableRow key={backup.id} className={idx % 2 ? 'bg-muted/10' : ''}>
+                      <TableCell>{shamsiDate(backup.createdAt)}</TableCell>
+                      <TableCell>
+                        <Badge variant={backup.status === 'SUCCESS' ? 'success' : backup.status === 'FAILED' ? 'destructive' : 'outline'}>{backup.status}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {backup.excelFiles?.length ? backup.excelFiles.join('، ') : '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => void downloadProtected(`/backups/${backup.id}/sql`)}>
+                              <Download className="ml-2 h-4 w-4" />
+                              دریافت SQL
+                            </DropdownMenuItem>
+                            {backup.excelFiles?.map((file) => (
+                              <DropdownMenuItem key={file} onClick={() => void downloadProtected(`/backups/${backup.id}/excel?file=${encodeURIComponent(file)}`, file)}>
+                                <Download className="ml-2 h-4 w-4" />
+                                {file}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <Pagination page={Math.min(page, totalPages)} total={backups.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            </>
+          )}
+        </CardContent>
+      </Card>
     </section>
   );
 }

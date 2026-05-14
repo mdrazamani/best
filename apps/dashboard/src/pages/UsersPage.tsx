@@ -1,10 +1,27 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Panel } from '../components/shared/Panel';
+import { Eye, MoreHorizontal, Plus } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { fullName } from '../lib/format';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { SearchableSelect } from '../components/ui/searchable-select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { EmptyState } from '../components/shared/empty-state';
+import { Pagination } from '../components/shared/pagination';
+import { Badge } from '../components/ui/badge';
+
+const PAGE_SIZE = 10;
 
 export function UsersPage() {
   const { users, roles, permissions, createUser, updateRolePermissions } = useBestContext();
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({
     firstName: '',
@@ -15,6 +32,8 @@ export function UsersPage() {
   });
 
   const editableRoles = useMemo(() => roles.filter((role) => role.key !== 'super_admin'), [roles]);
+  const roleOptions = useMemo(() => roles.map((role) => ({ value: role.key, label: role.name })), [roles]);
+
   const [selectedRoleKey, setSelectedRoleKey] = useState('manager');
 
   const selectedRolePermissionKeys = useMemo(() => {
@@ -28,10 +47,20 @@ export function UsersPage() {
     setPendingPermissionKeys([]);
   }, [selectedRoleKey]);
 
+  const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) ?? null, [users, selectedUserId]);
+
+  const totalPages = Math.max(1, Math.ceil(users.length / PAGE_SIZE));
+  const pageItems = useMemo(() => {
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * PAGE_SIZE;
+    return users.slice(start, start + PAGE_SIZE);
+  }, [users, page, totalPages]);
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     await createUser(form);
     setForm({ firstName: '', lastName: '', username: '', password: '', roleKey: 'manager' });
+    setCreateOpen(false);
   };
 
   const saveRolePermissions = async () => {
@@ -39,109 +68,157 @@ export function UsersPage() {
     setPendingPermissionKeys([]);
   };
 
-  const effectivePermissionSet = pendingPermissionKeys.length
-    ? new Set(pendingPermissionKeys)
-    : selectedRolePermissionKeys;
+  const effectivePermissionSet = pendingPermissionKeys.length ? new Set(pendingPermissionKeys) : selectedRolePermissionKeys;
 
   return (
-    <section className="grid-2">
-      <form onSubmit={submit}>
-        <Panel>
-          <h2>{'\u062a\u0639\u0631\u06cc\u0641 \u06a9\u0627\u0631\u0628\u0631 \u0645\u062f\u06cc\u0631\u06cc\u062a\u06cc'}</h2>
-          <input
-            required
-            placeholder={'\u0646\u0627\u0645'}
-            value={form.firstName}
-            onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+    <section className="grid gap-4 xl:grid-cols-3">
+      <Card className="xl:col-span-2">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>کاربران سیستم</CardTitle>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4" />
+                کاربر جدید
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>تعریف کاربر مدیریتی</DialogTitle>
+                <DialogDescription>برای کاربر جدید نقش مناسب انتخاب کنید.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={submit} className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Input required placeholder="نام" value={form.firstName} onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))} />
+                  <Input required placeholder="نام خانوادگی" value={form.lastName} onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))} />
+                  <Input required placeholder="نام کاربری" value={form.username} onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))} />
+                  <Input required minLength={6} type="password" placeholder="رمز عبور" value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} />
+                  <SearchableSelect options={roleOptions} value={form.roleKey} onChange={(value) => setForm((prev) => ({ ...prev, roleKey: value }))} placeholder="انتخاب نقش" className="md:col-span-2" />
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
+                    انصراف
+                  </Button>
+                  <Button type="submit">ثبت کاربر</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          {users.length === 0 ? (
+            <EmptyState title="کاربری وجود ندارد" description="با دکمه کاربر جدید شروع کنید." />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>نام</TableHead>
+                    <TableHead>نام کاربری</TableHead>
+                    <TableHead>نقش ها</TableHead>
+                    <TableHead>وضعیت</TableHead>
+                    <TableHead className="w-[60px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pageItems.map((item, idx) => (
+                    <TableRow key={item.id} className={idx % 2 ? 'bg-muted/10' : ''}>
+                      <TableCell>{fullName(item)}</TableCell>
+                      <TableCell className="font-medium">{item.username}</TableCell>
+                      <TableCell>{item.userRoles?.map((role) => role.role?.name).join('، ') || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant={item.status === 'ACTIVE' ? 'success' : 'outline'}>{item.status === 'ACTIVE' ? 'فعال' : 'غیرفعال'}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedUserId(item.id);
+                                setViewOpen(true);
+                              }}
+                            >
+                              <Eye className="ml-2 h-4 w-4" />
+                              مشاهده
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <Pagination page={Math.min(page, totalPages)} total={users.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>تنظیم دسترسی نقش ها</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <SearchableSelect
+            options={editableRoles.map((role) => ({ value: role.key, label: role.name }))}
+            value={selectedRoleKey}
+            onChange={setSelectedRoleKey}
+            placeholder="انتخاب نقش"
           />
-          <input
-            required
-            placeholder={'\u0646\u0627\u0645 \u062e\u0627\u0646\u0648\u0627\u062f\u06af\u06cc'}
-            value={form.lastName}
-            onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-          />
-          <input
-            required
-            placeholder={'\u0646\u0627\u0645 \u06a9\u0627\u0631\u0628\u0631\u06cc'}
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-          />
-          <input
-            required
-            minLength={6}
-            type="password"
-            placeholder={'\u0631\u0645\u0632 \u0639\u0628\u0648\u0631'}
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-          />
-          <select value={form.roleKey} onChange={(e) => setForm({ ...form, roleKey: e.target.value })}>
-            {roles.map((role) => (
-              <option key={role.id} value={role.key}>
-                {role.name}
-              </option>
+
+          <div className="grid max-h-[360px] grid-cols-1 gap-2 overflow-auto rounded-lg border p-3 sm:grid-cols-2">
+            {permissions.map((permission) => (
+              <label key={permission.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/60">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={effectivePermissionSet.has(permission.key)}
+                  onChange={(e) => {
+                    const current = new Set(effectivePermissionSet);
+                    if (e.target.checked) {
+                      current.add(permission.key);
+                    } else {
+                      current.delete(permission.key);
+                    }
+                    setPendingPermissionKeys(Array.from(current));
+                  }}
+                />
+                <span className="truncate">{permission.key}</span>
+              </label>
             ))}
-          </select>
-          <button>{'\u062b\u0628\u062a \u06a9\u0627\u0631\u0628\u0631'}</button>
-        </Panel>
-      </form>
+          </div>
 
-      <Panel>
-        <h2>{'\u0644\u06cc\u0633\u062a \u06a9\u0627\u0631\u0628\u0631\u0627\u0646'}</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>{'\u0646\u0627\u0645'}</th>
-              <th>{'\u06a9\u0627\u0631\u0628\u0631\u06cc'}</th>
-              <th>{'\u0646\u0642\u0634\u200c\u0647\u0627'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((item) => (
-              <tr key={item.id}>
-                <td>{fullName(item)}</td>
-                <td>{item.username}</td>
-                <td>{item.userRoles?.map((role) => role.role?.name).join('\u060c ') || '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          <Button className="w-full" onClick={() => void saveRolePermissions()}>
+            ذخیره دسترسی ها
+          </Button>
+        </CardContent>
+      </Card>
 
-        <hr />
-
-        <h2>{'\u062a\u0646\u0638\u06cc\u0645 \u062f\u0633\u062a\u0631\u0633\u06cc \u0646\u0642\u0634\u200c\u0647\u0627'}</h2>
-        <select value={selectedRoleKey} onChange={(e) => setSelectedRoleKey(e.target.value)}>
-          {editableRoles.map((role) => (
-            <option key={role.id} value={role.key}>
-              {role.name}
-            </option>
-          ))}
-        </select>
-
-        <div className="checks">
-          {permissions.map((permission) => (
-            <label key={permission.id}>
-              <input
-                type="checkbox"
-                checked={effectivePermissionSet.has(permission.key)}
-                onChange={(e) => {
-                  const current = new Set(effectivePermissionSet);
-                  if (e.target.checked) {
-                    current.add(permission.key);
-                  } else {
-                    current.delete(permission.key);
-                  }
-                  setPendingPermissionKeys(Array.from(current));
-                }}
-              />
-              {permission.key}
-            </label>
-          ))}
-        </div>
-
-        <button type="button" onClick={() => void saveRolePermissions()}>
-          {'\u0630\u062e\u06cc\u0631\u0647 \u062f\u0633\u062a\u0631\u0633\u06cc\u200c\u0647\u0627'}
-        </button>
-      </Panel>
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>جزئیات کاربر</DialogTitle>
+          </DialogHeader>
+          {selectedUser ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="font-semibold">نام:</span> {fullName(selectedUser)}
+              </p>
+              <p>
+                <span className="font-semibold">نام کاربری:</span> {selectedUser.username}
+              </p>
+              <p>
+                <span className="font-semibold">نقش ها:</span> {selectedUser.userRoles?.map((role) => role.role?.name).join('، ') || '-'}
+              </p>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
