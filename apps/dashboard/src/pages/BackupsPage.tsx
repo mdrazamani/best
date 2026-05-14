@@ -79,26 +79,10 @@ export function BackupsPage() {
         <CardHeader>
           <CardTitle className="text-2xl font-extrabold">تنظیمات بکاپ</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="space-y-1 md:w-56">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground">بازه اجرای خودکار بکاپ</span>
-              <Badge variant="secondary" className="text-[10px]">دقیقه</Badge>
-            </div>
-            <Input
-              value={intervalInput}
-              onChange={(e) => setIntervalInput(e.target.value)}
-              inputMode="numeric"
-              placeholder="مثلا 1440"
-            />
-          </div>
-          <Button variant="secondary" onClick={() => void updateBackupSettings(Number(intervalInput || 1440))}>
-            <Save className="h-4 w-4" />
-            ذخیره بازه زمانی
-          </Button>
+        <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">       
           <Button onClick={() => void runAndDownloadBackup()} disabled={runningBackup}>
             <Play className="h-4 w-4" />
-            {runningBackup ? 'در حال تهیه بکاپ...' : 'اجرای دستی بکاپ و دریافت ZIP'}
+            {runningBackup ? 'در حال تهیه بکاپ...' : 'تولید دستی بکاپ'}
           </Button>
         </CardContent>
       </Card>
