@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Download, MoreHorizontal, Plus, Search } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { INVOICE_STATUS, fullName, money, shamsiDate } from '../lib/format';
+import { INVOICE_STATUS, fullName, invoiceStatusBadgeVariant, money, shamsiDate, textFa } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -319,7 +319,7 @@ export function InvoicesPage() {
                   {pageItems.map((invoice, idx) => (
                     <TableRow key={invoice.id} className={idx % 2 ? 'bg-muted/10' : ''}>
                       <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                      <TableCell>{invoice.title || '-'}</TableCell>
+                      <TableCell>{textFa(invoice.title)}</TableCell>
                       <TableCell>{invoice.order.orderNumber}</TableCell>
                       <TableCell>
                         <div>{money(invoice.paidAmount)} / {money(invoice.amount)}</div>
@@ -341,7 +341,7 @@ export function InvoicesPage() {
                       </TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
                       <TableCell>
-                        <Badge variant={invoice.status === 'PAID' ? 'success' : invoice.status === 'PARTIAL' ? 'warning' : 'outline'}>
+                        <Badge variant={invoiceStatusBadgeVariant(invoice.status)}>
                           {INVOICE_STATUS.find((item) => item.value === invoice.status)?.label || invoice.status}
                         </Badge>
                       </TableCell>

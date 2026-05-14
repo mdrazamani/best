@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from '../../../common/services/base.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import puppeteer from 'puppeteer';
+import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, maxMoney, subtractMoney, toMoneyNumber, toMoneyDecimal } from '../../../common/utils/accounting.util';
 import { InvoicesRepository } from '../invoices.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { CreateInvoiceDto } from '../dto/create-invoice.dto';
@@ -39,14 +40,21 @@ export class InvoicesService extends BaseService {
       throw new NotFoundException('سفارش پیدا نشد.');
     }
 
-    const discountAmount = Number(dto.discountAmount ?? 0);
-    const extraAmount = Number(dto.extraAmount ?? 0);
-    const amount =
-      dto.amount !== undefined && dto.amount !== null
-        ? Number(dto.amount)
-        : Math.max(Number(orderRef.totalPrice ?? 0) + extraAmount - discountAmount, 0);
-    const paidAmount = Number(dto.paidAmount ?? 0);
-    const status = dto.status ?? (paidAmount <= 0 ? 'UNPAID' : paidAmount >= amount ? 'PAID' : 'PARTIAL');
+    const discountAmount = clampMoneyNonNegative(dto.discountAmount ?? 0);
+    const extraAmount = clampMoneyNonNegative(dto.extraAmount ?? 0);
+    const amount = dto.amount !== undefined && dto.amount !== null
+      ? clampMoneyNonNegative(dto.amount)
+      : maxMoney(subtractMoney(addMoney(orderRef.totalPrice ?? 0, extraAmount), discountAmount), 0);
+
+    const paidAmount = this.resolvePaidAmountForCreate(dto, amount);
+    if (paidAmount.greaterThan(amount)) {
+      throw new BadRequestException('مبلغ پرداختی نمی‌تواند از مبلغ فاکتور بیشتر باشد.');
+    }
+    const computedStatus = deriveInvoiceStatus(amount, paidAmount);
+    if (dto.status && dto.status !== computedStatus) {
+      throw new BadRequestException('وضعیت فاکتور با مبلغ پرداختی هم‌خوانی ندارد.');
+    }
+    const status = dto.status ?? computedStatus;
     const payerType = dto.payerType ?? (orderRef.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER');
     const payerId = dto.payerId ?? (payerType === 'COLLABORATOR' ? orderRef.collaboratorId : orderRef.customerId);
 
@@ -62,10 +70,10 @@ export class InvoicesService extends BaseService {
           invoiceNumber: this.generateInvoiceNumber(jalaliCode),
           title: dto.title?.trim(),
           createdById: actorId,
-          amount,
-          discountAmount,
-          extraAmount,
-          paidAmount,
+          amount: toMoneyNumber(amount),
+          discountAmount: toMoneyNumber(discountAmount),
+          extraAmount: toMoneyNumber(extraAmount),
+          paidAmount: toMoneyNumber(paidAmount),
           status,
           payerType,
           payerId: payerId ?? undefined,
@@ -103,27 +111,40 @@ export class InvoicesService extends BaseService {
       throw new NotFoundException('فاکتور پیدا نشد.');
     }
 
-    const currentDiscountAmount = Number(existing.discountAmount ?? 0);
-    const currentExtraAmount = Number(existing.extraAmount ?? 0);
-    const nextDiscountAmount = dto.discountAmount ?? currentDiscountAmount;
-    const nextExtraAmount = dto.extraAmount ?? currentExtraAmount;
+    const currentDiscountAmount = clampMoneyNonNegative(existing.discountAmount ?? 0);
+    const currentExtraAmount = clampMoneyNonNegative(existing.extraAmount ?? 0);
+    const nextDiscountAmount = dto.discountAmount === undefined ? currentDiscountAmount : clampMoneyNonNegative(dto.discountAmount);
+    const nextExtraAmount = dto.extraAmount === undefined ? currentExtraAmount : clampMoneyNonNegative(dto.extraAmount);
     const amount =
       dto.amount !== undefined
-        ? dto.amount
+        ? clampMoneyNonNegative(dto.amount)
         : dto.discountAmount !== undefined || dto.extraAmount !== undefined
-          ? Math.max(Number(existing.amount ?? 0) - currentExtraAmount + currentDiscountAmount + nextExtraAmount - nextDiscountAmount, 0)
-          : Number(existing.amount);
-    const paidAmount = dto.paidAmount ?? Number(existing.paidAmount);
-    const status = dto.status ?? (paidAmount <= 0 ? 'UNPAID' : paidAmount >= amount ? 'PAID' : 'PARTIAL');
+          ? maxMoney(
+              addMoney(
+                subtractMoney(addMoney(existing.amount ?? 0, currentDiscountAmount), currentExtraAmount),
+                nextExtraAmount
+              ).sub(nextDiscountAmount),
+              0
+            )
+          : clampMoneyNonNegative(existing.amount);
+    const paidAmount = this.resolvePaidAmountForUpdate(existing, dto, amount);
+    if (paidAmount.greaterThan(amount)) {
+      throw new BadRequestException('مبلغ پرداختی نمی‌تواند از مبلغ فاکتور بیشتر باشد.');
+    }
+    const computedStatus = deriveInvoiceStatus(amount, paidAmount);
+    if (dto.status && dto.status !== computedStatus) {
+      throw new BadRequestException('وضعیت فاکتور با مبلغ پرداختی هم‌خوانی ندارد.');
+    }
+    const status = dto.status ?? computedStatus;
     const payerType = dto.payerType ?? existing.payerType;
     const payerId = dto.payerId === undefined ? existing.payerId : dto.payerId || null;
 
     await this.invoicesRepository.update(id, {
       title: dto.title === undefined ? undefined : dto.title?.trim() ?? null,
-      amount: dto.amount !== undefined || dto.discountAmount !== undefined || dto.extraAmount !== undefined ? amount : undefined,
-      discountAmount: dto.discountAmount,
-      extraAmount: dto.extraAmount,
-      paidAmount: dto.paidAmount,
+      amount: dto.amount !== undefined || dto.discountAmount !== undefined || dto.extraAmount !== undefined ? toMoneyNumber(amount) : undefined,
+      discountAmount: dto.discountAmount === undefined ? undefined : toMoneyNumber(nextDiscountAmount),
+      extraAmount: dto.extraAmount === undefined ? undefined : toMoneyNumber(nextExtraAmount),
+      paidAmount: dto.paidAmount !== undefined || dto.status !== undefined ? toMoneyNumber(paidAmount) : undefined,
       status,
       payerType,
       payerId,
@@ -142,6 +163,33 @@ export class InvoicesService extends BaseService {
     });
 
     return this.invoicesRepository.findById(id);
+  }
+
+  private resolvePaidAmountForCreate(dto: CreateInvoiceDto, amount: Prisma.Decimal) {
+    if (dto.paidAmount !== undefined && dto.paidAmount !== null) {
+      return clampMoneyNonNegative(dto.paidAmount);
+    }
+    if (dto.status === 'PAID') return amount;
+    if (dto.status === 'PARTIAL') {
+      throw new BadRequestException('برای وضعیت پرداخت ناقص باید مبلغ پرداختی وارد شود.');
+    }
+    return toMoneyDecimal(0);
+  }
+
+  private resolvePaidAmountForUpdate(existing: any, dto: UpdateInvoiceDto, amount: Prisma.Decimal) {
+    if (dto.paidAmount !== undefined && dto.paidAmount !== null) {
+      return clampMoneyNonNegative(dto.paidAmount);
+    }
+    if (dto.status === 'PAID') return amount;
+    if (dto.status === 'UNPAID') return toMoneyDecimal(0);
+    if (dto.status === 'PARTIAL') {
+      const existingPaid = clampMoneyNonNegative(existing.paidAmount ?? 0);
+      if (existingPaid.greaterThan(0) && existingPaid.lessThan(amount)) {
+        return existingPaid;
+      }
+      throw new BadRequestException('برای وضعیت پرداخت ناقص باید مبلغ پرداختی معتبر وارد شود.');
+    }
+    return clampMoneyNonNegative(existing.paidAmount ?? 0);
   }
 
   async remove(actorId: string, id: string) {

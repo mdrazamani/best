@@ -11,10 +11,50 @@ type AuthConfig = {
 let authConfig: AuthConfig | null = null;
 let refreshPromise: Promise<string | null> | null = null;
 
-function normalizeApiMessage(input: unknown, fallback: string): string {
-  if (typeof input === 'string' && input.trim()) return input;
+function hasPersianChars(value: string) {
+  return /[\u0600-\u06ff]/.test(value);
+}
+
+function decodeMojibake(value: string) {
+  if (!/[\u00D8\u00D9]/.test(value)) return value;
+  try {
+    const bytes = Uint8Array.from(Array.from(value).map((char) => char.charCodeAt(0) & 0xff));
+    const decoded = new TextDecoder('utf-8').decode(bytes);
+    return hasPersianChars(decoded) ? decoded : value;
+  } catch {
+    return value;
+  }
+}
+
+function normalizeText(value: string) {
+  const fixed = decodeMojibake(value);
+  return fixed.replace(/\?{3,}/g, 'نامشخص');
+}
+
+function normalizePayload<T>(input: T): T {
+  if (typeof input === 'string') {
+    return normalizeText(input) as T;
+  }
+
   if (Array.isArray(input)) {
-    const merged = input.filter((item) => typeof item === 'string').join(' | ').trim();
+    return input.map((item) => normalizePayload(item)) as T;
+  }
+
+  if (input && typeof input === 'object') {
+    const output: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+      output[key] = normalizePayload(value);
+    }
+    return output as T;
+  }
+
+  return input;
+}
+
+function normalizeApiMessage(input: unknown, fallback: string): string {
+  if (typeof input === 'string' && input.trim()) return normalizeText(input);
+  if (Array.isArray(input)) {
+    const merged = input.filter((item) => typeof item === 'string').map((item) => normalizeText(item)).join(' | ').trim();
     if (merged) return merged;
   }
   if (input && typeof input === 'object') {
@@ -22,7 +62,7 @@ function normalizeApiMessage(input: unknown, fallback: string): string {
     const nested = normalizeApiMessage(obj.message ?? obj.error ?? obj.details, '');
     if (nested) return nested;
   }
-  return fallback;
+  return normalizeText(fallback);
 }
 
 export function configureApiAuth(config: AuthConfig | null) {
@@ -156,7 +196,7 @@ export async function apiCall<T>(path: string, token: string | null, init?: Requ
   }
 
   const body = await response.json();
-  return body?.data ?? body;
+  return normalizePayload(body?.data ?? body);
 }
 
 export function apiBasePath() {

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowRight, Download, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { ORDER_STAGES, WORK_TYPES, fullName, invoiceStatusLabel, money, orderStageLabel, shamsiDate } from '../lib/format';
+import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -74,7 +74,8 @@ export function OrdersPage() {
     openCollaboratorDetail,
     createInvoice,
     updateInvoice,
-    navigateToTab
+    navigateToTab,
+    downloadProtected
   } = useBestContext();
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -528,6 +529,7 @@ export function OrdersPage() {
                     <TableHead>پرداختی / کل</TableHead>
                     <TableHead>سررسید</TableHead>
                     <TableHead>تاریخ ثبت</TableHead>
+                    <TableHead>دانلود</TableHead>
                     <TableHead>بروزرسانی وضعیت</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -538,7 +540,7 @@ export function OrdersPage() {
                       <TableCell>{invoice.title || '-'}</TableCell>
                       <TableCell>{payerTypeLabel(invoice.payerType)}</TableCell>
                       <TableCell>
-                        <Badge variant={invoice.status === 'PAID' ? 'success' : invoice.status === 'PARTIAL' ? 'warning' : 'outline'}>
+                        <Badge variant={invoiceStatusBadgeVariant(invoice.status)}>
                           {invoiceStatusLabel(invoice.status)}
                         </Badge>
                       </TableCell>
@@ -550,6 +552,18 @@ export function OrdersPage() {
                       </TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
                       <TableCell>{shamsiDate(invoice.createdAt)}</TableCell>
+                      <TableCell>
+                        {invoice.id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber ?? 'invoice'}.pdf`)}
+                          >
+                            <Download className="h-4 w-4" />
+                            دانلود
+                          </Button>
+                        ) : '-'}
+                      </TableCell>
                       <TableCell>
                         {invoice.id ? (
                           <div className="flex w-full min-w-[170px] items-center gap-2 sm:min-w-[230px]">
@@ -910,7 +924,7 @@ export function OrdersPage() {
                         <button type="button" className="font-medium text-primary hover:underline" onClick={() => void openDetail(order.id)}>
                           {order.orderNumber}
                         </button>
-                        <div className="text-xs text-muted-foreground">{order.title || '-'}</div>
+                        <div className="text-xs text-muted-foreground">{textFa(order.title)}</div>
                       </TableCell>
                       <TableCell>
                         {order.customer?.id ? (
@@ -949,8 +963,11 @@ export function OrdersPage() {
                         )}
                       </TableCell>
                       <TableCell>{WORK_TYPES.find((item) => item.value === order.workType)?.label} / {meshTypeLabelsFromItems(order.lineItems)}</TableCell>
-                      <TableCell><Badge variant="secondary">{ORDER_STAGES.find((item) => item.value === order.stage)?.label ?? order.stage}</Badge></TableCell>
+                      <TableCell><Badge variant={orderStageBadgeVariant(order.stage)}>{ORDER_STAGES.find((item) => item.value === order.stage)?.label ?? order.stage}</Badge></TableCell>
                       <TableCell>
+                        <div className="mb-1">
+                          <Badge variant={paymentStatusBadgeVariant(order.paymentSummary.status)}>{paymentStatusLabel(order.paymentSummary.status)}</Badge>
+                        </div>
                         <div className="text-xs text-muted-foreground">{order.paymentSummary.percent}%</div>
                         <div className="font-medium">{money(order.paymentSummary.paidAmount)} / {money(order.paymentSummary.total)}</div>
                       </TableCell>

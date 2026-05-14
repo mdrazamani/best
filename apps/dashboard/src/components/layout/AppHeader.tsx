@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Bell, ChevronRight, LogOut, Menu, Moon, Sun, UserCircle2 } from 'lucide-react';
 import { useBestContext } from '../../contexts/best-context';
 import { Button } from '../ui/button';
@@ -20,7 +20,6 @@ type AppHeaderProps = {
 
 export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderProps) {
   const { canGoBack, goBack, notifications, acknowledgeNotification, openNotificationTarget, session, logout } = useBestContext();
-  const [profileOpen, setProfileOpen] = useState(false);
 
   const todayShamsi = useMemo(
     () =>
@@ -35,7 +34,7 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
   return (
     <header className="mb-4 rounded-xl border border-slate-300/90 bg-white px-3 py-2 shadow-sm dark:border-slate-700/80 dark:bg-card sm:px-4">
       <div className="flex items-start justify-between gap-2 sm:items-center sm:gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:flex-nowrap sm:gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-2.5">
           <Button variant="outline" size="icon" className="lg:hidden" onClick={onToggleSidebar} aria-label="باز کردن منو">
             <Menu className="h-4 w-4" />
           </Button>
@@ -90,8 +89,7 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <div onMouseEnter={() => setProfileOpen(true)} onMouseLeave={() => setProfileOpen(false)}>
-            <DropdownMenu open={profileOpen} onOpenChange={setProfileOpen}>
+          <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" aria-label="پروفایل">
                   <UserCircle2 className="h-4 w-4" />
@@ -109,7 +107,6 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
         </div>
 
         <div className="min-w-0 text-left">

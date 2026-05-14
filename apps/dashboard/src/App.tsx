@@ -28,6 +28,7 @@ const APP_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 
 
 export function App() {
   const app = useBestApp();
+  const [bootReady, setBootReady] = useState(false);
   const [tab, setTab] = useState<AppTab>(() => {
     const stored = localStorage.getItem(ACTIVE_TAB_KEY);
     return stored && APP_TABS.includes(stored as AppTab) ? (stored as AppTab) : 'dashboard';
@@ -54,6 +55,28 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(ACTIVE_TAB_KEY, tab);
   }, [tab]);
+
+  useEffect(() => {
+    let alive = true;
+
+    const waitForBoot = async () => {
+      const timeout = new Promise((resolve) => setTimeout(resolve, 1200));
+      const fontsReady =
+        typeof document !== 'undefined' && 'fonts' in document
+          ? (document as Document & { fonts: { ready: Promise<unknown> } }).fonts.ready
+          : Promise.resolve();
+
+      await Promise.race([fontsReady, timeout]);
+      if (alive) {
+        setBootReady(true);
+      }
+    };
+
+    void waitForBoot();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const content = useMemo(() => {
     if (!app.token) return <LoginPage />;
@@ -142,6 +165,10 @@ export function App() {
     goBack,
     openNotificationTarget
   };
+
+  const waitingForInitialData = Boolean(app.token) && !app.session && !app.error;
+  const showStartupLoader = !bootReady || waitingForInitialData;
+  const showOverlayLoader = app.loading && !showStartupLoader;
 
   return (
     <BestContext.Provider value={contextValue}>
@@ -242,7 +269,7 @@ export function App() {
             </main>
           </div>
 
-          {app.loading ? (
+          {showOverlayLoader ? (
             <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/28 backdrop-blur-[1.5px] dark:bg-slate-950/45">
               <div className="rounded-2xl border border-slate-300/90 bg-white/96 p-5 shadow-xl dark:border-slate-700/90 dark:bg-slate-900/92">
                 <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-slate-300 border-t-primary dark:border-slate-700 dark:border-t-primary" />
@@ -260,6 +287,21 @@ export function App() {
               </DialogHeader>
             </DialogContent>
           </Dialog>
+
+          {showStartupLoader ? (
+            <div className="fixed inset-0 z-[260] flex items-center justify-center bg-background/96 backdrop-blur-[2px]">
+              <div className="flex w-[min(26rem,92vw)] flex-col items-center gap-4 rounded-2xl border border-slate-300/90 bg-white/95 px-6 py-8 shadow-xl dark:border-slate-700/90 dark:bg-slate-900/95">
+                <div className="relative">
+                  <div className="h-14 w-14 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
+                  <div className="absolute inset-2 animate-pulse rounded-full bg-primary/10" />
+                </div>
+                <div className="space-y-2 text-center">
+                  <p className="text-base font-extrabold tracking-tight text-foreground sm:text-lg">در حال آماده‌سازی پنل</p>
+                  <p className="text-xs text-muted-foreground sm:text-sm">لطفا چند لحظه صبر کنید...</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         content

@@ -66,6 +66,22 @@ describe('OrdersService', () => {
     expect(result).toEqual({ success: true });
   });
 
+  it('caps paid amount by each invoice total in payment summary', async () => {
+    ordersRepository.findById.mockResolvedValue({
+      id: 'order-cap',
+      totalPrice: 1000,
+      invoices: [
+        { amount: 500, paidAmount: 900 },
+        { amount: 300, paidAmount: 300 }
+      ]
+    });
+
+    const result = await service.detail('order-cap');
+    expect(result.paymentSummary.paidAmount).toBe(800);
+    expect(result.paymentSummary.remainingAmount).toBe(200);
+    expect(result.paymentSummary.status).toBe('partial');
+  });
+
   it('applies discount and extra amounts to auto invoice when creating order', async () => {
     ordersRepository.create.mockResolvedValue({
       id: 'order-1',

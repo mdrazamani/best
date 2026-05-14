@@ -1,7 +1,10 @@
 ﻿export const money = (value: number) => `${new Intl.NumberFormat('fa-IR').format(value || 0)} ریال`;
 export const shamsiDate = (value?: string) => (value ? new Date(value).toLocaleString('fa-IR-u-ca-persian') : '-');
-export const fullName = (input?: { firstName?: string; lastName?: string }) =>
-  [input?.firstName, input?.lastName].filter(Boolean).join(' ') || '-';
+export const fullName = (input?: { firstName?: string; lastName?: string }) => {
+  const firstName = textFa(input?.firstName ?? '', '');
+  const lastName = textFa(input?.lastName ?? '', '');
+  return [firstName, lastName].filter(Boolean).join(' ') || '-';
+};
 
 export const ORDER_STAGES: Array<{ value: string; label: string }> = [
   { value: 'RECEIVED', label: 'دریافت شده' },
@@ -25,6 +28,19 @@ export const INVOICE_STATUS: Array<{ value: string; label: string }> = [
 
 export const orderStageLabel = (value?: string) => ORDER_STAGES.find((item) => item.value === value)?.label ?? value ?? '-';
 export const invoiceStatusLabel = (value?: string) => INVOICE_STATUS.find((item) => item.value === value)?.label ?? value ?? '-';
+export const invoiceStatusBadgeVariant = (value?: string): 'success' | 'warning' | 'outline' =>
+  value === 'PAID' ? 'success' : value === 'PARTIAL' ? 'warning' : 'outline';
+export const orderStageBadgeVariant = (value?: string): 'success' | 'warning' | 'secondary' | 'outline' => {
+  if (value === 'DELIVERED') return 'success';
+  if (value === 'CANCELLED') return 'outline';
+  if (value === 'READY_IN_WAREHOUSE') return 'warning';
+  if (value === 'IN_PROGRESS' || value === 'STARTED') return 'secondary';
+  return 'outline';
+};
+export const paymentStatusBadgeVariant = (value?: string): 'success' | 'warning' | 'outline' =>
+  value === 'paid' ? 'success' : value === 'partial' ? 'warning' : 'outline';
+export const paymentStatusLabel = (value?: string) =>
+  value === 'paid' ? '?????????' : value === 'partial' ? '?????? ????' : '?????? ????';
 
 function hasPersianChars(value: string) {
   return /[\u0600-\u06ff]/.test(value);

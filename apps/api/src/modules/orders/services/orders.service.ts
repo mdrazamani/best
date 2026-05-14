@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { BaseService } from '../../../common/services/base.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { addMoney, clampMoneyNonNegative, derivePaymentStatus, maxMoney, minMoney, multiplyMoney, percentOf, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
 import { OrdersRepository } from '../orders.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { InvoicesService } from '../../invoices/services/invoices.service';
@@ -56,13 +57,13 @@ export class OrdersService extends BaseService {
       throw new BadRequestException('برای هر سفارش حداقل یک ردیف معتبر با نوع توری لازم است.');
     }
 
-    const lineItemsTotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-    const fallbackTotal = (dto.width ?? 0) * (dto.height ?? 0) * (dto.quantity ?? 0) * (dto.unitPrice ?? 0);
-    const discountAmount = Number(dto.discountAmount ?? 0);
+    const lineItemsTotal = addMoney(...lineItems.map((item) => item.lineTotal));
+    const fallbackTotal = multiplyMoney(dto.width ?? 0, dto.height ?? 0, dto.quantity ?? 0, dto.unitPrice ?? 0);
+    const discountAmount = clampMoneyNonNegative(dto.discountAmount ?? 0);
     const calculatedBaseTotal = lineItems.length ? lineItemsTotal : fallbackTotal;
-    const defaultVatAmount = calculatedBaseTotal * 0.1;
-    const extraAmount = Number(dto.extraAmount ?? defaultVatAmount);
-    const totalPrice = dto.totalPrice ?? Math.max(calculatedBaseTotal + extraAmount - discountAmount, 0);
+    const defaultVatAmount = multiplyMoney(calculatedBaseTotal, 0.1);
+    const extraAmount = dto.extraAmount === undefined ? defaultVatAmount : clampMoneyNonNegative(dto.extraAmount);
+    const totalPrice = dto.totalPrice === undefined ? maxMoney(addMoney(calculatedBaseTotal, extraAmount), discountAmount).sub(discountAmount) : clampMoneyNonNegative(dto.totalPrice);
     const firstLine = lineItems[0];
 
     let created: Awaited<ReturnType<OrdersRepository['create']>> | null = null;
@@ -80,9 +81,9 @@ export class OrdersService extends BaseService {
           height: firstLine?.height ?? dto.height,
           quantity: firstLine?.quantity ?? dto.quantity,
           unitPrice: firstLine?.unitPrice ?? dto.unitPrice,
-          totalPrice,
-          discountAmount,
-          extraAmount,
+          totalPrice: toMoneyNumber(totalPrice),
+          discountAmount: toMoneyNumber(discountAmount),
+          extraAmount: toMoneyNumber(extraAmount),
           lineItems,
           description: dto.description?.trim(),
           stage: dto.stage,
@@ -111,12 +112,12 @@ export class OrdersService extends BaseService {
     });
 
     if (dto.createInitialInvoice !== false) {
-      const invoiceAmount = Number(totalPrice ?? 0);
+      const invoiceAmount = toMoneyNumber(totalPrice);
       await this.invoicesService.create(actorId, {
         orderId: created.id,
         amount: invoiceAmount,
-        discountAmount,
-        extraAmount,
+        discountAmount: toMoneyNumber(discountAmount),
+        extraAmount: toMoneyNumber(extraAmount),
         paidAmount: 0,
         status: 'UNPAID',
         payerType: created.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
@@ -140,26 +141,31 @@ export class OrdersService extends BaseService {
       throw new BadRequestException('ردیف‌های سفارش معتبر نیستند.');
     }
 
-    const currentDiscountAmount = Number(existing.discountAmount ?? 0);
-    const currentExtraAmount = Number(existing.extraAmount ?? 0);
-    const nextDiscountAmount = dto.discountAmount ?? currentDiscountAmount;
-    const nextExtraAmount = dto.extraAmount ?? currentExtraAmount;
+    const currentDiscountAmount = clampMoneyNonNegative(existing.discountAmount ?? 0);
+    const currentExtraAmount = clampMoneyNonNegative(existing.extraAmount ?? 0);
+    const nextDiscountAmount = dto.discountAmount === undefined ? currentDiscountAmount : clampMoneyNonNegative(dto.discountAmount);
+    const nextExtraAmount = dto.extraAmount === undefined ? currentExtraAmount : clampMoneyNonNegative(dto.extraAmount);
 
-    const lineItemsTotal = lineItems?.reduce((sum, item) => sum + item.lineTotal, 0);
+    const lineItemsTotal = lineItems ? addMoney(...lineItems.map((item) => item.lineTotal)) : undefined;
     const recalculatedBaseTotal =
       lineItems && lineItems.length
         ? lineItemsTotal
         : dto.unitPrice !== undefined || dto.quantity !== undefined || dto.width !== undefined || dto.height !== undefined
-        ? Number(dto.width ?? existing.width ?? 0) * Number(dto.height ?? existing.height ?? 0) * Number(dto.quantity ?? existing.quantity ?? 0) * Number(dto.unitPrice ?? existing.unitPrice ?? 0)
+        ? multiplyMoney(
+            Number(dto.width ?? existing.width ?? 0),
+            Number(dto.height ?? existing.height ?? 0),
+            Number(dto.quantity ?? existing.quantity ?? 0),
+            Number(dto.unitPrice ?? existing.unitPrice ?? 0)
+          )
         : dto.discountAmount !== undefined || dto.extraAmount !== undefined
-        ? Number(existing.totalPrice ?? 0) - currentExtraAmount + currentDiscountAmount
+        ? subtractMoney(addMoney(existing.totalPrice ?? 0, currentDiscountAmount), currentExtraAmount)
         : undefined;
 
     const totalPrice =
       dto.totalPrice !== undefined
-        ? dto.totalPrice
+        ? clampMoneyNonNegative(dto.totalPrice)
         : recalculatedBaseTotal !== undefined
-        ? Math.max(recalculatedBaseTotal + nextExtraAmount - nextDiscountAmount, 0)
+        ? maxMoney(addMoney(recalculatedBaseTotal, nextExtraAmount), nextDiscountAmount).sub(nextDiscountAmount)
         : undefined;
 
     const firstLine = lineItems?.[0];
@@ -173,9 +179,9 @@ export class OrdersService extends BaseService {
       height: firstLine ? firstLine.height : dto.height,
       quantity: firstLine ? firstLine.quantity : dto.quantity,
       unitPrice: firstLine ? firstLine.unitPrice : dto.unitPrice,
-      totalPrice,
-      discountAmount: dto.discountAmount,
-      extraAmount: dto.extraAmount,
+      totalPrice: totalPrice === undefined ? undefined : toMoneyNumber(totalPrice),
+      discountAmount: dto.discountAmount === undefined ? undefined : toMoneyNumber(nextDiscountAmount),
+      extraAmount: dto.extraAmount === undefined ? undefined : toMoneyNumber(nextExtraAmount),
       lineItems,
       description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
       stage: dto.stage,
@@ -214,18 +220,20 @@ export class OrdersService extends BaseService {
   }
 
   private withPaymentSummary<T extends { invoices: Array<{ paidAmount: unknown; amount: unknown }>; totalPrice: unknown }>(order: T) {
-    const total = Number(order.totalPrice ?? 0);
-    const paidAmount = order.invoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount ?? 0), 0);
-    const remainingAmount = Math.max(total - paidAmount, 0);
-    const percent = total > 0 ? Math.round((paidAmount / total) * 100) : 0;
-    const status = remainingAmount === 0 && total > 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+    const total = clampMoneyNonNegative(order.totalPrice ?? 0);
+    const paidAmount = addMoney(
+      ...order.invoices.map((invoice) => minMoney(clampMoneyNonNegative(invoice.paidAmount ?? 0), clampMoneyNonNegative(invoice.amount ?? 0)))
+    );
+    const remainingAmount = maxMoney(subtractMoney(total, paidAmount), 0);
+    const percent = percentOf(total, paidAmount);
+    const status = derivePaymentStatus(total, paidAmount);
 
     return {
       ...order,
       paymentSummary: {
-        total,
-        paidAmount,
-        remainingAmount,
+        total: toMoneyNumber(total),
+        paidAmount: toMoneyNumber(paidAmount),
+        remainingAmount: toMoneyNumber(remainingAmount),
         percent,
         status
       }
@@ -266,11 +274,11 @@ export class OrdersService extends BaseService {
       .filter((item) => Boolean(item.meshTypeId) && item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0)
       .map((item) => ({
         meshTypeId: item.meshTypeId as string,
-        width: item.width,
-        height: item.height,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        lineTotal: item.width * item.height * item.quantity * item.unitPrice
+        width: toMoneyNumber(item.width),
+        height: toMoneyNumber(item.height),
+        quantity: toMoneyNumber(item.quantity),
+        unitPrice: toMoneyNumber(item.unitPrice),
+        lineTotal: toMoneyNumber(multiplyMoney(item.width, item.height, item.quantity, item.unitPrice))
       }));
   }
 }

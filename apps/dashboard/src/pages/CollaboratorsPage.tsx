@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
-import { ArrowRight, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowRight, Download, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { fullName, invoiceStatusLabel, money, orderStageLabel, shamsiDate } from '../lib/format';
+import { fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
@@ -41,7 +41,8 @@ export function CollaboratorsPage() {
     openOrderDetail,
     updateOrder,
     updateInvoice,
-    navigateToTab
+    navigateToTab,
+    downloadProtected
   } = useBestContext();
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -216,7 +217,7 @@ export function CollaboratorsPage() {
                           </button>
                         ) : fullName(order.customer)}
                       </TableCell>
-                      <TableCell>{orderStageLabel(order.stage)}</TableCell>
+                      <TableCell><Badge variant={orderStageBadgeVariant(order.stage)}>{orderStageLabel(order.stage)}</Badge></TableCell>
                       <TableCell>{money(Number(order.totalPrice ?? 0))}</TableCell>
                       <TableCell>{shamsiDate(order.createdAt)}</TableCell>
                       <TableCell>
@@ -265,6 +266,7 @@ export function CollaboratorsPage() {
                     <TableHead>وضعیت</TableHead>
                     <TableHead>پرداختی / کل</TableHead>
                     <TableHead>سررسید</TableHead>
+                    <TableHead>دانلود</TableHead>
                     <TableHead>بروزرسانی وضعیت</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -287,10 +289,22 @@ export function CollaboratorsPage() {
                         ) : (invoice.order?.orderNumber ?? '-')}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={invoice.status === 'PAID' ? 'success' : invoice.status === 'PARTIAL' ? 'warning' : 'outline'}>{invoiceStatusLabel(invoice.status)}</Badge>
+                        <Badge variant={invoiceStatusBadgeVariant(invoice.status)}>{invoiceStatusLabel(invoice.status)}</Badge>
                       </TableCell>
                       <TableCell>{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
+                      <TableCell>
+                        {invoice.id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber ?? 'invoice'}.pdf`)}
+                          >
+                            <Download className="h-4 w-4" />
+                            دانلود
+                          </Button>
+                        ) : '-'}
+                      </TableCell>
                       <TableCell>
                         {invoice.id ? (
                           <div className="flex w-full min-w-[170px] items-center gap-2 sm:min-w-[230px]">
