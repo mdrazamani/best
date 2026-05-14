@@ -108,4 +108,13 @@ describe('InvoicesService', () => {
     invoicesRepository.findById.mockResolvedValue(null);
     await expect(service.update('actor-1', 'missing', { status: 'PAID' } as any)).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('normalizes invoice status in list output when stored status is stale', async () => {
+    invoicesRepository.list.mockResolvedValue([
+      { id: 'inv-stale', amount: 200, paidAmount: 0, status: 'PAID' }
+    ]);
+
+    const rows = await service.list({} as any);
+    expect(rows[0].status).toBe('UNPAID');
+  });
 });

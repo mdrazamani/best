@@ -1,4 +1,5 @@
-﻿import Select from 'react-select';
+﻿import { useEffect, useRef, useState } from 'react';
+import Select from 'react-select';
 import { cn } from '../../lib/utils';
 
 export type SearchableSelectOption = {
@@ -27,9 +28,22 @@ export function SearchableSelect({
   isSearchable?: boolean;
 }) {
   const selected = options.find((option) => option.value === value) ?? null;
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | undefined>(undefined);
+  const [insideDialog, setInsideDialog] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const dialogContent = wrapperRef.current?.closest('[data-dialog-content="true"]') as HTMLElement | null;
+    setInsideDialog(Boolean(dialogContent));
+    setPortalTarget(dialogContent ?? document.body);
+  }, []);
+
+  const effectivePortalTarget = insideDialog ? undefined : portalTarget;
+  const effectiveMenuPosition = insideDialog ? 'absolute' : 'fixed';
 
   return (
-    <div className={cn('w-full text-right', className)}>
+    <div ref={wrapperRef} className={cn('w-full text-right', className)}>
       <Select<SearchableSelectOption, false>
         isRtl
         options={options}
@@ -39,8 +53,10 @@ export function SearchableSelect({
         isSearchable={isSearchable}
         placeholder={placeholder}
         noOptionsMessage={() => emptyLabel ?? 'موردی پیدا نشد.'}
-        menuPortalTarget={typeof document !== 'undefined' ? document.body : undefined}
-        menuPosition="fixed"
+        menuPortalTarget={effectivePortalTarget}
+        menuPosition={effectiveMenuPosition}
+        menuShouldScrollIntoView={false}
+        menuShouldBlockScroll={!insideDialog}
         classNamePrefix="best-select"
         styles={{
           control: (base, state) => ({
@@ -66,7 +82,7 @@ export function SearchableSelect({
           }),
           menuPortal: (base) => ({
             ...base,
-            zIndex: 220
+            zIndex: 320
           }),
           menuList: (base) => ({ ...base, paddingBlock: 4 }),
           option: (base, state) => ({

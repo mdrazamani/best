@@ -82,6 +82,20 @@ describe('OrdersService', () => {
     expect(result.paymentSummary.status).toBe('partial');
   });
 
+  it('normalizes invoice statuses based on amount and paidAmount in order detail', async () => {
+    ordersRepository.findById.mockResolvedValue({
+      id: 'order-status-fix',
+      totalPrice: 1000,
+      invoices: [
+        { amount: 1000, paidAmount: 0, status: 'PAID' }
+      ]
+    });
+
+    const result = await service.detail('order-status-fix');
+    expect(result.invoices[0].status).toBe('UNPAID');
+    expect(result.paymentSummary.status).toBe('unpaid');
+  });
+
   it('applies discount and extra amounts to auto invoice when creating order', async () => {
     ordersRepository.create.mockResolvedValue({
       id: 'order-1',

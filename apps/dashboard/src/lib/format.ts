@@ -40,7 +40,7 @@ export const orderStageBadgeVariant = (value?: string): 'success' | 'warning' | 
 export const paymentStatusBadgeVariant = (value?: string): 'success' | 'warning' | 'outline' =>
   value === 'paid' ? 'success' : value === 'partial' ? 'warning' : 'outline';
 export const paymentStatusLabel = (value?: string) =>
-  value === 'paid' ? '?????????' : value === 'partial' ? '?????? ????' : '?????? ????';
+  value === 'paid' ? 'تسویه‌شده' : value === 'partial' ? 'پرداخت ناقص' : 'پرداخت نشده';
 
 function hasPersianChars(value: string) {
   return /[\u0600-\u06ff]/.test(value);

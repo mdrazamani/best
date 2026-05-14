@@ -21,8 +21,8 @@ export class InvoicesService extends BaseService {
     super();
   }
 
-  list(query: ListInvoicesQueryDto) {
-    return this.invoicesRepository.list({
+  async list(query: ListInvoicesQueryDto) {
+    const rows = await this.invoicesRepository.list({
       q: query.q?.trim(),
       status: query.status,
       orderId: query.orderId,
@@ -30,6 +30,7 @@ export class InvoicesService extends BaseService {
       from: query.from ? new Date(query.from) : undefined,
       to: query.to ? new Date(query.to) : undefined
     });
+    return rows.map((row) => this.withConsistentStatus(row));
   }
 
   async create(actorId: string, dto: CreateInvoiceDto) {
@@ -102,7 +103,8 @@ export class InvoicesService extends BaseService {
       orderId: created.orderId
     });
 
-    return this.invoicesRepository.findById(created.id);
+    const invoice = await this.invoicesRepository.findById(created.id);
+    return invoice ? this.withConsistentStatus(invoice) : invoice;
   }
 
   async update(actorId: string, id: string, dto: UpdateInvoiceDto) {
@@ -162,7 +164,8 @@ export class InvoicesService extends BaseService {
       orderId: existing.orderId
     });
 
-    return this.invoicesRepository.findById(id);
+    const invoice = await this.invoicesRepository.findById(id);
+    return invoice ? this.withConsistentStatus(invoice) : invoice;
   }
 
   private resolvePaidAmountForCreate(dto: CreateInvoiceDto, amount: Prisma.Decimal) {
@@ -217,7 +220,7 @@ export class InvoicesService extends BaseService {
       throw new NotFoundException('فاکتور پیدا نشد.');
     }
 
-    const html = this.renderInvoiceHtml(invoice);
+    const html = this.renderInvoiceHtml(this.withConsistentStatus(invoice));
     const buffer = await this.renderPdfFromHtml(html);
 
     return {
@@ -271,6 +274,18 @@ export class InvoicesService extends BaseService {
     return new Date(value).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
   }
 
+  private withConsistentStatus<T extends { amount: unknown; paidAmount: unknown; status?: string }>(invoice: T): T {
+    const computedStatus = deriveInvoiceStatus(invoice.amount, invoice.paidAmount);
+    if (invoice.status === computedStatus) {
+      return invoice;
+    }
+
+    return {
+      ...invoice,
+      status: computedStatus
+    };
+  }
+
   private getVazirmatnFontFaceCss() {
     const candidates = [
       path.resolve(process.cwd(), '../dashboard/public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
@@ -290,20 +305,29 @@ export class InvoicesService extends BaseService {
     const customer = invoice.order?.customer;
     const collaborator = invoice.order?.collaborator;
     const buyer = invoice.payerType === 'COLLABORATOR' ? collaborator : customer;
+
     const sellerName = 'کارگاه تولیدی بست';
     const sellerPhone = '021-12345678';
     const sellerAddress = 'تهران، خیابان ولیعصر، پلاک 123، واحد 4';
-    const sellerNationalId = '140012345678';
+
+    const buyerName = [buyer?.firstName, buyer?.lastName].filter(Boolean).join(' ') || '-';
+    const buyerPhone = buyer?.phone || '-';
+    const buyerAddress = buyer?.address || '-';
+
+    const statusLabel = invoice.status === 'PAID' ? 'پرداخت شده' : invoice.status === 'PARTIAL' ? 'پرداخت ناقص' : 'پرداخت نشده';
+    const payerTypeLabel = invoice.payerType === 'COLLABORATOR' ? 'همکار' : 'مشتری';
 
     const lineItems = Array.isArray(invoice.order?.lineItems) ? invoice.order.lineItems : [];
     const orderInvoices = Array.isArray(invoice.order?.invoices) ? invoice.order.invoices : [];
     const sortedInvoices = [...orderInvoices].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    const index = Math.max(sortedInvoices.findIndex((item) => item.id === invoice.id), 0);
-    const invoiceNumberInOrder = index + 1;
-    const totalInvoicesInOrder = sortedInvoices.length || 1;
-    const cumulativeIssued = sortedInvoices.slice(0, invoiceNumberInOrder).reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+    const currentInvoiceIndex = Math.max(sortedInvoices.findIndex((item) => item.id === invoice.id), 0);
+    const invoicePart = currentInvoiceIndex + 1;
+    const totalInvoiceParts = sortedInvoices.length || 1;
+
     const orderTotal = Number(invoice.order?.totalPrice ?? 0);
-    const remainingAfterThisInvoice = Math.max(orderTotal - cumulativeIssued, 0);
+    const issuedUntilCurrent = sortedInvoices.slice(0, invoicePart).reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+    const remainingAfterCurrent = Math.max(orderTotal - issuedUntilCurrent, 0);
+    const showInstallmentInfo = totalInvoiceParts > 1;
 
     const discountAmount = Number(invoice.discountAmount ?? 0);
     const extraAmount = Number(invoice.extraAmount ?? 0);
@@ -316,6 +340,7 @@ export class InvoicesService extends BaseService {
         const width = Number(item.width ?? 0);
         const height = Number(item.height ?? 0);
         const title = `${meshTitle} (${this.escapeHtml(width)} × ${this.escapeHtml(height)})`;
+
         return `
           <tr>
             <td>${idx + 1}</td>
@@ -328,6 +353,45 @@ export class InvoicesService extends BaseService {
       })
       .join('');
 
+    const emptyRows = tableRows || `<tr><td colspan="5">قلمی برای این فاکتور ثبت نشده است.</td></tr>`;
+
+    const summaryRows: string[] = [];
+    summaryRows.push(`
+      <div class="sum-row">
+        <div class="sum-label">جمع جزء</div>
+        <div class="sum-amount">${this.formatMoney(subtotal)}</div>
+      </div>
+    `);
+
+    if (extraAmount > 0) {
+      summaryRows.push(`
+        <div class="sum-row">
+          <div class="sum-label">مالیات / مبلغ افزوده</div>
+          <div class="sum-amount">${this.formatMoney(extraAmount)}</div>
+        </div>
+      `);
+    }
+
+    if (discountAmount > 0) {
+      summaryRows.push(`
+        <div class="sum-row">
+          <div class="sum-label">تخفیف</div>
+          <div class="sum-amount">${this.formatMoney(discountAmount)}</div>
+        </div>
+      `);
+    }
+
+    summaryRows.push(`
+      <div class="sum-row final">
+        <div class="sum-label">مبلغ قابل پرداخت</div>
+        <div class="sum-amount">${this.formatMoney(finalAmount)}</div>
+      </div>
+    `);
+
+    const installmentInfo = showInstallmentInfo
+      ? `<p>این فاکتور پارت ${this.escapeHtml(invoicePart)} از ${this.escapeHtml(totalInvoiceParts)} است و مانده سفارش بعد از این فاکتور ${this.escapeHtml(this.formatMoney(remainingAfterCurrent))} ریال می‌باشد.</p>`
+      : '';
+
     const fontFace = this.getVazirmatnFontFaceCss();
 
     return `<!DOCTYPE html>
@@ -337,175 +401,330 @@ export class InvoicesService extends BaseService {
   <style>
     ${fontFace}
     :root {
-      --border: #dcdcdc;
       --text: #111827;
       --muted: #6b7280;
-      --panel: #f9fafb;
-      --accent: #111827;
+      --border: #d6d9df;
+      --surface: #f3f4f6;
+      --soft: #f8fafc;
+      --heading: #0f172a;
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      padding: 24px;
       color: var(--text);
-      font-family: 'Vazirmatn', Tahoma, sans-serif;
       background: #fff;
-      font-size: 14px;
-      line-height: 1.8;
+      font-family: 'Vazirmatn', Tahoma, sans-serif;
+      font-size: 12.5px;
+      line-height: 1.65;
+      direction: rtl;
     }
+
     .invoice {
-      max-width: 800px;
+      width: 100%;
+      max-width: 820px;
       margin: 0 auto;
+      padding: 6px 2px;
     }
-    .top {
+
+    .header {
       display: grid;
-      grid-template-columns: 1.25fr 1.4fr 0.95fr;
+      grid-template-columns: 1.05fr 1.2fr 0.65fr;
       gap: 14px;
       align-items: stretch;
       margin-bottom: 14px;
     }
-    .card {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px;
-      background: #fff;
+
+    .meta {
+      border-left: 1px solid var(--border);
+      padding-left: 10px;
+      align-content: center;
     }
+
     .meta-grid {
       display: grid;
       grid-template-columns: auto auto 1fr;
-      row-gap: 4px;
+      row-gap: 6px;
       column-gap: 8px;
-      font-size: 13px;
+      font-size: 12.5px;
     }
-    .meta-grid .label { color: var(--muted); }
-    .title-box {
+
+    .meta-grid .label {
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .meta-grid strong {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--heading);
+      letter-spacing: 0.1px;
+    }
+
+    .title-block {
       border-left: 1px solid var(--border);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      align-items: center;
       justify-content: center;
-      padding: 10px 16px;
+      align-items: center;
       text-align: center;
+      padding: 4px 12px;
     }
-    .title-box h1 {
-      margin: 0 0 4px 0;
-      font-size: 46px;
-      line-height: 1.1;
-      letter-spacing: -0.5px;
-      color: var(--accent);
-    }
-    .title-box p {
+
+    .title-block h1 {
       margin: 0;
-      color: var(--muted);
-      font-size: 16px;
+      font-size: 42px;
+      line-height: 1.15;
+      color: #020617;
+      font-weight: 800;
+      letter-spacing: -0.4px;
     }
-    .logo-box {
-      text-align: center;
-      background: #f3f4f6;
+
+    .title-block p {
+      margin: 8px 0 0;
+      font-size: 14px;
+      color: #374151;
+      font-weight: 500;
+    }
+
+    .logo-card {
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 12px;
-    }
-    .logo-placeholder {
-      height: 72px;
-      width: 72px;
-      margin: 4px auto 8px;
-      border: 2px solid #9ca3af;
-      border-radius: 16px;
+      border-radius: 12px;
+      background: var(--surface);
       display: flex;
-      align-items: center;
+      flex-direction: column;
       justify-content: center;
-      color: #6b7280;
-      font-size: 12px;
+      align-items: center;
+      text-align: center;
+      gap: 8px;
+      padding: 14px 10px;
     }
-    .persons {
+
+    .logo-card svg {
+      width: 44px;
+      height: 44px;
+      stroke: #111827;
+      stroke-width: 1.8;
+      fill: none;
+    }
+
+    .logo-card span {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--heading);
+    }
+
+    .party-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
-    .persons h3 {
-      margin: 0 0 8px 0;
-      font-size: 22px;
-      line-height: 1.2;
+
+    .party-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: #fff;
     }
-    .person-grid {
+
+    .party-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .party-header h3 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.1;
+      color: var(--heading);
+      font-weight: 800;
+    }
+
+    .party-header svg {
+      width: 20px;
+      height: 20px;
+      stroke: #111827;
+      stroke-width: 1.8;
+      fill: none;
+    }
+
+    .party-info {
       display: grid;
       grid-template-columns: auto auto 1fr;
-      row-gap: 5px;
-      column-gap: 8px;
-      font-size: 13px;
+      gap: 6px 8px;
+      font-size: 12.5px;
     }
-    .person-grid .label { color: var(--muted); }
+
+    .party-info .label {
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .party-info strong {
+      font-size: 13px;
+      font-weight: 700;
+      color: #111827;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 14px;
+      margin: 8px 0 12px;
     }
-    th, td {
+
+    th,
+    td {
       border: 1px solid var(--border);
-      padding: 8px 10px;
+      padding: 9px 10px;
+      font-size: 12.5px;
       text-align: center;
       vertical-align: middle;
-      font-size: 13px;
+      white-space: nowrap;
     }
+
     th {
       background: #f3f4f6;
+      color: #111827;
       font-weight: 700;
     }
+
     .name-cell {
       text-align: right;
       white-space: normal;
+      font-weight: 500;
     }
+
     .summary {
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
-    .summary-row {
-      display: grid;
-      grid-template-columns: 180px 1fr;
+
+    .sum-row {
+      display: flex;
+      align-items: center;
       border-bottom: 1px solid var(--border);
       min-height: 42px;
+      background: #fff;
     }
-    .summary-row:last-child { border-bottom: 0; }
-    .summary-row .value {
-      border-left: 1px solid var(--border);
+
+    .sum-row:last-child { border-bottom: 0; }
+
+    .sum-label {
+      flex: 1;
+      text-align: right;
+      padding: 0 14px;
+      font-size: 14px;
+      color: #111827;
+      font-weight: 600;
+    }
+
+    .sum-amount {
+      width: 220px;
+      border-right: 1px solid var(--border);
+      text-align: left;
+      padding: 0 14px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #111827;
+      direction: ltr;
+      unicode-bidi: plaintext;
+    }
+
+    .sum-row.final .sum-label,
+    .sum-row.final .sum-amount {
+      font-size: 18px;
+      font-weight: 800;
+      color: #0b1220;
+      background: var(--soft);
+    }
+
+    .notes {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      min-height: 84px;
+      text-align: right;
+    }
+
+    .notes-head {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+      color: #111827;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .notes-head svg {
+      width: 18px;
+      height: 18px;
+      stroke: #111827;
+      stroke-width: 1.8;
+      fill: none;
+    }
+
+    .notes p {
+      margin: 0 0 4px;
+      color: #4b5563;
+      font-size: 12.5px;
+      text-align: right;
+    }
+
+    .footer {
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      margin-top: 6px;
+    }
+
+    .contacts {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: #1f2937;
+    }
+
+    .contact {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 26px;
-      font-weight: 800;
+      gap: 6px;
     }
-    .summary-row .label {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      padding: 0 16px;
-      font-size: 21px;
-      font-weight: 700;
+
+    .contact svg {
+      width: 16px;
+      height: 16px;
+      stroke: #374151;
+      stroke-width: 1.9;
+      fill: none;
     }
-    .summary-row.final .value,
-    .summary-row.final .label {
-      font-weight: 900;
-      font-size: 30px;
-    }
-    .notes {
-      border-top: 1px solid #e5e7eb;
-      margin-top: 16px;
-      padding-top: 12px;
+
+    .thank-you {
+      text-align: center;
       color: #374151;
       font-size: 12px;
-      text-align: center;
+      font-weight: 500;
+      margin: 0;
     }
   </style>
 </head>
 <body>
   <div class="invoice">
-    <div class="top">
-      <div class="card">
+    <section class="header">
+      <div class="meta">
         <div class="meta-grid">
           <span class="label">شماره فاکتور</span><span>:</span><strong>${this.escapeHtml(invoice.invoiceNumber)}</strong>
           <span class="label">تاریخ فاکتور</span><span>:</span><strong>${this.escapeHtml(this.formatJalaliDate(invoice.createdAt))}</strong>
@@ -513,78 +732,117 @@ export class InvoicesService extends BaseService {
           <span class="label">شماره سفارش</span><span>:</span><strong>${this.escapeHtml(invoice.order?.orderNumber ?? '-')}</strong>
         </div>
       </div>
-      <div class="title-box">
+
+      <div class="title-block">
         <h1>فاکتور فروش</h1>
         <p>از همراهی شما سپاسگزاریم.</p>
       </div>
-      <div class="logo-box">
-        <div class="logo-placeholder">LOGO</div>
-        <div style="font-size:14px;font-weight:700;">${this.escapeHtml(sellerName)}</div>
-      </div>
-    </div>
 
-    <div class="persons">
-      <div class="card">
-        <h3>فروشنده</h3>
-        <div class="person-grid">
+      <div class="logo-card">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 8V7a6 6 0 0 1 12 0v1"></path>
+          <path d="M5 8h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8z"></path>
+        </svg>
+        <span>لوگوی شما</span>
+      </div>
+    </section>
+
+    <section class="party-grid">
+      <article class="party-card">
+        <div class="party-header">
+          <h3>خریدار</h3>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="8" r="4"></circle>
+            <path d="M4 20a8 8 0 0 1 16 0"></path>
+          </svg>
+        </div>
+        <div class="party-info">
+          <span class="label">نام خریدار</span><span>:</span><strong>${this.escapeHtml(buyerName)}</strong>
+          <span class="label">شماره همراه</span><span>:</span><strong>${this.escapeHtml(buyerPhone)}</strong>
+          <span class="label">آدرس</span><span>:</span><strong>${this.escapeHtml(buyerAddress)}</strong>
+          <span class="label">نوع فاکتور</span><span>:</span><strong>${this.escapeHtml(payerTypeLabel)}</strong>
+        </div>
+      </article>
+
+      <article class="party-card">
+        <div class="party-header">
+          <h3>فروشنده</h3>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 9l2-5h14l2 5"></path>
+            <path d="M4 9h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9z"></path>
+            <path d="M9 13h6"></path>
+          </svg>
+        </div>
+        <div class="party-info">
           <span class="label">نام فروشگاه</span><span>:</span><strong>${this.escapeHtml(sellerName)}</strong>
-          <span class="label">شناسه</span><span>:</span><strong>${this.escapeHtml(sellerNationalId)}</strong>
           <span class="label">تلفن</span><span>:</span><strong>${this.escapeHtml(sellerPhone)}</strong>
           <span class="label">آدرس</span><span>:</span><strong>${this.escapeHtml(sellerAddress)}</strong>
         </div>
-      </div>
-      <div class="card">
-        <h3>خریدار</h3>
-        <div class="person-grid">
-          <span class="label">نام</span><span>:</span><strong>${this.escapeHtml([buyer?.firstName, buyer?.lastName].filter(Boolean).join(' ') || '-')}</strong>
-          <span class="label">شماره همراه</span><span>:</span><strong>${this.escapeHtml(buyer?.phone || '-')}</strong>
-          <span class="label">آدرس</span><span>:</span><strong>${this.escapeHtml(buyer?.address || '-')}</strong>
-          <span class="label">نوع فاکتور</span><span>:</span><strong>${invoice.payerType === 'COLLABORATOR' ? 'همکار' : 'مشتری'}</strong>
-        </div>
-      </div>
-    </div>
+      </article>
+    </section>
 
     <table>
       <thead>
         <tr>
-          <th style="width:56px;">ردیف</th>
-          <th>شرح کالا</th>
-          <th style="width:90px;">تعداد</th>
-          <th style="width:150px;">قیمت واحد (ریال)</th>
-          <th style="width:170px;">مبلغ کل (ریال)</th>
+          <th style="width:58px;">ردیف</th>
+          <th>نام کالا</th>
+          <th style="width:95px;">تعداد</th>
+          <th style="width:170px;">قیمت واحد (ریال)</th>
+          <th style="width:180px;">مبلغ کل (ریال)</th>
         </tr>
       </thead>
       <tbody>
-        ${tableRows || `<tr><td colspan="5">اقلامی برای این سفارش ثبت نشده است.</td></tr>`}
+        ${emptyRows}
       </tbody>
     </table>
 
-    <div class="summary">
-      <div class="summary-row"><div class="value">${this.formatMoney(subtotal)}</div><div class="label">جمع جزء</div></div>
-      <div class="summary-row"><div class="value">${this.formatMoney(extraAmount)}</div><div class="label">مبلغ افزوده</div></div>
-      <div class="summary-row"><div class="value">${this.formatMoney(discountAmount)}</div><div class="label">تخفیف</div></div>
-      <div class="summary-row final"><div class="value">${this.formatMoney(finalAmount)}</div><div class="label">مبلغ قابل پرداخت</div></div>
-    </div>
+    <section class="summary">
+      ${summaryRows.join('')}
+    </section>
 
-    <div class="card" style="margin-bottom:12px;">
-      <div class="person-grid">
-        <span class="label">عنوان فاکتور</span><span>:</span><strong>${this.escapeHtml(invoice.title || '-')}</strong>
-        <span class="label">وضعیت</span><span>:</span><strong>${this.escapeHtml(invoice.status)}</strong>
-        <span class="label">توضیحات</span><span>:</span><strong>${this.escapeHtml(invoice.description || '—')}</strong>
+    <section class="notes">
+      <div class="notes-head">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <path d="M14 2v6h6"></path>
+          <path d="M8 13h8M8 17h6"></path>
+        </svg>
+        <span>توضیحات</span>
       </div>
-    </div>
+      ${invoice.title ? `<p>عنوان: ${this.escapeHtml(invoice.title)}</p>` : ''}
+      <p>وضعیت: ${this.escapeHtml(statusLabel)}</p>
+      ${showInstallmentInfo ? installmentInfo : ''}
+      ${invoice.description ? `<p>${this.escapeHtml(invoice.description)}</p>` : ''}
+    </section>
 
-    <div class="card">
-      <div class="person-grid">
-        <span class="label">وضعیت صدور در سفارش</span><span>:</span><strong>این فاکتور شماره ${invoiceNumberInOrder} از ${totalInvoicesInOrder} فاکتور سفارش است.</strong>
-        <span class="label">مبلغ این فاکتور</span><span>:</span><strong>${this.formatMoney(finalAmount)} ریال</strong>
-        <span class="label">مانده سفارش بعد از این فاکتور</span><span>:</span><strong>${this.formatMoney(remainingAfterThisInvoice)} ریال</strong>
+    <footer class="footer">
+      <div class="contacts">
+        <div class="contact">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 3.1 5.18 2 2 0 0 1 5.08 3h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.6a2 2 0 0 1-.45 2.11L9.1 10.6a16 16 0 0 0 4.3 4.3l1.17-1.15a2 2 0 0 1 2.11-.45c.83.29 1.7.5 2.6.62A2 2 0 0 1 22 16.92z"></path>
+          </svg>
+          <span>${this.escapeHtml(sellerPhone)}</span>
+        </div>
+        <div class="contact">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+            <path d="M16 11.37a4 4 0 1 1-3.37-3.37 4 4 0 0 1 3.37 3.37z"></path>
+            <line x1="17.5" y1="6.5" x2="17.5" y2="6.5"></line>
+          </svg>
+          <span>@best_factory</span>
+        </div>
+        <div class="contact">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M2 12h20"></path>
+            <path d="M12 2a15 15 0 0 1 0 20"></path>
+            <path d="M12 2a15 15 0 0 0 0 20"></path>
+          </svg>
+          <span>www.best.example</span>
+        </div>
       </div>
-    </div>
-
-    <div class="notes">
-      لطفاً هنگام دریافت کالا، فاکتور را بررسی و نگهداری فرمایید.
-    </div>
+      <p class="thank-you">از اعتماد و خرید شما سپاسگزاریم.</p>
+    </footer>
   </div>
 </body>
 </html>`;
@@ -613,3 +871,5 @@ export class InvoicesService extends BaseService {
     }
   }
 }
+
+

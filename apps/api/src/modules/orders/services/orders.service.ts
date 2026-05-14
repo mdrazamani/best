@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { BaseService } from '../../../common/services/base.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { addMoney, clampMoneyNonNegative, derivePaymentStatus, maxMoney, minMoney, multiplyMoney, percentOf, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
+import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, derivePaymentStatus, maxMoney, minMoney, multiplyMoney, percentOf, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
 import { OrdersRepository } from '../orders.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { InvoicesService } from '../../invoices/services/invoices.service';
@@ -221,8 +221,14 @@ export class OrdersService extends BaseService {
 
   private withPaymentSummary<T extends { invoices: Array<{ paidAmount: unknown; amount: unknown }>; totalPrice: unknown }>(order: T) {
     const total = clampMoneyNonNegative(order.totalPrice ?? 0);
+    const normalizedInvoices = Array.isArray(order.invoices)
+      ? order.invoices.map((invoice) => ({
+          ...invoice,
+          status: deriveInvoiceStatus(invoice.amount, invoice.paidAmount)
+        }))
+      : [];
     const paidAmount = addMoney(
-      ...order.invoices.map((invoice) => minMoney(clampMoneyNonNegative(invoice.paidAmount ?? 0), clampMoneyNonNegative(invoice.amount ?? 0)))
+      ...normalizedInvoices.map((invoice) => minMoney(clampMoneyNonNegative(invoice.paidAmount ?? 0), clampMoneyNonNegative(invoice.amount ?? 0)))
     );
     const remainingAmount = maxMoney(subtractMoney(total, paidAmount), 0);
     const percent = percentOf(total, paidAmount);
@@ -230,6 +236,7 @@ export class OrdersService extends BaseService {
 
     return {
       ...order,
+      invoices: normalizedInvoices,
       paymentSummary: {
         total: toMoneyNumber(total),
         paidAmount: toMoneyNumber(paidAmount),
