@@ -1,118 +1,120 @@
-﻿import { ArrowRight, BellRing, Menu, Moon, RefreshCcw, Sun } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Bell, ChevronRight, LogOut, Menu, Moon, Sun, UserCircle2 } from 'lucide-react';
 import { useBestContext } from '../../contexts/best-context';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
-import { shamsiDate, textFa } from '../../lib/format';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '../ui/dropdown-menu';
+import { textFa } from '../../lib/format';
 
-export function AppHeader({
-  onToggleSidebar,
-  theme,
-  onToggleTheme
-}: {
+type AppHeaderProps = {
   onToggleSidebar: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
-}) {
-  const { reload, logout, notifications, canGoBack, goBack, openNotificationTarget, acknowledgeNotification } = useBestContext();
-  const todayShamsi = useMemo(() => new Date().toLocaleDateString('fa-IR-u-ca-persian'), []);
+};
+
+export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderProps) {
+  const { canGoBack, goBack, notifications, acknowledgeNotification, openNotificationTarget, session, logout } = useBestContext();
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const todayShamsi = useMemo(
+    () =>
+      new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }).format(new Date()),
+    []
+  );
 
   return (
-    <header className="sticky top-1 z-[70] mb-4 rounded-lg border border-slate-300/80 bg-white p-3 shadow-[0_22px_40px_-28px_rgba(15,23,42,0.6)] backdrop-blur-md dark:border-slate-700/90 dark:bg-card sm:mb-6 sm:rounded-xl sm:p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-2.5 sm:gap-3">
+    <header className="mb-4 rounded-xl border border-slate-300/90 bg-white px-3 py-2 shadow-sm dark:border-slate-700/80 dark:bg-card sm:px-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           <Button variant="outline" size="icon" className="lg:hidden" onClick={onToggleSidebar} aria-label="باز کردن منو">
             <Menu className="h-4 w-4" />
           </Button>
-          <div>
-            <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">پنل مدیریت BEST</h1>
-            <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
-              به نام خدا
-              <span className="hidden sm:inline"> • {todayShamsi}</span>
-            </p>
-          </div>
-        </div>
 
-        <div className="flex w-full items-center gap-2 lg:max-w-2xl">
           <Button
             variant="outline"
-            size="icon"
-            onClick={goBack}
+            size="sm"
+            className="min-w-[2.25rem] px-2 sm:min-w-[6.5rem] sm:px-3"
             disabled={!canGoBack}
+            onClick={goBack}
             aria-label="بازگشت"
-            className="h-10 w-10 shrink-0 sm:h-11 sm:w-11"
           >
-            <ArrowRight className="h-4 w-4" />
+            <ChevronRight className="h-4 w-4" />
+            <span className="hidden sm:inline">بازگشت</span>
           </Button>
 
-          <Button
-            variant="outline"
-            onClick={() => void reload()}
-            aria-label="بروزرسانی داده‌ها"
-            className="h-10 px-3 text-sm sm:h-11 sm:px-4"
-          >
-            <RefreshCcw className="h-4 w-4" />
-            <span className="hidden sm:inline">بروزرسانی</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onToggleTheme}
-            aria-label="تغییر تم"
-            className="h-10 w-10 shrink-0 sm:h-11 sm:w-11"
-          >
-            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          <Button variant="outline" size="icon" onClick={onToggleTheme} aria-label="تغییر پوسته">
+            {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="secondary"
-                size="icon"
-                aria-label="اعلان‌ها"
-                className="relative h-10 w-10 shrink-0 sm:h-11 sm:w-11"
-              >
-                <BellRing className="h-4 w-4" />
-                {notifications.length ? <span className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-destructive" /> : null}
+              <Button variant="outline" size="icon" className="relative" aria-label="اعلان‌ها">
+                <Bell className="h-4 w-4" />
+                {notifications.length ? (
+                  <span className="absolute -left-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+                    {notifications.length > 9 ? '9+' : notifications.length}
+                  </span>
+                ) : null}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[340px]">
+            <DropdownMenuContent align="start" className="w-[19rem] sm:w-[24rem]">
+              <DropdownMenuLabel>اعلان‌های اخیر</DropdownMenuLabel>
+              <DropdownMenuSeparator />
               {notifications.length === 0 ? (
-                <DropdownMenuItem disabled>اعلان فعالی وجود ندارد</DropdownMenuItem>
+                <div className="px-2 py-3 text-sm text-muted-foreground">اعلان جدیدی ندارید.</div>
               ) : (
-                notifications.slice(0, 8).map((item) => (
-                  <DropdownMenuItem key={item.id} className="flex-col items-start gap-1 py-2" onClick={() => openNotificationTarget(item)}>
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span className="text-sm font-semibold">{textFa(item.title)}</span>
-                      <Badge variant={item.level === 'critical' ? 'destructive' : 'warning'}>
-                        {item.level === 'critical' ? 'فوری' : 'نزدیک'}
-                      </Badge>
-                    </div>
-                    <p className="line-clamp-2 text-xs text-muted-foreground">{textFa(item.description)}</p>
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span className="text-xs text-muted-foreground">{shamsiDate(item.dueDate)}</span>
-                      <button
-                        type="button"
-                        className="text-xs text-primary hover:underline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          acknowledgeNotification(item.id);
-                        }}
-                      >
-                        خوانده‌ام
-                      </button>
-                    </div>
+                notifications.slice(0, 6).map((item) => (
+                  <DropdownMenuItem
+                    key={item.id}
+                    className="flex cursor-pointer flex-col items-start gap-1 py-2"
+                    onClick={() => {
+                      acknowledgeNotification(item.id);
+                      openNotificationTarget(item);
+                    }}
+                  >
+                    <span className="text-sm font-semibold">{textFa(item.title)}</span>
+                    <span className="line-clamp-2 text-xs text-muted-foreground">{textFa(item.description)}</span>
                   </DropdownMenuItem>
                 ))
               )}
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button variant="destructive" onClick={logout} className="mr-auto h-10 px-3 text-sm sm:mr-0 sm:h-11 sm:px-4 sm:text-base">
-            خروج
-          </Button>
+          <div onMouseEnter={() => setProfileOpen(true)} onMouseLeave={() => setProfileOpen(false)}>
+            <DropdownMenu open={profileOpen} onOpenChange={setProfileOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label="پروفایل">
+                  <UserCircle2 className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel className="space-y-1">
+                  <div className="text-xs text-muted-foreground">کاربر وارد شده</div>
+                  <div className="text-sm font-bold">{session?.username ?? '-'}</div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onClick={logout}>
+                  <LogOut className="ml-2 h-4 w-4" />
+                  خروج
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        <div className="min-w-0 text-left">
+          <p className="truncate text-lg font-extrabold tracking-tight text-foreground sm:text-2xl">پنل مدیریت بست</p>
+          <p className="truncate text-[11px] text-muted-foreground sm:text-xs">به نام خدا | {todayShamsi}</p>
         </div>
       </div>
     </header>

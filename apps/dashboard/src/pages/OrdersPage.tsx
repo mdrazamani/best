@@ -64,6 +64,7 @@ export function OrdersPage() {
     closeOrderDetail,
     openCustomerDetail,
     openCollaboratorDetail,
+    createInvoice,
     updateInvoice,
     navigateToTab
   } = useBestContext();
@@ -87,11 +88,22 @@ export function OrdersPage() {
   const [lineItems, setLineItems] = useState<LineItemForm[]>([createLineItem()]);
   const [finalPrice, setFinalPrice] = useState('');
   const [finalPriceOverridden, setFinalPriceOverridden] = useState(false);
+  const [createInitialInvoice, setCreateInitialInvoice] = useState(true);
 
   const [selectedStage, setSelectedStage] = useState('RECEIVED');
   const [detailStageDraft, setDetailStageDraft] = useState('RECEIVED');
   const [invoiceStatusDrafts, setInvoiceStatusDrafts] = useState<Record<string, string>>({});
   const [savingInvoiceId, setSavingInvoiceId] = useState<string | null>(null);
+  const [detailInvoiceOpen, setDetailInvoiceOpen] = useState(false);
+  const [detailInvoiceSubmitting, setDetailInvoiceSubmitting] = useState(false);
+  const [detailInvoiceForm, setDetailInvoiceForm] = useState({
+    amount: '',
+    paidAmount: '0',
+    status: 'UNPAID',
+    payerType: 'CUSTOMER',
+    dueDate: '',
+    description: ''
+  });
 
   const customerOptions = useMemo(() => customers.map((item) => ({ value: item.id, label: fullName(item) })), [customers]);
   const collaboratorOptions = useMemo(
@@ -149,6 +161,7 @@ export function OrdersPage() {
       setLineItems([createLineItem()]);
       setFinalPrice('');
       setFinalPriceOverridden(false);
+      setCreateInitialInvoice(true);
     }
   }, [createOpen]);
 
@@ -163,6 +176,19 @@ export function OrdersPage() {
       setDetailStageDraft(orderDetail.stage);
     }
   }, [orderDetail?.id, orderDetail?.stage]);
+
+  useEffect(() => {
+    if (!orderDetail?.id) return;
+    const remainingAmount = Number(orderDetail.paymentSummary?.remainingAmount ?? orderDetail.paymentSummary?.total ?? orderDetail.totalPrice ?? 0);
+    setDetailInvoiceForm({
+      amount: remainingAmount > 0 ? String(remainingAmount) : '',
+      paidAmount: '0',
+      status: 'UNPAID',
+      payerType: orderDetail.collaborator?.id ? 'COLLABORATOR' : 'CUSTOMER',
+      dueDate: orderDetail.expectedCompletionDate ?? '',
+      description: ''
+    });
+  }, [orderDetail?.id, orderDetail?.paymentSummary?.remainingAmount, orderDetail?.paymentSummary?.total, orderDetail?.totalPrice, orderDetail?.collaborator?.id, orderDetail?.expectedCompletionDate]);
 
   const updateLineItem = (id: string, key: keyof Omit<LineItemForm, 'id'>, value: string) => {
     setLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
@@ -201,6 +227,7 @@ export function OrdersPage() {
       unitPrice: firstLine?.unitPrice,
       lineItems: normalizedLineItems,
       totalPrice: Number.isFinite(payloadTotal) ? payloadTotal : 0,
+      createInitialInvoice,
       description: form.description || undefined
     });
 
@@ -242,6 +269,32 @@ export function OrdersPage() {
     }
   };
 
+  const submitDetailInvoice = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!orderDetail?.id) return;
+
+    const amount = toNumber(detailInvoiceForm.amount);
+    const paidAmount = toNumber(detailInvoiceForm.paidAmount);
+
+    setDetailInvoiceSubmitting(true);
+    try {
+      await createInvoice({
+        orderId: orderDetail.id,
+        amount,
+        paidAmount,
+        status: detailInvoiceForm.status,
+        payerType: detailInvoiceForm.payerType,
+        payerId: detailInvoiceForm.payerType === 'COLLABORATOR' ? orderDetail.collaborator?.id : orderDetail.customer?.id,
+        dueDate: detailInvoiceForm.dueDate || undefined,
+        description: detailInvoiceForm.description || undefined
+      });
+      await openOrderDetail(orderDetail.id);
+      setDetailInvoiceOpen(false);
+    } finally {
+      setDetailInvoiceSubmitting(false);
+    }
+  };
+
   if (orderDetail) {
     const detailLineItems = Array.isArray(orderDetail.lineItems) ? orderDetail.lineItems : [];
     const detailInvoices = Array.isArray(orderDetail.invoices) ? orderDetail.invoices : [];
@@ -254,7 +307,6 @@ export function OrdersPage() {
             <div>
               <CardTitle className="text-2xl font-extrabold">جزئیات سفارش {orderDetail.orderNumber}</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">تاریخ ثبت: {shamsiDate(orderDetail.createdAt)}</p>
-              <p className="text-[11px] text-muted-foreground sm:text-xs">تمام مبالغ به ریال نمایش داده می‌شوند.</p>
             </div>
             <Button variant="outline" onClick={closeOrderDetail}>
               <ArrowRight className="h-4 w-4" />
@@ -393,8 +445,12 @@ export function OrdersPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-xl font-bold">فاکتورهای سفارش و وضعیت پرداخت</CardTitle>
+            <Button onClick={() => setDetailInvoiceOpen(true)}>
+              <Plus className="h-4 w-4" />
+              افزودن فاکتور
+            </Button>
           </CardHeader>
           <CardContent>
             {detailInvoices.length === 0 ? (
@@ -454,6 +510,72 @@ export function OrdersPage() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={detailInvoiceOpen} onOpenChange={setDetailInvoiceOpen}>
+          <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>افزودن فاکتور برای سفارش {orderDetail.orderNumber}</DialogTitle>
+              <DialogDescription>از همین صفحه می‌توانید فاکتور جدید ثبت کنید.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={submitDetailInvoice} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={detailInvoiceForm.amount}
+                  placeholder="مبلغ کل فاکتور"
+                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, amount: e.target.value }))}
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={detailInvoiceForm.paidAmount}
+                  placeholder="مبلغ پرداختی"
+                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, paidAmount: e.target.value }))}
+                />
+                <SearchableSelect
+                  value={detailInvoiceForm.status}
+                  onChange={(value) => setDetailInvoiceForm((prev) => ({ ...prev, status: value }))}
+                  options={INVOICE_STATUS_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                  placeholder="وضعیت فاکتور"
+                  isSearchable={false}
+                />
+                <SearchableSelect
+                  value={detailInvoiceForm.payerType}
+                  onChange={(value) => setDetailInvoiceForm((prev) => ({ ...prev, payerType: value }))}
+                  options={[
+                    { value: 'CUSTOMER', label: 'پرداخت‌کننده: مشتری' },
+                    ...(orderDetail.collaborator?.id ? [{ value: 'COLLABORATOR', label: 'پرداخت‌کننده: همکار' }] : [])
+                  ]}
+                  placeholder="نوع پرداخت‌کننده"
+                  isSearchable={false}
+                />
+                <div className="sm:col-span-2">
+                  <PersianDatePicker
+                    value={detailInvoiceForm.dueDate}
+                    onChange={(value) => setDetailInvoiceForm((prev) => ({ ...prev, dueDate: value ?? '' }))}
+                    placeholder="تاریخ سررسید فاکتور"
+                  />
+                </div>
+              </div>
+              <Textarea
+                value={detailInvoiceForm.description}
+                placeholder="توضیحات فاکتور"
+                onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, description: e.target.value }))}
+              />
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setDetailInvoiceOpen(false)}>
+                  انصراف
+                </Button>
+                <Button type="submit" disabled={detailInvoiceSubmitting}>
+                  ذخیره فاکتور
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <Card>
           <CardHeader>
@@ -561,6 +683,16 @@ export function OrdersPage() {
                     <Input type="number" min="0" step="0.01" value={finalPrice} placeholder="مبلغ نهایی" onChange={(e) => { setFinalPrice(e.target.value); setFinalPriceOverridden(true); }} />
                   </div>
                 </div>
+
+                <label className="flex items-center gap-2 rounded-md border border-dashed border-slate-300/80 bg-muted/15 px-3 py-2 text-sm dark:border-slate-700/80">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={createInitialInvoice}
+                    onChange={(e) => setCreateInitialInvoice(e.target.checked)}
+                  />
+                  <span>بعد از ثبت سفارش، فاکتور اولیه به‌صورت خودکار ساخته شود.</span>
+                </label>
 
                 <Textarea placeholder="توضیحات" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
                 <DialogFooter>

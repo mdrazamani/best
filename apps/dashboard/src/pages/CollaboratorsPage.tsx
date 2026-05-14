@@ -427,6 +427,7 @@ export function CollaboratorsPage() {
                     <TableHead>نام</TableHead>
                     <TableHead>موبایل</TableHead>
                     <TableHead>تعداد سفارش</TableHead>
+                    <TableHead>تاریخ ثبت</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
@@ -440,6 +441,7 @@ export function CollaboratorsPage() {
                       </TableCell>
                       <TableCell>{item.phone || '-'}</TableCell>
                       <TableCell>{item._count?.orders || 0}</TableCell>
+                      <TableCell>{shamsiDate(item.createdAt)}</TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

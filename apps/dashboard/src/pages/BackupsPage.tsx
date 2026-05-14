@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Download, MoreHorizontal, Play, Save, Search } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { shamsiDate } from '../lib/format';
@@ -13,6 +13,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SearchableSelect } from '../components/ui/searchable-select';
 
 const PAGE_SIZE = 8;
+const backupStatusLabel = (value?: string) => {
+  if (value === 'SUCCESS') return 'موفق';
+  if (value === 'FAILED') return 'ناموفق';
+  if (value === 'PENDING') return 'در حال انجام';
+  return value || '-';
+};
 
 export function BackupsPage() {
   const { backups, backupInterval, updateBackupSettings, runBackup, downloadProtected } = useBestContext();
@@ -138,7 +144,7 @@ export function BackupsPage() {
                       <TableCell>{shamsiDate(backup.createdAt)}</TableCell>
                       <TableCell>
                         <Badge variant={backup.status === 'SUCCESS' ? 'success' : backup.status === 'FAILED' ? 'destructive' : 'outline'}>
-                          {backup.status}
+                          {backupStatusLabel(backup.status)}
                         </Badge>
                       </TableCell>
                       <TableCell>

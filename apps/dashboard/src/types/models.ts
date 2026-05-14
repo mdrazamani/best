@@ -30,10 +30,11 @@ export type User = {
   lastName: string;
   username: string;
   status: 'ACTIVE' | 'DISABLED';
+  createdAt?: string;
   userRoles?: Array<{ role?: Role }>;
 };
 
-export type MeshType = { id: string; title: string; description?: string; isActive: boolean };
+export type MeshType = { id: string; title: string; description?: string; isActive: boolean; createdAt?: string };
 export type Person = {
   id: string;
   firstName?: string;

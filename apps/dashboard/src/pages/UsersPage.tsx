@@ -1,7 +1,7 @@
 ﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { fullName, permissionLabel } from '../lib/format';
+import { fullName, permissionLabel, shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
@@ -167,6 +167,7 @@ export function UsersPage() {
                     <TableHead>نام کاربری</TableHead>
                     <TableHead>نقش‌ها</TableHead>
                     <TableHead>وضعیت</TableHead>
+                    <TableHead>تاریخ ثبت</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
@@ -179,6 +180,7 @@ export function UsersPage() {
                       <TableCell>
                         <Badge variant={item.status === 'ACTIVE' ? 'success' : 'outline'}>{item.status === 'ACTIVE' ? 'فعال' : 'غیرفعال'}</Badge>
                       </TableCell>
+                      <TableCell>{shamsiDate(item.createdAt)}</TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

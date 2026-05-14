@@ -1,6 +1,7 @@
 ﻿import { FormEvent, useMemo, useState } from 'react';
 import { MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
+import { shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
@@ -110,6 +111,7 @@ export function MeshTypesPage() {
                     <TableHead>عنوان</TableHead>
                     <TableHead>توضیح</TableHead>
                     <TableHead>وضعیت</TableHead>
+                    <TableHead>تاریخ ثبت</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
@@ -121,6 +123,7 @@ export function MeshTypesPage() {
                       <TableCell>
                         <Badge variant={item.isActive ? 'success' : 'outline'}>{item.isActive ? 'فعال' : 'غیرفعال'}</Badge>
                       </TableCell>
+                      <TableCell>{shamsiDate(item.createdAt)}</TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

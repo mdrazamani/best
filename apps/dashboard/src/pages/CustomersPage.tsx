@@ -433,6 +433,7 @@ export function CustomersPage() {
                     <TableHead>موبایل</TableHead>
                     <TableHead>معرف</TableHead>
                     <TableHead>تعداد سفارش</TableHead>
+                    <TableHead>تاریخ ثبت</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
@@ -447,6 +448,7 @@ export function CustomersPage() {
                       <TableCell>{item.phone || '-'}</TableCell>
                       <TableCell>{fullName(item.referredByCollaborator || undefined)}</TableCell>
                       <TableCell>{item._count?.orders || 0}</TableCell>
+                      <TableCell>{shamsiDate(item.createdAt)}</TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

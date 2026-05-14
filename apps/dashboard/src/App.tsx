@@ -1,6 +1,6 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Heart, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { BestContext } from './contexts/best-context';
 import { useBestApp } from './hooks/use-best-app';
 import { AppHeader } from './components/layout/AppHeader';
@@ -22,7 +22,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 const THEME_KEY = 'best_theme';
 const SIDEBAR_KEY = 'best_sidebar_collapsed';
 const PROJECT_VERSION = '0.1.1';
-const COMING_SOON_ITEMS = ['تولید', 'انبارداری', 'تنظیمات'] as const;
 
 export function App() {
   const app = useBestApp();
@@ -130,7 +129,7 @@ export function App() {
               <div className={`mb-4 flex items-center gap-2 ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
                 {!sidebarCollapsed ? (
                   <div>
-                    <p className="text-xl font-extrabold tracking-tight text-primary">BEST</p>
+                    <p className="text-xl font-extrabold tracking-tight text-primary">بست</p>
                     <p className="text-xs text-muted-foreground">پنل حسابداری تولیدی توری</p>
                   </div>
                 ) : null}
@@ -152,29 +151,18 @@ export function App() {
                     onChange={navigateToTab}
                     collapsed={sidebarCollapsed}
                     onItemClick={() => setMobileSidebarOpen(false)}
+                    onDisabledItemClick={openComingSoon}
                   />
                 </div>
 
-                <div className={`mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-700/80 ${sidebarCollapsed ? 'space-y-2' : 'space-y-2.5'}`}>
-                  {COMING_SOON_ITEMS.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      aria-disabled="true"
-                      className={`w-full rounded-lg border border-dashed border-slate-300/80 bg-slate-50/80 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400 dark:hover:bg-slate-800/70 ${
-                        sidebarCollapsed ? 'px-0 text-[11px]' : ''
-                      }`}
-                      title={sidebarCollapsed ? item : undefined}
-                      onMouseEnter={() => openComingSoon(item)}
-                      onFocus={() => openComingSoon(item)}
-                      onClick={() => openComingSoon(item)}
-                    >
-                      {sidebarCollapsed ? item.slice(0, 2) : item}
-                    </button>
-                  ))}
-
-                  <div className="pt-1 text-center text-[10px] font-medium text-muted-foreground">
-                    نسخه {PROJECT_VERSION}
+                <div className="mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-700/80">
+                  <div className="flex items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground">
+                    <span>نسخه {PROJECT_VERSION}</span>
+                    <span>•</span>
+                    <span className="inline-flex items-center gap-1">
+                      ساخته شده با
+                      <Heart className="h-3 w-3 fill-red-500 text-red-500" />
+                    </span>
                   </div>
                 </div>
               </div>

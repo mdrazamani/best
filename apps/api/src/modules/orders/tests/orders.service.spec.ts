@@ -15,7 +15,11 @@ describe('OrdersService', () => {
     log: jest.fn()
   };
 
-  const service = new OrdersService(ordersRepository as any, operationLogsService as any);
+  const invoicesService = {
+    create: jest.fn()
+  };
+
+  const service = new OrdersService(ordersRepository as any, operationLogsService as any, invoicesService as any);
 
   beforeEach(() => {
     jest.clearAllMocks();

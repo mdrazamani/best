@@ -2,6 +2,7 @@
 import { BaseService } from '../../../common/services/base.service';
 import { OrdersRepository } from '../orders.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
+import { InvoicesService } from '../../invoices/services/invoices.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderDto } from '../dto/update-order.dto';
 import { ListOrdersQueryDto } from '../dto/list-orders-query.dto';
@@ -10,7 +11,8 @@ import { ListOrdersQueryDto } from '../dto/list-orders-query.dto';
 export class OrdersService extends BaseService {
   constructor(
     private readonly ordersRepository: OrdersRepository,
-    private readonly operationLogsService: OperationLogsService
+    private readonly operationLogsService: OperationLogsService,
+    private readonly invoicesService: InvoicesService
   ) {
     super();
   }
@@ -84,6 +86,20 @@ export class OrdersService extends BaseService {
       description: 'Order created',
       orderId: created.id
     });
+
+    if (dto.createInitialInvoice !== false) {
+      const invoiceAmount = Number(totalPrice ?? 0);
+      await this.invoicesService.create(actorId, {
+        orderId: created.id,
+        amount: invoiceAmount,
+        paidAmount: 0,
+        status: 'UNPAID',
+        payerType: created.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
+        payerId: created.collaboratorId ?? created.customerId,
+        dueDate: dto.expectedCompletionDate,
+        description: 'فاکتور اولیه سفارش'
+      });
+    }
 
     return this.detail(created.id);
   }

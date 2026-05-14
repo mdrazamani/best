@@ -31,7 +31,7 @@ export function LoginPage() {
       <div className="relative flex min-h-screen items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle className="text-2xl font-bold">ورود به پنل مدیریت BEST</CardTitle>
+            <CardTitle className="text-2xl font-bold">ورود به پنل مدیریت بست</CardTitle>
             <CardDescription>حساب کاربری خود را برای ورود وارد کنید.</CardDescription>
           </CardHeader>
           <CardContent>
