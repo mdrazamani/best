@@ -1,7 +1,7 @@
-﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ArrowRight, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { ORDER_STAGES, WORK_TYPES, fullName, money, shamsiDate } from '../lib/format';
+import { ORDER_STAGES, WORK_TYPES, fullName, invoiceStatusLabel, money, orderStageLabel, shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -16,6 +16,11 @@ import { Pagination } from '../components/shared/pagination';
 import { PersianDatePicker } from '../components/ui/persian-date-picker';
 
 const PAGE_SIZE = 10;
+const INVOICE_STATUS_OPTIONS = [
+  { value: 'UNPAID', label: 'پرداخت نشده' },
+  { value: 'PARTIAL', label: 'ناقص' },
+  { value: 'PAID', label: 'پرداخت شده' }
+] as const;
 
 type LineItemForm = {
   id: string;
@@ -40,8 +45,29 @@ const toNumber = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const payerTypeLabel = (value?: string) => {
+  if (value === 'COLLABORATOR') return 'همکار';
+  return 'مشتری';
+};
+
 export function OrdersPage() {
-  const { customers, collaborators, meshTypes, orders, createOrder, updateOrder, removeOrder } = useBestContext();
+  const {
+    customers,
+    collaborators,
+    meshTypes,
+    orders,
+    orderDetail,
+    createOrder,
+    updateOrder,
+    removeOrder,
+    openOrderDetail,
+    closeOrderDetail,
+    openCustomerDetail,
+    openCollaboratorDetail,
+    updateInvoice,
+    navigateToTab
+  } = useBestContext();
+
   const [createOpen, setCreateOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
   const [stageOrderId, setStageOrderId] = useState<string | null>(null);
@@ -63,6 +89,9 @@ export function OrdersPage() {
   const [finalPriceOverridden, setFinalPriceOverridden] = useState(false);
 
   const [selectedStage, setSelectedStage] = useState('RECEIVED');
+  const [detailStageDraft, setDetailStageDraft] = useState('RECEIVED');
+  const [invoiceStatusDrafts, setInvoiceStatusDrafts] = useState<Record<string, string>>({});
+  const [savingInvoiceId, setSavingInvoiceId] = useState<string | null>(null);
 
   const customerOptions = useMemo(() => customers.map((item) => ({ value: item.id, label: fullName(item) })), [customers]);
   const collaboratorOptions = useMemo(
@@ -70,6 +99,19 @@ export function OrdersPage() {
     [collaborators]
   );
   const meshOptions = useMemo(() => meshTypes.filter((item) => item.isActive).map((item) => ({ value: item.id, label: item.title })), [meshTypes]);
+  const stageFilterOptions = useMemo(
+    () => [{ value: 'all', label: 'همه مراحل' }, ...ORDER_STAGES.map((stage) => ({ value: stage.value, label: stage.label }))],
+    []
+  );
+  const paymentFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: 'همه وضعیت‌های پرداخت' },
+      { value: 'paid', label: 'تسویه‌شده' },
+      { value: 'partial', label: 'پرداخت ناقص' },
+      { value: 'unpaid', label: 'پرداخت نشده' }
+    ],
+    []
+  );
 
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -115,6 +157,12 @@ export function OrdersPage() {
       setFinalPrice(calculatedTotal ? String(calculatedTotal) : '');
     }
   }, [calculatedTotal, finalPriceOverridden]);
+
+  useEffect(() => {
+    if (orderDetail?.stage) {
+      setDetailStageDraft(orderDetail.stage);
+    }
+  }, [orderDetail?.id, orderDetail?.stage]);
 
   const updateLineItem = (id: string, key: keyof Omit<LineItemForm, 'id'>, value: string) => {
     setLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
@@ -172,6 +220,276 @@ export function OrdersPage() {
     setStageOrderId(null);
   };
 
+  const openDetail = async (orderId: string) => {
+    await openOrderDetail(orderId);
+  };
+
+  const saveDetailStage = async () => {
+    if (!orderDetail?.id) return;
+    await updateOrder(orderDetail.id, { stage: detailStageDraft });
+    await openOrderDetail(orderDetail.id);
+  };
+
+  const saveInvoiceStatus = async (invoiceId: string, fallbackStatus: string) => {
+    if (!orderDetail?.id) return;
+    const nextStatus = invoiceStatusDrafts[invoiceId] ?? fallbackStatus;
+    setSavingInvoiceId(invoiceId);
+    try {
+      await updateInvoice(invoiceId, { status: nextStatus });
+      await openOrderDetail(orderDetail.id);
+    } finally {
+      setSavingInvoiceId(null);
+    }
+  };
+
+  if (orderDetail) {
+    const detailLineItems = Array.isArray(orderDetail.lineItems) ? orderDetail.lineItems : [];
+    const detailInvoices = Array.isArray(orderDetail.invoices) ? orderDetail.invoices : [];
+    const detailLogs = Array.isArray(orderDetail.operationLogs) ? orderDetail.operationLogs : [];
+
+    return (
+      <section className="space-y-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-2xl font-extrabold">جزئیات سفارش {orderDetail.orderNumber}</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">تاریخ ثبت: {shamsiDate(orderDetail.createdAt)}</p>
+              <p className="text-[11px] text-muted-foreground sm:text-xs">تمام مبالغ به ریال نمایش داده می‌شوند.</p>
+            </div>
+            <Button variant="outline" onClick={closeOrderDetail}>
+              <ArrowRight className="h-4 w-4" />
+              بازگشت به لیست
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مرحله سفارش</p>
+                <p className="mt-1 font-bold">{orderStageLabel(orderDetail.stage)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">درصد پرداخت</p>
+                <p className="mt-1 font-bold">{orderDetail.paymentSummary?.percent ?? 0}%</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">تاریخ تکمیل تقریبی</p>
+                <p className="mt-1 font-bold">{shamsiDate(orderDetail.expectedCompletionDate)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">نوع کار / توری</p>
+                <p className="mt-1 font-bold">{WORK_TYPES.find((item) => item.value === orderDetail.workType)?.label ?? '-'} / {orderDetail.meshType?.title ?? '-'}</p>
+              </div>
+            </div>
+            <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_auto]">
+              <SearchableSelect
+                value={detailStageDraft || orderDetail.stage}
+                onChange={setDetailStageDraft}
+                options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
+                placeholder="تغییر مرحله سفارش"
+                isSearchable={false}
+              />
+              <Button variant="outline" onClick={() => void saveDetailStage()}>
+                ذخیره مرحله
+              </Button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مبلغ کل سفارش</p>
+                <p className="mt-1 text-lg font-bold">{money(Number(orderDetail.paymentSummary?.total ?? orderDetail.totalPrice ?? 0))}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مبلغ پرداخت‌شده</p>
+                <p className="mt-1 text-lg font-bold">{money(Number(orderDetail.paymentSummary?.paidAmount ?? 0))}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مانده</p>
+                <p className="mt-1 text-lg font-bold text-destructive">{money(Number(orderDetail.paymentSummary?.remainingAmount ?? 0))}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">تعداد فاکتورها</p>
+                <p className="mt-1 text-lg font-bold">{detailInvoices.length}</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-2">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مشخصات مشتری</p>
+                {orderDetail.customer?.id ? (
+                  <button
+                    type="button"
+                    className="mt-1 font-semibold text-primary hover:underline"
+                    onClick={() => {
+                      void openCustomerDetail(orderDetail.customer.id);
+                      navigateToTab('customers');
+                    }}
+                  >
+                    {fullName(orderDetail.customer)}
+                  </button>
+                ) : (
+                  <p className="mt-1 font-semibold">{fullName(orderDetail.customer)}</p>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">موبایل: {orderDetail.customer?.phone || '-'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">آدرس: {orderDetail.customer?.address || '-'}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مشخصات همکار</p>
+                {orderDetail.collaborator?.id ? (
+                  <button
+                    type="button"
+                    className="mt-1 font-semibold text-primary hover:underline"
+                    onClick={() => {
+                      void openCollaboratorDetail(orderDetail.collaborator.id);
+                      navigateToTab('collaborators');
+                    }}
+                  >
+                    {fullName(orderDetail.collaborator)}
+                  </button>
+                ) : (
+                  <p className="mt-1 font-semibold">{fullName(orderDetail.collaborator)}</p>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">موبایل: {orderDetail.collaborator?.phone || '-'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">آدرس: {orderDetail.collaborator?.address || '-'}</p>
+              </div>
+              <p className="sm:col-span-2">
+                <span className="font-semibold">توضیحات سفارش:</span> {orderDetail.description || '-'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl font-bold">ردیف‌های سفارش</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {detailLineItems.length === 0 ? (
+              <EmptyState title="هیچ ردیفی برای سفارش ثبت نشده است" />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>عرض</TableHead>
+                    <TableHead>ارتفاع</TableHead>
+                    <TableHead>تعداد</TableHead>
+                    <TableHead>قیمت واحد</TableHead>
+                    <TableHead>جمع ردیف</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {detailLineItems.map((item: any, idx: number) => (
+                    <TableRow key={item.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
+                      <TableCell>{Number(item.width ?? 0)}</TableCell>
+                      <TableCell>{Number(item.height ?? 0)}</TableCell>
+                      <TableCell>{Number(item.quantity ?? 0)}</TableCell>
+                      <TableCell>{money(Number(item.unitPrice ?? 0))}</TableCell>
+                      <TableCell className="font-semibold">{money(Number(item.lineTotal ?? 0))}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl font-bold">فاکتورهای سفارش و وضعیت پرداخت</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {detailInvoices.length === 0 ? (
+              <EmptyState title="هنوز فاکتوری برای این سفارش ثبت نشده است" />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>شماره فاکتور</TableHead>
+                    <TableHead>پرداخت‌کننده</TableHead>
+                    <TableHead>وضعیت</TableHead>
+                    <TableHead>پرداختی / کل</TableHead>
+                    <TableHead>سررسید</TableHead>
+                    <TableHead>تاریخ ثبت</TableHead>
+                    <TableHead>بروزرسانی وضعیت</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {detailInvoices.map((invoice: any, idx: number) => (
+                    <TableRow key={invoice.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
+                      <TableCell className="font-medium">{invoice.invoiceNumber ?? '-'}</TableCell>
+                      <TableCell>{payerTypeLabel(invoice.payerType)}</TableCell>
+                      <TableCell>
+                        <Badge variant={invoice.status === 'PAID' ? 'success' : invoice.status === 'PARTIAL' ? 'warning' : 'outline'}>
+                          {invoiceStatusLabel(invoice.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</TableCell>
+                      <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
+                      <TableCell>{shamsiDate(invoice.createdAt)}</TableCell>
+                      <TableCell>
+                        {invoice.id ? (
+                          <div className="flex min-w-[230px] items-center gap-2">
+                            <SearchableSelect
+                              value={invoiceStatusDrafts[invoice.id] ?? invoice.status}
+                              onChange={(value) => setInvoiceStatusDrafts((prev) => ({ ...prev, [invoice.id]: value }))}
+                              options={INVOICE_STATUS_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                              placeholder="انتخاب وضعیت"
+                              isSearchable={false}
+                              className="flex-1"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={savingInvoiceId === invoice.id}
+                              onClick={() => void saveInvoiceStatus(invoice.id, invoice.status)}
+                            >
+                              ذخیره
+                            </Button>
+                          </div>
+                        ) : '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl font-bold">آخرین تغییرات سفارش</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {detailLogs.length === 0 ? (
+              <EmptyState title="هیچ لاگی برای سفارش ثبت نشده است" />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>زمان</TableHead>
+                    <TableHead>کاربر</TableHead>
+                    <TableHead>عملیات</TableHead>
+                    <TableHead>شرح</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {detailLogs.slice(0, 20).map((log: any, idx: number) => (
+                    <TableRow key={log.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
+                      <TableCell>{shamsiDate(log.createdAt)}</TableCell>
+                      <TableCell>{fullName(log.actor)}</TableCell>
+                      <TableCell>{log.action ?? '-'}</TableCell>
+                      <TableCell>{log.description ?? '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-4">
       <Card>
@@ -187,25 +505,25 @@ export function OrdersPage() {
             <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-5xl lg:max-w-6xl">
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold">ثبت سفارش جدید</DialogTitle>
-                <DialogDescription>اطلاعات سفارش را وارد کنید.</DialogDescription>
+                <DialogDescription>اطلاعات سفارش را کامل کنید.</DialogDescription>
               </DialogHeader>
               <form onSubmit={submit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <SearchableSelect options={customerOptions} value={form.customerId} onChange={(value) => setForm((prev) => ({ ...prev, customerId: value }))} placeholder="انتخاب مشتری" />
                   <SearchableSelect options={collaboratorOptions} value={form.collaboratorId} onChange={(value) => setForm((prev) => ({ ...prev, collaboratorId: value }))} placeholder="انتخاب همکار" />
-                  <SearchableSelect options={WORK_TYPES.map((item) => ({ value: item.value, label: item.label }))} value={form.workType} onChange={(value) => setForm((prev) => ({ ...prev, workType: value }))} placeholder="نوع سفارش" />
+                  <SearchableSelect options={WORK_TYPES.map((item) => ({ value: item.value, label: item.label }))} value={form.workType} onChange={(value) => setForm((prev) => ({ ...prev, workType: value }))} placeholder="نوع کار" />
                   <SearchableSelect options={meshOptions} value={form.meshTypeId} onChange={(value) => setForm((prev) => ({ ...prev, meshTypeId: value }))} placeholder="نوع توری" />
                   <div className="md:col-span-2">
-                    <PersianDatePicker value={form.expectedCompletionDate} onChange={(value) => setForm((prev) => ({ ...prev, expectedCompletionDate: value ?? '' }))} placeholder="تاریخ موعد تکمیل" />
+                    <PersianDatePicker value={form.expectedCompletionDate} onChange={(value) => setForm((prev) => ({ ...prev, expectedCompletionDate: value ?? '' }))} placeholder="تاریخ تکمیل تقریبی" />
                   </div>
                 </div>
 
                 <div className="rounded-lg border border-slate-300/70 bg-muted/20 p-3 dark:border-slate-700/80">
                   <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold">اقلام سفارش</p>
+                    <p className="text-sm font-semibold">ردیف‌های سفارش</p>
                     <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
                       <Plus className="h-4 w-4" />
-                      افزودن قلم
+                      افزودن ردیف
                     </Button>
                   </div>
 
@@ -235,12 +553,12 @@ export function OrdersPage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <p className="mb-1 text-xs text-muted-foreground">مبلغ محاسبه‌شده</p>
+                    <p className="mb-1 text-xs text-muted-foreground">جمع محاسباتی</p>
                     <div className="flex h-10 items-center rounded-md border border-input bg-background px-3 text-sm font-semibold text-primary">{money(calculatedTotal)}</div>
                   </div>
                   <div>
-                    <p className="mb-1 text-xs text-muted-foreground">قیمت نهایی (قابل ویرایش)</p>
-                    <Input type="number" min="0" step="0.01" value={finalPrice} placeholder="قیمت نهایی" onChange={(e) => { setFinalPrice(e.target.value); setFinalPriceOverridden(true); }} />
+                    <p className="mb-1 text-xs text-muted-foreground">مبلغ نهایی (قابل تغییر)</p>
+                    <Input type="number" min="0" step="0.01" value={finalPrice} placeholder="مبلغ نهایی" onChange={(e) => { setFinalPrice(e.target.value); setFinalPriceOverridden(true); }} />
                   </div>
                 </div>
 
@@ -254,47 +572,48 @@ export function OrdersPage() {
           </Dialog>
         </CardHeader>
         <CardContent>
+          <div className="mb-2 text-xs text-muted-foreground">تمام مبلغ‌ها به ریال و قابل پیگیری هستند.</div>
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input className="pr-9" placeholder="جستجو: شماره سفارش، مشتری، همکار" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <select
+            <SearchableSelect
               value={stageFilter}
-              onChange={(e) => { setStageFilter(e.target.value); setPage(1); }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">همه مراحل</option>
-              {ORDER_STAGES.map((stage) => (
-                <option key={stage.value} value={stage.value}>{stage.label}</option>
-              ))}
-            </select>
-            <select
+              onChange={(value) => {
+                setStageFilter((value || 'all') as 'all' | string);
+                setPage(1);
+              }}
+              options={stageFilterOptions}
+              placeholder="همه مراحل"
+              isSearchable={false}
+            />
+            <SearchableSelect
               value={paymentFilter}
-              onChange={(e) => { setPaymentFilter(e.target.value as 'all' | 'paid' | 'partial' | 'unpaid'); setPage(1); }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">همه وضعیت‌های مالی</option>
-              <option value="paid">تسویه شده</option>
-              <option value="partial">پرداخت ناقص</option>
-              <option value="unpaid">پرداخت نشده</option>
-            </select>
+              onChange={(value) => {
+                setPaymentFilter((value || 'all') as 'all' | 'paid' | 'partial' | 'unpaid');
+                setPage(1);
+              }}
+              options={paymentFilterOptions}
+              placeholder="همه وضعیت‌های پرداخت"
+              isSearchable={false}
+            />
           </div>
 
           {filteredOrders.length === 0 ? (
-            <EmptyState title="هنوز سفارشی ثبت نشده است" description="از دکمه ثبت سفارش استفاده کنید." />
+            <EmptyState title="سفارشی پیدا نشد" description="با ثبت سفارش جدید شروع کنید." />
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>شماره</TableHead>
+                    <TableHead>شماره سفارش</TableHead>
                     <TableHead>مشتری</TableHead>
                     <TableHead>همکار</TableHead>
                     <TableHead>نوع/توری</TableHead>
                     <TableHead>مرحله</TableHead>
-                    <TableHead>وضعیت مالی</TableHead>
-                    <TableHead>موعد تکمیل</TableHead>
+                    <TableHead>پرداخت</TableHead>
+                    <TableHead>تکمیل تقریبی</TableHead>
                     <TableHead>تاریخ ثبت</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
@@ -302,9 +621,47 @@ export function OrdersPage() {
                 <TableBody>
                   {pageItems.map((order, idx) => (
                     <TableRow key={order.id} className={idx % 2 ? 'bg-muted/10' : ''}>
-                      <TableCell className="font-medium">{order.orderNumber}</TableCell>
-                      <TableCell>{fullName(order.customer)}</TableCell>
-                      <TableCell>{fullName(order.collaborator || undefined)}</TableCell>
+                      <TableCell>
+                        <button type="button" className="font-medium text-primary hover:underline" onClick={() => void openDetail(order.id)}>
+                          {order.orderNumber}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        {order.customer?.id ? (
+                          <button
+                            type="button"
+                            className="font-medium text-primary hover:underline"
+                            onClick={() => {
+                              const customerId = order.customer?.id;
+                              if (!customerId) return;
+                              void openCustomerDetail(customerId);
+                              navigateToTab('customers');
+                            }}
+                          >
+                            {fullName(order.customer)}
+                          </button>
+                        ) : (
+                          fullName(order.customer)
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {order.collaborator?.id ? (
+                          <button
+                            type="button"
+                            className="font-medium text-primary hover:underline"
+                            onClick={() => {
+                              const collaboratorId = order.collaborator?.id;
+                              if (!collaboratorId) return;
+                              void openCollaboratorDetail(collaboratorId);
+                              navigateToTab('collaborators');
+                            }}
+                          >
+                            {fullName(order.collaborator)}
+                          </button>
+                        ) : (
+                          fullName(order.collaborator || undefined)
+                        )}
+                      </TableCell>
                       <TableCell>{WORK_TYPES.find((item) => item.value === order.workType)?.label} / {order.meshType?.title || '-'}</TableCell>
                       <TableCell><Badge variant="secondary">{ORDER_STAGES.find((item) => item.value === order.stage)?.label ?? order.stage}</Badge></TableCell>
                       <TableCell>
@@ -321,8 +678,12 @@ export function OrdersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => void openDetail(order.id)}>
+                              <Eye className="ml-2 h-4 w-4" />
+                              مشاهده
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openStageDialog(order.id, order.stage)}>تغییر مرحله</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeOrder(order.id)}>حذف (نرم)</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeOrder(order.id)}>حذف </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

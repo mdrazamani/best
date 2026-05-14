@@ -43,12 +43,22 @@ export class SessionsRepository extends BaseRepository {
     });
   }
 
-  updateRefresh(sessionId: string, refreshTokenHash: string, expiresAt: Date) {
+  updateRefresh(
+    sessionId: string,
+    data: {
+      refreshTokenHash: string;
+      expiresAt: Date;
+      previousRefreshTokenHash?: string | null;
+      previousRefreshValidUntil?: Date | null;
+    }
+  ) {
     return this.prisma.session.update({
       where: { id: sessionId },
       data: {
-        refreshTokenHash,
-        expiresAt,
+        refreshTokenHash: data.refreshTokenHash,
+        expiresAt: data.expiresAt,
+        previousRefreshTokenHash: data.previousRefreshTokenHash ?? null,
+        previousRefreshValidUntil: data.previousRefreshValidUntil ?? null,
         lastActivityAt: new Date()
       }
     });

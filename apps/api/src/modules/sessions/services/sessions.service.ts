@@ -40,12 +40,29 @@ export class SessionsService extends BaseService {
       return null;
     }
 
-    const valid = await argon2.verify(session.refreshTokenHash, refreshToken);
-    return valid ? session : null;
+    const validCurrent = await argon2.verify(session.refreshTokenHash, refreshToken);
+    if (validCurrent) {
+      return { session, matched: 'current' as const };
+    }
+
+    if (!session.previousRefreshTokenHash || !session.previousRefreshValidUntil || session.previousRefreshValidUntil <= new Date()) {
+      return null;
+    }
+
+    const validPrevious = await argon2.verify(session.previousRefreshTokenHash, refreshToken);
+    return validPrevious ? { session, matched: 'previous' as const } : null;
   }
 
-  rotateSession(sessionId: string, refreshTokenHash: string, expiresAt: Date) {
-    return this.sessionsRepository.updateRefresh(sessionId, refreshTokenHash, expiresAt);
+  rotateSession(
+    sessionId: string,
+    data: {
+      refreshTokenHash: string;
+      expiresAt: Date;
+      previousRefreshTokenHash?: string | null;
+      previousRefreshValidUntil?: Date | null;
+    }
+  ) {
+    return this.sessionsRepository.updateRefresh(sessionId, data);
   }
 
   listForUser(userId: string, currentSessionId: string) {

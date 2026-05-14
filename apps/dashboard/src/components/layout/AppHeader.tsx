@@ -1,4 +1,5 @@
 ﻿import { ArrowRight, BellRing, Menu, Moon, RefreshCcw, Sun } from 'lucide-react';
+import { useMemo } from 'react';
 import { useBestContext } from '../../contexts/best-context';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -14,7 +15,8 @@ export function AppHeader({
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
 }) {
-  const { session, reload, logout, notifications, canGoBack, goBack, openNotificationTarget, acknowledgeNotification } = useBestContext();
+  const { reload, logout, notifications, canGoBack, goBack, openNotificationTarget, acknowledgeNotification } = useBestContext();
+  const todayShamsi = useMemo(() => new Date().toLocaleDateString('fa-IR-u-ca-persian'), []);
 
   return (
     <header className="sticky top-1 z-[70] mb-4 rounded-lg border border-slate-300/80 bg-white p-3 shadow-[0_22px_40px_-28px_rgba(15,23,42,0.6)] backdrop-blur-md dark:border-slate-700/90 dark:bg-card sm:mb-6 sm:rounded-xl sm:p-4">
@@ -25,8 +27,10 @@ export function AppHeader({
           </Button>
           <div>
             <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">پنل مدیریت BEST</h1>
-            <p className="text-xs text-muted-foreground sm:text-sm">کاربر فعال: {session?.username ?? '-'}</p>
-            <p className="text-[11px] text-muted-foreground sm:text-xs">تمام مبالغ به ریال نمایش داده می‌شوند.</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
+              به نام خدا
+              <span className="hidden sm:inline"> • {todayShamsi}</span>
+            </p>
           </div>
         </div>
 

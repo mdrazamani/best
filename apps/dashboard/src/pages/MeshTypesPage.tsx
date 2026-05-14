@@ -11,6 +11,7 @@ import { Textarea } from '../components/ui/textarea';
 import { EmptyState } from '../components/shared/empty-state';
 import { Pagination } from '../components/shared/pagination';
 import { Badge } from '../components/ui/badge';
+import { SearchableSelect } from '../components/ui/searchable-select';
 
 const PAGE_SIZE = 10;
 
@@ -21,6 +22,14 @@ export function MeshTypesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [form, setForm] = useState({ title: '', description: '' });
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: 'همه وضعیت‌ها' },
+      { value: 'active', label: 'فعال' },
+      { value: 'inactive', label: 'غیرفعال' }
+    ],
+    []
+  );
 
   const filteredMeshTypes = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -79,15 +88,16 @@ export function MeshTypesPage() {
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input className="pr-9" placeholder="جستجو بر اساس عنوان یا توضیح" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <select
+            <SearchableSelect
               value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value as 'all' | 'active' | 'inactive'); setPage(1); }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">همه وضعیت‌ها</option>
-              <option value="active">فعال</option>
-              <option value="inactive">غیرفعال</option>
-            </select>
+              onChange={(value) => {
+                setStatusFilter((value || 'all') as 'all' | 'active' | 'inactive');
+                setPage(1);
+              }}
+              options={statusFilterOptions}
+              placeholder="همه وضعیت‌ها"
+              isSearchable={false}
+            />
           </div>
 
           {filteredMeshTypes.length === 0 ? (
@@ -121,7 +131,7 @@ export function MeshTypesPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeMeshType(item.id)}>
                               <Trash2 className="ml-2 h-4 w-4" />
-                              حذف (نرم)
+                              حذف 
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

@@ -1,4 +1,5 @@
 ﻿const API_BASE = (globalThis as any).__API_BASE_URL__ ?? '/v1';
+const REFRESH_TOKEN_KEY = 'best_admin_refresh_token';
 
 type AuthConfig = {
   getAccessToken: () => string | null;
@@ -26,6 +27,16 @@ export class ApiError extends Error {
   }
 }
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function getRefreshTokenFromStorage() {
+  try {
+    return globalThis.localStorage?.getItem(REFRESH_TOKEN_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function refreshWithToken(refreshToken: string) {
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
@@ -35,9 +46,9 @@ async function refreshWithToken(refreshToken: string) {
     });
 
     const body = await response.json().catch(() => null);
-    return { ok: response.ok, data: body?.data ?? body };
+    return { ok: response.ok, status: response.status, data: body?.data ?? body };
   } catch {
-    return { ok: false, data: null };
+    return { ok: false, status: 0, data: null };
   }
 }
 
@@ -58,7 +69,25 @@ async function tryRefreshAccessToken() {
       }
 
       if (!refreshResult.ok) {
-        authConfig?.onAuthFailure();
+        await wait(250);
+        const latestFromStorage = getRefreshTokenFromStorage();
+        if (latestFromStorage && latestFromStorage !== initialRefreshToken) {
+          refreshResult = await refreshWithToken(latestFromStorage);
+        }
+      }
+
+      if (!refreshResult.ok) {
+        await wait(500);
+        const latestRefreshToken = authConfig?.getRefreshToken() ?? getRefreshTokenFromStorage();
+        if (latestRefreshToken && latestRefreshToken !== initialRefreshToken) {
+          refreshResult = await refreshWithToken(latestRefreshToken);
+        }
+      }
+
+      if (!refreshResult.ok) {
+        if (refreshResult.status === 400 || refreshResult.status === 401) {
+          authConfig?.onAuthFailure();
+        }
         return null;
       }
 

@@ -2,7 +2,7 @@
 import { ConfigService } from '@nestjs/config';
 import { execFile } from 'child_process';
 import { createWriteStream, existsSync } from 'fs';
-import { mkdir, readdir, readFile } from 'fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import cron, { type ScheduledTask } from 'node-cron';
 import * as XLSX from 'xlsx';
@@ -198,14 +198,27 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
   }
 
   private async exportSql(sqlPath: string) {
+    try {
+      await this.exportSqlWithPgDump(sqlPath);
+      return;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`pg_dump unavailable/failed; using fallback SQL export. reason="${reason}"`);
+    }
+
+    await this.exportSqlFallback(sqlPath);
+  }
+
+  private async exportSqlWithPgDump(sqlPath: string) {
     const dbUrl = this.configService.get<string>('DATABASE_URL');
     if (!dbUrl) {
       throw new Error('DATABASE_URL is not configured');
     }
+    const pgDumpBinary = this.configService.get<string>('PG_DUMP_PATH')?.trim() || 'pg_dump';
 
     await new Promise<void>((resolve, reject) => {
       const child = execFile(
-        'pg_dump',
+        pgDumpBinary,
         [
           '--dbname',
           dbUrl,
@@ -239,6 +252,53 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
         reject(new Error(stderr || `pg_dump failed with code ${code}`));
       });
     });
+  }
+
+  private async exportSqlFallback(sqlPath: string) {
+    const tables = await this.backupsRepository.listPublicTables();
+    const lines: string[] = [];
+
+    lines.push('-- BEST SQL backup (fallback mode without pg_dump)');
+    lines.push(`-- created_at: ${new Date().toISOString()}`);
+    lines.push('-- encoding: UTF8');
+    lines.push('BEGIN;');
+    lines.push('SET client_encoding = \'UTF8\';');
+    lines.push('');
+
+    for (const tableName of tables) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
+        this.logger.warn(`Skipped table with unsupported name in SQL fallback: ${tableName}`);
+        continue;
+      }
+
+      const columns = await this.backupsRepository.listTableColumns(tableName);
+      if (!columns.length) {
+        continue;
+      }
+
+      const rows = await this.backupsRepository.readRowsByTable(tableName);
+      if (!rows.length) {
+        lines.push(`-- Table ${tableName}: empty`);
+        continue;
+      }
+
+      const quotedTable = this.quoteIdentifier(tableName);
+      const quotedColumns = columns.map((column) => this.quoteIdentifier(column)).join(', ');
+
+      lines.push(`-- Table ${tableName}: ${rows.length} row(s)`);
+      for (const row of rows) {
+        const valuesSql = columns
+          .map((column) => this.toSqlLiteral((row as Record<string, unknown>)[column]))
+          .join(', ');
+        lines.push(`INSERT INTO ${quotedTable} (${quotedColumns}) VALUES (${valuesSql});`);
+      }
+      lines.push('');
+    }
+
+    lines.push('COMMIT;');
+    lines.push('');
+
+    await writeFile(sqlPath, lines.join('\n'), 'utf8');
   }
 
   private async exportWorkbook(excelPath: string) {
@@ -287,10 +347,26 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
       return this.archiverFactory;
     }
 
-    const module = await import('archiver');
-    const candidate = (module as any).default ?? module;
-    this.archiverFactory = candidate;
-    return candidate;
+    const dynamicImport = new Function('modulePath', 'return import(modulePath);') as (modulePath: string) => Promise<any>;
+    const archiverModule = await dynamicImport('archiver');
+    const defaultCandidate = (archiverModule as any).default;
+    if (typeof defaultCandidate === 'function') {
+      this.archiverFactory = defaultCandidate as (format: string, options?: any) => any;
+      return this.archiverFactory;
+    }
+
+    const zipArchiveCtor = (archiverModule as any).ZipArchive;
+    if (typeof zipArchiveCtor === 'function') {
+      this.archiverFactory = (format: string, options?: any) => {
+        if (format !== 'zip') {
+          throw new Error(`Unsupported archive format: ${format}`);
+        }
+        return new zipArchiveCtor(options);
+      };
+      return this.archiverFactory;
+    }
+
+    throw new Error('Archiver module could not be loaded correctly');
   }
 
   private async resolveArchivePath(backupDir: string) {
@@ -329,5 +405,42 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     }
 
     return `${baseName.slice(0, 27)}_999`;
+  }
+
+  private quoteIdentifier(identifier: string) {
+    return `"${identifier.replace(/"/g, '""')}"`;
+  }
+
+  private toSqlLiteral(value: unknown) {
+    if (value === null || value === undefined) return 'NULL';
+    if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+    if (typeof value === 'bigint') return value.toString();
+    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+    if (value instanceof Date) return `'${this.escapeSqlString(value.toISOString())}'`;
+    if (Buffer.isBuffer(value)) return `'\\\\x${value.toString('hex')}'`;
+
+    if (this.isDecimalLike(value)) {
+      return value.toString();
+    }
+
+    if (Array.isArray(value)) {
+      return `'${this.escapeSqlString(JSON.stringify(value))}'`;
+    }
+
+    if (typeof value === 'object') {
+      return `'${this.escapeSqlString(JSON.stringify(value))}'`;
+    }
+
+    return `'${this.escapeSqlString(String(value))}'`;
+  }
+
+  private escapeSqlString(value: string) {
+    return value.replace(/'/g, "''");
+  }
+
+  private isDecimalLike(value: unknown): value is { toString: () => string } {
+    if (!value || typeof value !== 'object') return false;
+    const ctorName = (value as any).constructor?.name;
+    return ctorName === 'Decimal' && typeof (value as any).toString === 'function';
   }
 }

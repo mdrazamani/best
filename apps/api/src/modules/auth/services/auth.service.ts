@@ -86,7 +86,12 @@ export class AuthService extends BaseService {
       this.refreshTokenTtl
     );
 
-    await this.sessionsService.rotateSession(session.id, await argon2.hash(refreshToken), this.refreshTokenExpiryDate());
+    await this.sessionsService.rotateSession(session.id, {
+      refreshTokenHash: await argon2.hash(refreshToken),
+      expiresAt: this.refreshTokenExpiryDate(),
+      previousRefreshTokenHash: null,
+      previousRefreshValidUntil: null
+    });
 
     await this.operationLogsService.log({
       actorId: user.id,
@@ -111,11 +116,12 @@ export class AuthService extends BaseService {
 
   async refreshToken(refreshToken: string) {
     const payload = this.verifyToken(refreshToken, 'refresh');
-    const session = await this.sessionsService.verifyRefreshToken(payload.sid, refreshToken);
+    const sessionMatch = await this.sessionsService.verifyRefreshToken(payload.sid, refreshToken);
 
-    if (!session) {
+    if (!sessionMatch) {
       throw new UnauthorizedException('\u0631\u0641\u0631\u0634 \u062a\u0648\u06a9\u0646 \u0645\u0639\u062a\u0628\u0631 \u0646\u06cc\u0633\u062a.');
     }
+    const { session } = sessionMatch;
 
     const user = await this.usersService.findByIdWithRoles(payload.sub);
     if (!user || user.status !== 'ACTIVE') {
@@ -148,7 +154,12 @@ export class AuthService extends BaseService {
       this.refreshTokenTtl
     );
 
-    await this.sessionsService.rotateSession(session.id, await argon2.hash(newRefreshToken), this.refreshTokenExpiryDate());
+    await this.sessionsService.rotateSession(session.id, {
+      refreshTokenHash: await argon2.hash(newRefreshToken),
+      expiresAt: this.refreshTokenExpiryDate(),
+      previousRefreshTokenHash: session.refreshTokenHash,
+      previousRefreshValidUntil: new Date(Date.now() + this.refreshRotationGraceMs)
+    });
 
     return {
       accessToken: newAccessToken,
@@ -234,5 +245,10 @@ export class AuthService extends BaseService {
 
   private get refreshTokenTtl() {
     return this.configService.get<string>('AUTH_JWT_REFRESH_TTL') ?? '30d';
+  }
+
+  private get refreshRotationGraceMs() {
+    const seconds = Number(this.configService.get<string>('AUTH_REFRESH_GRACE_SECONDS') ?? '1200');
+    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 1_200_000;
   }
 }

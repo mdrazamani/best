@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarClock, CheckCircle2, Search } from 'lucide-react
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { useBestContext } from '../contexts/best-context';
-import { shamsiDate } from '../lib/format';
+import { shamsiDate, textFa } from '../lib/format';
 import { EmptyState } from '../components/shared/empty-state';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
@@ -19,8 +19,8 @@ export function NotificationsPage() {
     return notifications.filter((item) => {
       const matchesSearch =
         !q ||
-        item.title.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q) ||
+        textFa(item.title).toLowerCase().includes(q) ||
+        textFa(item.description).toLowerCase().includes(q) ||
         shamsiDate(item.dueDate).toLowerCase().includes(q);
       const matchesLevel = levelFilter === 'all' || item.level === levelFilter;
       return matchesSearch && matchesLevel;
@@ -61,13 +61,13 @@ export function NotificationsPage() {
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className={`h-4 w-4 ${item.level === 'critical' ? 'text-destructive' : 'text-amber-500'}`} />
-                      <p className="font-semibold">{item.title}</p>
+                      <p className="font-semibold">{textFa(item.title)}</p>
                     </div>
                     <Badge variant={item.level === 'critical' ? 'destructive' : 'warning'}>
                       {item.level === 'critical' ? 'فوری' : 'نزدیک'}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">{item.description}</p>
+                  <p className="text-sm text-muted-foreground">{textFa(item.description)}</p>
                   <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                     <CalendarClock className="h-4 w-4" />
                     <span>{shamsiDate(item.dueDate)}</span>

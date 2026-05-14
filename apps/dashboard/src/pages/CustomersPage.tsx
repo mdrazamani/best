@@ -15,6 +15,19 @@ import { SearchableSelect } from '../components/ui/searchable-select';
 import { Badge } from '../components/ui/badge';
 
 const PAGE_SIZE = 10;
+const ORDER_STAGE_OPTIONS = [
+  { value: 'RECEIVED', label: 'دریافت شده' },
+  { value: 'STARTED', label: 'شروع شده' },
+  { value: 'IN_PROGRESS', label: 'در حال انجام' },
+  { value: 'READY_IN_WAREHOUSE', label: 'آماده در انبار' },
+  { value: 'DELIVERED', label: 'تحویل داده شده' },
+  { value: 'CANCELLED', label: 'لغو شده' }
+] as const;
+const INVOICE_STATUS_OPTIONS = [
+  { value: 'UNPAID', label: 'پرداخت نشده' },
+  { value: 'PARTIAL', label: 'ناقص' },
+  { value: 'PAID', label: 'پرداخت شده' }
+] as const;
 
 export function CustomersPage() {
   const {
@@ -27,6 +40,8 @@ export function CustomersPage() {
     closeCustomerDetail,
     openCollaboratorDetail,
     openOrderDetail,
+    updateOrder,
+    updateInvoice,
     navigateToTab
   } = useBestContext();
 
@@ -35,9 +50,13 @@ export function CustomersPage() {
   const [search, setSearch] = useState('');
   const [referralFilter, setReferralFilter] = useState<'all' | 'with_referrer' | 'without_referrer'>('all');
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', address: '', description: '', referredByCollaboratorId: '' });
+  const [orderStageDrafts, setOrderStageDrafts] = useState<Record<string, string>>({});
+  const [invoiceStatusDrafts, setInvoiceStatusDrafts] = useState<Record<string, string>>({});
+  const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [savingInvoiceId, setSavingInvoiceId] = useState<string | null>(null);
 
   const collaboratorOptions = useMemo(
-    () => [{ value: '', label: '???? ????' }, ...collaborators.map((item) => ({ value: item.id, label: fullName(item) }))],
+    () => [{ value: '', label: 'بدون معرف' }, ...collaborators.map((item) => ({ value: item.id, label: fullName(item) }))],
     [collaborators]
   );
 
@@ -73,6 +92,31 @@ export function CustomersPage() {
   };
 
   const detail = customerDetail;
+  const detailId = detail?.id as string | undefined;
+
+  const saveOrderStage = async (orderId: string, fallbackStage: string) => {
+    if (!detailId) return;
+    const nextStage = orderStageDrafts[orderId] ?? fallbackStage;
+    setSavingOrderId(orderId);
+    try {
+      await updateOrder(orderId, { stage: nextStage });
+      await openCustomerDetail(detailId);
+    } finally {
+      setSavingOrderId(null);
+    }
+  };
+
+  const saveInvoiceStatus = async (invoiceId: string, fallbackStatus: string) => {
+    if (!detailId) return;
+    const nextStatus = invoiceStatusDrafts[invoiceId] ?? fallbackStatus;
+    setSavingInvoiceId(invoiceId);
+    try {
+      await updateInvoice(invoiceId, { status: nextStatus });
+      await openCustomerDetail(detailId);
+    } finally {
+      setSavingInvoiceId(null);
+    }
+  };
 
   if (detail) {
     const orders = Array.isArray(detail.orders) ? detail.orders : [];
@@ -84,50 +128,65 @@ export function CustomersPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-2xl font-extrabold">?????? ?????</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">{fullName(detail)} - ????? ???: {shamsiDate(detail.createdAt)}</p>
+              <CardTitle className="text-2xl font-extrabold">جزئیات مشتری</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">{fullName(detail)} - تاریخ ثبت: {shamsiDate(detail.createdAt)}</p>
+              <p className="text-[11px] text-muted-foreground sm:text-xs">تمام مبالغ در این صفحه به ریال هستند.</p>
             </div>
             <Button variant="outline" onClick={closeCustomerDetail}>
               <ArrowRight className="h-4 w-4" />
-              ?????? ?? ????
+              بازگشت به لیست
             </Button>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">?? ???????</p>
-              <p className="mt-1 text-lg font-bold">{detail.summary?.totalOrders ?? 0}</p>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">تعداد سفارش‌ها</p>
+                <p className="mt-1 text-lg font-bold">{detail.summary?.totalOrders ?? 0}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مجموع مبلغ سفارش‌ها</p>
+                <p className="mt-1 text-lg font-bold">{money(detail.summary?.totalOrderAmount ?? 0)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مبلغ فاکتورهای مشتری</p>
+                <p className="mt-1 text-lg font-bold">{money(detail.summary?.totalInvoiced ?? 0)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مبلغ پرداخت‌شده</p>
+                <p className="mt-1 text-lg font-bold">{money(detail.summary?.totalPaid ?? 0)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مانده</p>
+                <p className="mt-1 text-lg font-bold text-destructive">{money(detail.summary?.totalRemaining ?? 0)}</p>
+              </div>
             </div>
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">????? ?????? ?????</p>
-              <p className="mt-1 text-lg font-bold">{money(detail.summary?.totalInvoiced ?? 0)}</p>
-            </div>
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">??? ???????</p>
-              <p className="mt-1 text-lg font-bold">{money(detail.summary?.totalPaid ?? 0)}</p>
-            </div>
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">???? ?????????</p>
-              <p className="mt-1 text-lg font-bold text-destructive">{money(detail.summary?.totalRemaining ?? 0)}</p>
+
+            <div className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <p><span className="font-semibold">موبایل:</span> {detail.phone || '-'}</p>
+              <p><span className="font-semibold">آدرس:</span> {detail.address || '-'}</p>
+              <p><span className="font-semibold">معرف:</span> {fullName(detail.referredByCollaborator || undefined)}</p>
+              <p><span className="font-semibold">توضیحات:</span> {detail.description || '-'}</p>
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">????????</CardTitle>
+            <CardTitle className="text-xl font-bold">سفارشات</CardTitle>
           </CardHeader>
           <CardContent>
             {orders.length === 0 ? (
-              <EmptyState title="?????? ???? ??? ????? ??? ???? ???" />
+              <EmptyState title="هنوز سفارشی برای این مشتری ثبت نشده است" />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>????? ?????</TableHead>
-                    <TableHead>?????</TableHead>
-                    <TableHead>?????</TableHead>
-                    <TableHead>????</TableHead>
-                    <TableHead>????? ???</TableHead>
+                    <TableHead>شماره سفارش</TableHead>
+                    <TableHead>همکار</TableHead>
+                    <TableHead>مرحله</TableHead>
+                    <TableHead>مبلغ</TableHead>
+                    <TableHead>تاریخ ثبت</TableHead>
+                    <TableHead>بروزرسانی مرحله</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -164,6 +223,28 @@ export function CustomersPage() {
                       <TableCell>{orderStageLabel(order.stage)}</TableCell>
                       <TableCell>{money(Number(order.totalPrice ?? 0))}</TableCell>
                       <TableCell>{shamsiDate(order.createdAt)}</TableCell>
+                      <TableCell>
+                        {order.id ? (
+                          <div className="flex min-w-[240px] items-center gap-2">
+                            <SearchableSelect
+                              value={orderStageDrafts[order.id] ?? order.stage}
+                              onChange={(value) => setOrderStageDrafts((prev) => ({ ...prev, [order.id]: value }))}
+                              options={ORDER_STAGE_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                              placeholder="انتخاب مرحله"
+                              isSearchable={false}
+                              className="flex-1"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={savingOrderId === order.id}
+                              onClick={() => void saveOrderStage(order.id, order.stage)}
+                            >
+                              ذخیره
+                            </Button>
+                          </div>
+                        ) : '-'}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -174,20 +255,21 @@ export function CustomersPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">????????? ?????</CardTitle>
+            <CardTitle className="text-xl font-bold">فاکتورهای مشتری</CardTitle>
           </CardHeader>
           <CardContent>
             {invoices.length === 0 ? (
-              <EmptyState title="??????? ???? ??? ????? ??? ???? ???" />
+              <EmptyState title="هنوز فاکتوری برای این مشتری ثبت نشده است" />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>????? ??????</TableHead>
-                    <TableHead>????? ?????</TableHead>
-                    <TableHead>?????</TableHead>
-                    <TableHead>??????? / ??</TableHead>
-                    <TableHead>??????</TableHead>
+                    <TableHead>شماره فاکتور</TableHead>
+                    <TableHead>شماره سفارش</TableHead>
+                    <TableHead>وضعیت</TableHead>
+                    <TableHead>پرداختی / کل</TableHead>
+                    <TableHead>سررسید</TableHead>
+                    <TableHead>بروزرسانی وضعیت</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -213,6 +295,28 @@ export function CustomersPage() {
                       </TableCell>
                       <TableCell>{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
+                      <TableCell>
+                        {invoice.id ? (
+                          <div className="flex min-w-[230px] items-center gap-2">
+                            <SearchableSelect
+                              value={invoiceStatusDrafts[invoice.id] ?? invoice.status}
+                              onChange={(value) => setInvoiceStatusDrafts((prev) => ({ ...prev, [invoice.id]: value }))}
+                              options={INVOICE_STATUS_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                              placeholder="انتخاب وضعیت"
+                              isSearchable={false}
+                              className="flex-1"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={savingInvoiceId === invoice.id}
+                              onClick={() => void saveInvoiceStatus(invoice.id, invoice.status)}
+                            >
+                              ذخیره
+                            </Button>
+                          </div>
+                        ) : '-'}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -223,17 +327,17 @@ export function CustomersPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">???????? ?????</CardTitle>
+            <CardTitle className="text-xl font-bold">همکاران مرتبط</CardTitle>
           </CardHeader>
           <CardContent>
             {collaboratorsInDetail.length === 0 ? (
-              <EmptyState title="????? ?????? ???? ?????" />
+              <EmptyState title="هیچ همکاری برای این مشتری ثبت نشده است" />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>???</TableHead>
-                    <TableHead>????? ????</TableHead>
+                    <TableHead>نام</TableHead>
+                    <TableHead>شماره تماس</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -269,31 +373,31 @@ export function CustomersPage() {
     <section>
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-2xl font-extrabold">???????</CardTitle>
+          <CardTitle className="text-2xl font-extrabold">مشتریان</CardTitle>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4" />
-                ????? ????
+                ثبت مشتری
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>??? ?????</DialogTitle>
-                <DialogDescription>??????? ????? ?? ???? ????.</DialogDescription>
+                <DialogTitle>ثبت مشتری جدید</DialogTitle>
+                <DialogDescription>اطلاعات مشتری را کامل کنید.</DialogDescription>
               </DialogHeader>
               <form onSubmit={submit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
-                  <Input placeholder="???" value={form.firstName} onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))} />
-                  <Input placeholder="??? ????????" value={form.lastName} onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))} />
-                  <Input placeholder="?????" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} />
-                  <Input placeholder="????" value={form.address} onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))} />
-                  <SearchableSelect className="md:col-span-2" options={collaboratorOptions} value={form.referredByCollaboratorId} onChange={(value) => setForm((prev) => ({ ...prev, referredByCollaboratorId: value }))} placeholder="???? (?????)" />
+                  <Input placeholder="نام" value={form.firstName} onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))} />
+                  <Input placeholder="نام خانوادگی" value={form.lastName} onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))} />
+                  <Input placeholder="شماره تماس" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} />
+                  <Input placeholder="آدرس" value={form.address} onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))} />
+                  <SearchableSelect className="md:col-span-2" options={collaboratorOptions} value={form.referredByCollaboratorId} onChange={(value) => setForm((prev) => ({ ...prev, referredByCollaboratorId: value }))} placeholder="انتخاب معرف (اختیاری)" />
                 </div>
-                <Textarea placeholder="???????" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
+                <Textarea placeholder="توضیحات" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
                 <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>??????</Button>
-                  <Button type="submit">???</Button>
+                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>انصراف</Button>
+                  <Button type="submit">ثبت</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -303,39 +407,43 @@ export function CustomersPage() {
           <div className="grid gap-3 md:grid-cols-3">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pr-9" placeholder="????? ?? ???? ???? ????? ?? ????" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+              <Input className="pr-9" placeholder="جستجو در نام، موبایل، معرف" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
             <SearchableSelect
               value={referralFilter}
               onChange={(value) => { setReferralFilter(value as 'all' | 'with_referrer' | 'without_referrer'); setPage(1); }}
               options={[
-                { value: 'all', label: '??? ????????' },
-                { value: 'with_referrer', label: '????? ????' },
-                { value: 'without_referrer', label: '???? ????' }
+                { value: 'all', label: 'همه مشتریان' },
+                { value: 'with_referrer', label: 'دارای معرف' },
+                { value: 'without_referrer', label: 'بدون معرف' }
               ]}
-              placeholder="????? ????"
+              placeholder="فیلتر معرف"
               isSearchable={false}
             />
           </div>
 
           {filteredItems.length === 0 ? (
-            <EmptyState title="????? ???? ???" />
+            <EmptyState title="مشتری‌ای پیدا نشد" />
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>???</TableHead>
-                    <TableHead>?????</TableHead>
-                    <TableHead>????</TableHead>
-                    <TableHead>????? ?????</TableHead>
+                    <TableHead>نام</TableHead>
+                    <TableHead>موبایل</TableHead>
+                    <TableHead>معرف</TableHead>
+                    <TableHead>تعداد سفارش</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pageItems.map((item, idx) => (
                     <TableRow key={item.id} className={idx % 2 ? 'bg-muted/10' : ''}>
-                      <TableCell>{fullName(item)}</TableCell>
+                      <TableCell>
+                        <button type="button" className="font-medium text-primary hover:underline" onClick={() => void showDetail(item.id)}>
+                          {fullName(item)}
+                        </button>
+                      </TableCell>
                       <TableCell>{item.phone || '-'}</TableCell>
                       <TableCell>{fullName(item.referredByCollaborator || undefined)}</TableCell>
                       <TableCell>{item._count?.orders || 0}</TableCell>
@@ -349,11 +457,11 @@ export function CustomersPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => void showDetail(item.id)}>
                               <Eye className="ml-2 h-4 w-4" />
-                              ??????
+                              مشاهده
                             </DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeCustomer(item.id)}>
                               <Trash2 className="ml-2 h-4 w-4" />
-                              ??? (???)
+                              حذف 
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

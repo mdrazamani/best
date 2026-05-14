@@ -38,6 +38,15 @@ export function InvoicesPage() {
   const selectedOrder = useMemo(() => orders.find((item) => item.id === form.orderId), [orders, form.orderId]);
 
   const orderOptions = useMemo(() => orders.map((item) => ({ value: item.id, label: `${item.orderNumber} - ${item.customer ? `${item.customer.firstName ?? ''} ${item.customer.lastName ?? ''}` : ''}` })), [orders]);
+  const statusFilterOptions = useMemo(() => [{ value: 'all', label: 'همه وضعیت‌ها' }, ...INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))], []);
+  const payerFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: 'همه پرداخت‌کننده‌ها' },
+      { value: 'CUSTOMER', label: 'مشتری' },
+      { value: 'COLLABORATOR', label: 'همکار' }
+    ],
+    []
+  );
 
   const payerOptions = useMemo(() => {
     if (!selectedOrder) return [];
@@ -149,25 +158,20 @@ export function InvoicesPage() {
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input className="pr-9" placeholder="جستجو: شماره فاکتور یا سفارش" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <select
+            <SearchableSelect
               value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value as 'all' | 'UNPAID' | 'PARTIAL' | 'PAID'); setPage(1); }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">همه وضعیت‌ها</option>
-              {INVOICE_STATUS.map((item) => (
-                <option key={item.value} value={item.value}>{item.label}</option>
-              ))}
-            </select>
-            <select
+              onChange={(value) => { setStatusFilter((value || 'all') as 'all' | 'UNPAID' | 'PARTIAL' | 'PAID'); setPage(1); }}
+              options={statusFilterOptions}
+              placeholder="همه وضعیت‌ها"
+              isSearchable={false}
+            />
+            <SearchableSelect
               value={payerFilter}
-              onChange={(e) => { setPayerFilter(e.target.value as 'all' | 'CUSTOMER' | 'COLLABORATOR'); setPage(1); }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">همه پرداخت‌کننده‌ها</option>
-              <option value="CUSTOMER">مشتری</option>
-              <option value="COLLABORATOR">همکار</option>
-            </select>
+              onChange={(value) => { setPayerFilter((value || 'all') as 'all' | 'CUSTOMER' | 'COLLABORATOR'); setPage(1); }}
+              options={payerFilterOptions}
+              placeholder="همه پرداخت‌کننده‌ها"
+              isSearchable={false}
+            />
           </div>
 
           {filteredInvoices.length === 0 ? (
@@ -214,7 +218,7 @@ export function InvoicesPage() {
                               دانلود PDF
                             </DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeInvoice(invoice.id)}>
-                              حذف (نرم)
+                              حذف 
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

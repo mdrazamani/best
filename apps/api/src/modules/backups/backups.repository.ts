@@ -49,4 +49,15 @@ export class BackupsRepository extends BaseRepository {
   readRowsByTable(tableName: string) {
     return this.prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT * FROM "${tableName}"`);
   }
+
+  async listTableColumns(tableName: string) {
+    const rows = await this.prisma.$queryRaw<Array<{ column_name: string }>>`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = ${tableName}
+      ORDER BY ordinal_position;
+    `;
+
+    return rows.map((row) => row.column_name);
+  }
 }

@@ -36,6 +36,15 @@ export function UsersPage() {
 
   const editableRoles = useMemo(() => roles.filter((role) => role.key !== 'super_admin'), [roles]);
   const roleOptions = useMemo(() => roles.map((role) => ({ value: role.key, label: role.name })), [roles]);
+  const roleFilterOptions = useMemo(() => [{ value: 'all', label: 'همه نقش‌ها' }, ...roleOptions], [roleOptions]);
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: 'همه وضعیت‌ها' },
+      { value: 'ACTIVE', label: 'فعال' },
+      { value: 'DISABLED', label: 'غیرفعال' }
+    ],
+    []
+  );
 
   const [selectedRoleKey, setSelectedRoleKey] = useState('manager');
 
@@ -125,25 +134,26 @@ export function UsersPage() {
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input className="pr-9" placeholder="جستجو: نام یا نام کاربری" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <select
+            <SearchableSelect
               value={roleFilter}
-              onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">همه نقش‌ها</option>
-              {roles.map((role) => (
-                <option key={role.id} value={role.key}>{role.name}</option>
-              ))}
-            </select>
-            <select
+              onChange={(value) => {
+                setRoleFilter(value || 'all');
+                setPage(1);
+              }}
+              options={roleFilterOptions}
+              placeholder="همه نقش‌ها"
+              isSearchable={false}
+            />
+            <SearchableSelect
               value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value as 'all' | 'ACTIVE' | 'DISABLED'); setPage(1); }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">همه وضعیت‌ها</option>
-              <option value="ACTIVE">فعال</option>
-              <option value="DISABLED">غیرفعال</option>
-            </select>
+              onChange={(value) => {
+                setStatusFilter((value || 'all') as 'all' | 'ACTIVE' | 'DISABLED');
+                setPage(1);
+              }}
+              options={statusFilterOptions}
+              placeholder="همه وضعیت‌ها"
+              isSearchable={false}
+            />
           </div>
 
           {filteredUsers.length === 0 ? (
@@ -183,7 +193,7 @@ export function UsersPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeUser(item.id)}>
                               <Trash2 className="ml-2 h-4 w-4" />
-                              حذف (نرم)
+                              حذف 
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

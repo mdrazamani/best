@@ -24,6 +24,6 @@ describe('format helpers', () => {
   });
 
   it('replaces unreadable placeholders', () => {
-    expect(textFa('????')).toBe('نامشخص');
+    expect(textFa('?'.repeat(4))).toBe('نامشخص');
   });
 });

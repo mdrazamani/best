@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { EmptyState } from '../components/shared/empty-state';
 import { Pagination } from '../components/shared/pagination';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+import { SearchableSelect } from '../components/ui/searchable-select';
 
 const PAGE_SIZE = 8;
 
@@ -20,6 +21,15 @@ export function BackupsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'SUCCESS' | 'FAILED' | 'PENDING'>('all');
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: 'همه وضعیت‌ها' },
+      { value: 'SUCCESS', label: 'موفق' },
+      { value: 'FAILED', label: 'ناموفق' },
+      { value: 'PENDING', label: 'در حال انجام' }
+    ],
+    []
+  );
 
   useEffect(() => {
     setIntervalInput(String(backupInterval));
@@ -64,12 +74,18 @@ export function BackupsPage() {
           <CardTitle className="text-2xl font-extrabold">تنظیمات بکاپ</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
-          <Input
-            value={intervalInput}
-            onChange={(e) => setIntervalInput(e.target.value)}
-            placeholder="دقیقه"
-            className="md:w-56"
-          />
+          <div className="space-y-1 md:w-56">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground">بازه اجرای خودکار بکاپ</span>
+              <Badge variant="secondary" className="text-[10px]">دقیقه</Badge>
+            </div>
+            <Input
+              value={intervalInput}
+              onChange={(e) => setIntervalInput(e.target.value)}
+              inputMode="numeric"
+              placeholder="مثلا 1440"
+            />
+          </div>
           <Button variant="secondary" onClick={() => void updateBackupSettings(Number(intervalInput || 1440))}>
             <Save className="h-4 w-4" />
             ذخیره بازه زمانی
@@ -91,16 +107,16 @@ export function BackupsPage() {
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input className="pr-9" placeholder="جستجو: شناسه بکاپ، تاریخ، نام فایل" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <select
+            <SearchableSelect
               value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value as 'all' | 'SUCCESS' | 'FAILED' | 'PENDING'); setPage(1); }}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="all">همه وضعیت‌ها</option>
-              <option value="SUCCESS">موفق</option>
-              <option value="FAILED">ناموفق</option>
-              <option value="PENDING">در حال انجام</option>
-            </select>
+              onChange={(value) => {
+                setStatusFilter((value || 'all') as 'all' | 'SUCCESS' | 'FAILED' | 'PENDING');
+                setPage(1);
+              }}
+              options={statusFilterOptions}
+              placeholder="همه وضعیت‌ها"
+              isSearchable={false}
+            />
           </div>
 
           {filteredBackups.length === 0 ? (

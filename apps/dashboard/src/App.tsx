@@ -17,9 +17,12 @@ import { BackupsPage } from './pages/BackupsPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { Button } from './components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog';
 
 const THEME_KEY = 'best_theme';
 const SIDEBAR_KEY = 'best_sidebar_collapsed';
+const PROJECT_VERSION = '0.1.1';
+const COMING_SOON_ITEMS = ['تولید', 'انبارداری', 'تنظیمات'] as const;
 
 export function App() {
   const app = useBestApp();
@@ -27,6 +30,8 @@ export function App() {
   const [tabHistory, setTabHistory] = useState<AppTab[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === '1');
+  const [comingSoonOpen, setComingSoonOpen] = useState(false);
+  const [comingSoonTitle, setComingSoonTitle] = useState<string>('');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const stored = localStorage.getItem(THEME_KEY);
     return stored === 'dark' ? 'dark' : 'light';
@@ -98,6 +103,11 @@ export function App() {
     navigateToTab(item.type === 'ORDER_DUE' ? 'orders' : 'invoices');
   };
 
+  const openComingSoon = (title: string) => {
+    setComingSoonTitle(title);
+    setComingSoonOpen(true);
+  };
+
   const contextValue = {
     ...app,
     currentTab: tab,
@@ -113,7 +123,7 @@ export function App() {
         <div className="relative min-h-screen" dir="rtl">
           <div className="mx-auto w-full max-w-[1760px] px-3 pb-5 pt-3 sm:px-4 sm:pb-6 sm:pt-4 lg:px-6 lg:pt-6">
             <aside
-              className={`fixed bottom-3 right-3 top-3 z-[80] w-[84vw] max-w-[20rem] overflow-y-auto rounded-xl border border-slate-300/95 bg-white p-3 shadow-[0_28px_48px_-34px_rgba(15,23,42,0.85)] transition-all duration-300 dark:border-slate-700/95 dark:bg-card lg:bottom-6 lg:right-6 lg:top-6 lg:max-w-none ${
+              className={`fixed bottom-3 right-3 top-3 z-[80] flex w-[84vw] max-w-[20rem] flex-col overflow-hidden rounded-xl border border-slate-300/95 bg-white p-3 shadow-[0_28px_48px_-34px_rgba(15,23,42,0.85)] transition-all duration-300 dark:border-slate-700/95 dark:bg-card lg:bottom-6 lg:right-6 lg:top-6 lg:max-w-none ${
                 mobileSidebarOpen ? 'translate-x-0' : 'translate-x-[112%] lg:translate-x-0'
               } ${sidebarCollapsed ? 'lg:w-[5.25rem] lg:px-2.5 lg:py-3' : 'lg:w-[18rem] lg:p-4'}`}
             >
@@ -135,12 +145,39 @@ export function App() {
                 </Button>
               </div>
 
-              <AppTabs
-                active={tab}
-                onChange={navigateToTab}
-                collapsed={sidebarCollapsed}
-                onItemClick={() => setMobileSidebarOpen(false)}
-              />
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <AppTabs
+                    active={tab}
+                    onChange={navigateToTab}
+                    collapsed={sidebarCollapsed}
+                    onItemClick={() => setMobileSidebarOpen(false)}
+                  />
+                </div>
+
+                <div className={`mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-700/80 ${sidebarCollapsed ? 'space-y-2' : 'space-y-2.5'}`}>
+                  {COMING_SOON_ITEMS.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      aria-disabled="true"
+                      className={`w-full rounded-lg border border-dashed border-slate-300/80 bg-slate-50/80 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400 dark:hover:bg-slate-800/70 ${
+                        sidebarCollapsed ? 'px-0 text-[11px]' : ''
+                      }`}
+                      title={sidebarCollapsed ? item : undefined}
+                      onMouseEnter={() => openComingSoon(item)}
+                      onFocus={() => openComingSoon(item)}
+                      onClick={() => openComingSoon(item)}
+                    >
+                      {sidebarCollapsed ? item.slice(0, 2) : item}
+                    </button>
+                  ))}
+
+                  <div className="pt-1 text-center text-[10px] font-medium text-muted-foreground">
+                    نسخه {PROJECT_VERSION}
+                  </div>
+                </div>
+              </div>
             </aside>
 
             {mobileSidebarOpen ? (
@@ -175,6 +212,17 @@ export function App() {
               </AnimatePresence>
             </main>
           </div>
+
+          <Dialog open={comingSoonOpen} onOpenChange={setComingSoonOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>بخش {comingSoonTitle}</DialogTitle>
+                <DialogDescription>
+                  این بخش در آینده به سیستم اضافه خواهد شد.
+                </DialogDescription>
+              </DialogHeader>
+            </DialogContent>
+          </Dialog>
         </div>
       ) : (
         content

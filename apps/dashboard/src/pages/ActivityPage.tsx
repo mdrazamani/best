@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { EmptyState } from '../components/shared/empty-state';
 import { Pagination } from '../components/shared/pagination';
 import { Input } from '../components/ui/input';
+import { SearchableSelect } from '../components/ui/searchable-select';
 
 const PAGE_SIZE = 12;
 
@@ -33,6 +34,8 @@ export function ActivityPage() {
 
   const entityOptions = useMemo(() => Array.from(new Set(activity.map((item) => item.entityType))).sort(), [activity]);
   const actionOptions = useMemo(() => Array.from(new Set(activity.map((item) => item.action))).sort(), [activity]);
+  const entityFilterOptions = useMemo(() => [{ value: 'all', label: 'همه نوع‌ها' }, ...entityOptions.map((item) => ({ value: item, label: item }))], [entityOptions]);
+  const actionFilterOptions = useMemo(() => [{ value: 'all', label: 'همه عملیات‌ها' }, ...actionOptions.map((item) => ({ value: item, label: item }))], [actionOptions]);
 
   const totalPages = Math.max(1, Math.ceil(filteredActivity.length / PAGE_SIZE));
   const pageItems = useMemo(() => {
@@ -52,26 +55,26 @@ export function ActivityPage() {
             <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input className="pr-9" placeholder="جستجو: کاربر، نوع، عملیات، شرح" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
           </div>
-          <select
+          <SearchableSelect
             value={entityFilter}
-            onChange={(e) => { setEntityFilter(e.target.value); setPage(1); }}
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="all">همه نوع‌ها</option>
-            {entityOptions.map((item) => (
-              <option key={item} value={item}>{item}</option>
-            ))}
-          </select>
-          <select
+            onChange={(value) => {
+              setEntityFilter(value || 'all');
+              setPage(1);
+            }}
+            options={entityFilterOptions}
+            placeholder="همه نوع‌ها"
+            isSearchable={false}
+          />
+          <SearchableSelect
             value={actionFilter}
-            onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="all">همه عملیات‌ها</option>
-            {actionOptions.map((item) => (
-              <option key={item} value={item}>{item}</option>
-            ))}
-          </select>
+            onChange={(value) => {
+              setActionFilter(value || 'all');
+              setPage(1);
+            }}
+            options={actionFilterOptions}
+            placeholder="همه عملیات‌ها"
+            isSearchable={false}
+          />
         </div>
 
         {filteredActivity.length === 0 ? (

@@ -1,10 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, apiBasePath, apiCall, configureApiAuth } from '../lib/api';
+import { apiBasePath, apiCall, configureApiAuth } from '../lib/api';
 import { ActivityLog, BackupLog, DashboardStats, Invoice, MeshType, NotificationItem, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
 
 const ACCESS_TOKEN_KEY = 'best_admin_token';
 const REFRESH_TOKEN_KEY = 'best_admin_refresh_token';
 const DISMISSED_NOTIFICATIONS_KEY = 'best_dismissed_notifications';
+
+const tokenIssuedAt = (token: string | null) => {
+  if (!token) return 0;
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return 0;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
+    const decoded = atob(padded);
+    const parsed = JSON.parse(decoded) as { iat?: number };
+    return typeof parsed.iat === 'number' ? parsed.iat : 0;
+  } catch {
+    return 0;
+  }
+};
 
 export function useBestApp() {
   const [token, setTokenState] = useState<string | null>(() => localStorage.getItem(ACCESS_TOKEN_KEY));
@@ -42,6 +57,15 @@ export function useBestApp() {
   const refreshTokenRef = useRef<string | null>(refreshToken);
 
   const setAuthTokens = (nextAccess: string | null, nextRefresh: string | null) => {
+    const currentRefresh = refreshTokenRef.current;
+    if (currentRefresh && nextRefresh) {
+      const currentRefreshIat = tokenIssuedAt(currentRefresh);
+      const nextRefreshIat = tokenIssuedAt(nextRefresh);
+      if (nextRefreshIat > 0 && currentRefreshIat > 0 && nextRefreshIat < currentRefreshIat) {
+        return;
+      }
+    }
+
     tokenRef.current = nextAccess;
     refreshTokenRef.current = nextRefresh;
 
@@ -123,10 +147,7 @@ export function useBestApp() {
       setPermissions(permissionData);
       setBackupInterval(settings.backupIntervalMinutes);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        logout();
-      }
-      setError(e instanceof Error ? e.message : '??? ?? ?????? ???????');
+      setError(e instanceof Error ? e.message : 'خطا در بارگذاری اطلاعات');
     } finally {
       setLoading(false);
     }
@@ -179,7 +200,7 @@ export function useBestApp() {
     });
 
     if (!response.ok) {
-      throw new Error('??? ?? ?????? ????');
+      throw new Error('خطا در دریافت فایل');
     }
 
     const blob = await response.blob();
@@ -266,6 +287,18 @@ export function useBestApp() {
     void reload();
   }, [token]);
 
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === ACCESS_TOKEN_KEY || event.key === REFRESH_TOKEN_KEY) {
+        setTokenState(localStorage.getItem(ACCESS_TOKEN_KEY));
+        setRefreshTokenState(localStorage.getItem(REFRESH_TOKEN_KEY));
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   const notifications = useMemo<NotificationItem[]>(() => {
     const now = new Date();
     const soonThreshold = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -283,8 +316,8 @@ export function useBestApp() {
           invoiceId: invoice.id,
           orderId: invoice.order.id,
           level,
-          title: `???? ?????? ${invoice.invoiceNumber}`,
-          description: `???? ?????? ?????? ????? ${invoice.order.orderNumber} ?? ????? ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} ???.`,
+          title: `موعد تکمیل سفارش ${invoice.invoiceNumber}`,
+          description: `موعد تکمیل سفارش مرتبط با سفارش ${invoice.order.orderNumber} در تاریخ ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} است.`,
           dueDate: due.toISOString()
         }];
       });
@@ -300,8 +333,8 @@ export function useBestApp() {
           type: 'ORDER_DUE',
           orderId: order.id,
           level,
-          title: `???? ????? ????? ${order.orderNumber}`,
-          description: `???? ????? ????? ?? ????? ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} ???.`,
+          title: `موعد تکمیل سفارش ${order.orderNumber}`,
+          description: `موعد تکمیل سفارش در تاریخ ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} است.`,
           dueDate: due.toISOString()
         }];
       });

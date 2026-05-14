@@ -1,4 +1,4 @@
-﻿-- CreateEnum
+-- CreateEnum
 CREATE TYPE "InvoicePayerType" AS ENUM ('CUSTOMER', 'COLLABORATOR');
 
 -- AlterTable
