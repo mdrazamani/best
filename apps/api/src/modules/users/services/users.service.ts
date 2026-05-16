@@ -133,7 +133,7 @@ export class UsersService extends BaseService {
       entityType: 'User',
       entityId: id,
       action: 'DELETE',
-      description: 'Soft delete user'
+      description: 'حذف کاربر'
     });
 
     return { success: true };

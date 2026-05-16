@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Download, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
+import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -706,8 +706,8 @@ export function OrdersPage() {
                     <TableRow key={log.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
                       <TableCell>{shamsiDate(log.createdAt)}</TableCell>
                       <TableCell>{fullName(log.actor)}</TableCell>
-                      <TableCell>{log.action ?? '-'}</TableCell>
-                      <TableCell>{log.description ?? '-'}</TableCell>
+                      <TableCell>{activityActionLabel(log.action)}</TableCell>
+                      <TableCell>{activityDescriptionLabel(log.description)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

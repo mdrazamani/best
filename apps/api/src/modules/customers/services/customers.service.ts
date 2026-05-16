@@ -80,7 +80,7 @@ export class CustomersService extends BaseService {
       entityType: 'Customer',
       entityId: created.id,
       action: 'CREATE',
-      description: 'Customer created'
+      description: 'ایجاد مشتری'
     });
 
     return created;
@@ -106,7 +106,7 @@ export class CustomersService extends BaseService {
       entityType: 'Customer',
       entityId: updated.id,
       action: 'UPDATE',
-      description: 'Customer updated'
+      description: 'ویرایش مشتری'
     });
 
     return updated;
@@ -124,7 +124,7 @@ export class CustomersService extends BaseService {
       entityType: 'Customer',
       entityId: id,
       action: 'DELETE',
-      description: 'Customer soft deleted'
+      description: 'حذف مشتری'
     });
 
     return { success: true };

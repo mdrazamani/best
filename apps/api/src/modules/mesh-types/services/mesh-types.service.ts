@@ -31,7 +31,7 @@ export class MeshTypesService extends BaseService {
       entityType: 'MeshType',
       entityId: created.id,
       action: 'CREATE',
-      description: 'Mesh type created'
+      description: 'ایجاد نوع توری'
     });
 
     return created;
@@ -54,7 +54,7 @@ export class MeshTypesService extends BaseService {
       entityType: 'MeshType',
       entityId: updated.id,
       action: 'UPDATE',
-      description: 'Mesh type updated'
+      description: 'ویرایش نوع توری'
     });
 
     return updated;
@@ -73,7 +73,7 @@ export class MeshTypesService extends BaseService {
       entityType: 'MeshType',
       entityId: id,
       action: 'DELETE',
-      description: 'Soft delete mesh type'
+      description: 'حذف نوع توری'
     });
 
     return { success: true };

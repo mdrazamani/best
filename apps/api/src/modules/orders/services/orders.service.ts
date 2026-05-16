@@ -124,7 +124,7 @@ export class OrdersService extends BaseService {
       entityType: 'Order',
       entityId: created.id,
       action: 'CREATE',
-      description: 'Order created',
+      description: 'ایجاد سفارش',
       orderId: created.id
     });
 
@@ -193,7 +193,7 @@ export class OrdersService extends BaseService {
       entityType: 'Order',
       entityId: id,
       action: 'UPDATE',
-      description: 'Order updated',
+      description: 'ویرایش سفارش',
       orderId: id
     });
 
@@ -212,7 +212,7 @@ export class OrdersService extends BaseService {
       entityType: 'Order',
       entityId: id,
       action: 'DELETE',
-      description: 'Order soft deleted',
+      description: 'حذف سفارش',
       orderId: id
     });
     return { success: true };

@@ -87,7 +87,7 @@ export class SessionsService extends BaseService {
       entityType: 'Session',
       entityId: sessionId,
       action: 'REVOKE',
-      description: 'Session revoked'
+      description: 'ابطال نشست'
     });
     return { success: true };
   }

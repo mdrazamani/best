@@ -1,7 +1,7 @@
 ﻿import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { fullName, shamsiDate } from '../lib/format';
+import { activityActionLabel, activityDescriptionLabel, activityEntityLabel, fullName, shamsiDate } from '../lib/format';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { EmptyState } from '../components/shared/empty-state';
@@ -25,7 +25,18 @@ export function ActivityPage() {
       const description = (item.description ?? '').toLowerCase();
       const entityType = item.entityType.toLowerCase();
       const action = item.action.toLowerCase();
-      const matchesSearch = !q || actor.includes(q) || description.includes(q) || entityType.includes(q) || action.includes(q);
+      const descriptionFa = activityDescriptionLabel(item.description).toLowerCase();
+      const entityTypeFa = activityEntityLabel(item.entityType).toLowerCase();
+      const actionFa = activityActionLabel(item.action).toLowerCase();
+      const matchesSearch =
+        !q ||
+        actor.includes(q) ||
+        description.includes(q) ||
+        entityType.includes(q) ||
+        action.includes(q) ||
+        descriptionFa.includes(q) ||
+        entityTypeFa.includes(q) ||
+        actionFa.includes(q);
       const matchesEntity = entityFilter === 'all' || item.entityType === entityFilter;
       const matchesAction = actionFilter === 'all' || item.action === actionFilter;
       return matchesSearch && matchesEntity && matchesAction;
@@ -34,8 +45,14 @@ export function ActivityPage() {
 
   const entityOptions = useMemo(() => Array.from(new Set(activity.map((item) => item.entityType))).sort(), [activity]);
   const actionOptions = useMemo(() => Array.from(new Set(activity.map((item) => item.action))).sort(), [activity]);
-  const entityFilterOptions = useMemo(() => [{ value: 'all', label: 'همه نوع‌ها' }, ...entityOptions.map((item) => ({ value: item, label: item }))], [entityOptions]);
-  const actionFilterOptions = useMemo(() => [{ value: 'all', label: 'همه عملیات‌ها' }, ...actionOptions.map((item) => ({ value: item, label: item }))], [actionOptions]);
+  const entityFilterOptions = useMemo(
+    () => [{ value: 'all', label: 'همه نوع‌ها' }, ...entityOptions.map((item) => ({ value: item, label: activityEntityLabel(item) }))],
+    [entityOptions]
+  );
+  const actionFilterOptions = useMemo(
+    () => [{ value: 'all', label: 'همه عملیات‌ها' }, ...actionOptions.map((item) => ({ value: item, label: activityActionLabel(item) }))],
+    [actionOptions]
+  );
 
   const totalPages = Math.max(1, Math.ceil(filteredActivity.length / PAGE_SIZE));
   const pageItems = useMemo(() => {
@@ -96,9 +113,9 @@ export function ActivityPage() {
                   <TableRow key={item.id} className={idx % 2 ? 'bg-muted/10' : ''}>
                     <TableCell>{shamsiDate(item.createdAt)}</TableCell>
                     <TableCell>{fullName(item.actor)}</TableCell>
-                    <TableCell>{item.entityType}</TableCell>
-                    <TableCell>{item.action}</TableCell>
-                    <TableCell>{item.description || '-'}</TableCell>
+                    <TableCell>{activityEntityLabel(item.entityType)}</TableCell>
+                    <TableCell>{activityActionLabel(item.action)}</TableCell>
+                    <TableCell>{activityDescriptionLabel(item.description)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -79,6 +79,98 @@ export const textFa = (value?: string | null, fallback = '-') => {
   return fixed || fallback;
 };
 
+const ACTIVITY_ACTION_LABELS: Record<string, string> = {
+  CREATE: 'ایجاد',
+  UPDATE: 'ویرایش',
+  DELETE: 'حذف',
+  LOGIN: 'ورود',
+  LOGOUT: 'خروج',
+  REVOKE: 'ابطال',
+  ASSIGN_ROLE: 'اختصاص نقش'
+};
+
+const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
+  ORDER: 'سفارش',
+  INVOICE: 'فاکتور',
+  CUSTOMER: 'مشتری',
+  COLLABORATOR: 'همکار',
+  MESHTYPE: 'نوع توری',
+  USER: 'کاربر',
+  USERROLE: 'نقش کاربر',
+  ROLE: 'نقش',
+  PERMISSION: 'دسترسی',
+  AUTH: 'احراز هویت',
+  SESSION: 'نشست',
+  BACKUP: 'پشتیبان',
+  REPORT: 'گزارش',
+  NOTIFICATION: 'اعلان'
+};
+
+const ACTIVITY_DESCRIPTION_LABELS: Record<string, string> = {
+  'invoice created': 'فاکتور ایجاد شد',
+  'invoice updated': 'فاکتور ویرایش شد',
+  'invoice soft deleted': 'فاکتور حذف شد',
+  'order created': 'سفارش ایجاد شد',
+  'order updated': 'سفارش ویرایش شد',
+  'order soft deleted': 'سفارش حذف شد',
+  'customer created': 'مشتری ایجاد شد',
+  'customer updated': 'مشتری ویرایش شد',
+  'customer soft deleted': 'مشتری حذف شد',
+  'collaborator created': 'همکار ایجاد شد',
+  'collaborator updated': 'همکار ویرایش شد',
+  'collaborator soft deleted': 'همکار حذف شد',
+  'mesh type created': 'نوع توری ایجاد شد',
+  'mesh type updated': 'نوع توری ویرایش شد',
+  'soft delete mesh type': 'نوع توری حذف شد',
+  'soft delete user': 'کاربر حذف شد',
+  'session revoked': 'نشست باطل شد'
+};
+
+const EN_ENTITY_MAP: Record<string, string> = {
+  order: 'سفارش',
+  invoice: 'فاکتور',
+  customer: 'مشتری',
+  collaborator: 'همکار',
+  'mesh type': 'نوع توری',
+  user: 'کاربر',
+  session: 'نشست',
+  role: 'نقش',
+  permission: 'دسترسی',
+  auth: 'احراز هویت'
+};
+
+export const activityActionLabel = (value?: string | null) => {
+  const raw = (value ?? '').trim();
+  if (!raw) return '-';
+  return ACTIVITY_ACTION_LABELS[raw.toUpperCase()] ?? textFa(raw);
+};
+
+export const activityEntityLabel = (value?: string | null) => {
+  const raw = (value ?? '').trim();
+  if (!raw) return '-';
+  const key = raw.replace(/[\s_-]/g, '').toUpperCase();
+  return ACTIVITY_ENTITY_LABELS[key] ?? textFa(raw);
+};
+
+export const activityDescriptionLabel = (value?: string | null) => {
+  const raw = (value ?? '').trim();
+  if (!raw) return '-';
+  const normalized = raw.toLowerCase();
+  const fromMap = ACTIVITY_DESCRIPTION_LABELS[normalized];
+  if (fromMap) return fromMap;
+
+  const match = normalized.match(/^(.*)\s(created|updated|soft deleted|deleted)$/);
+  if (match) {
+    const entity = EN_ENTITY_MAP[match[1].trim()];
+    if (entity) {
+      const verb = match[2] === 'created' ? 'ایجاد شد' : match[2] === 'updated' ? 'ویرایش شد' : 'حذف شد';
+      return `${entity} ${verb}`;
+    }
+  }
+
+  return textFa(raw);
+};
+
 export const PERMISSION_LABELS: Record<string, string> = {
   'roles.list': 'مشاهده نقش‌ها',
   'roles.manage': 'مدیریت دسترسی نقش‌ها',

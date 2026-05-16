@@ -99,7 +99,7 @@ export class InvoicesService extends BaseService {
       entityType: 'Invoice',
       entityId: created.id,
       action: 'CREATE',
-      description: 'Invoice created',
+      description: 'ایجاد فاکتور',
       orderId: created.orderId
     });
 
@@ -160,7 +160,7 @@ export class InvoicesService extends BaseService {
       entityType: 'Invoice',
       entityId: id,
       action: 'UPDATE',
-      description: 'Invoice updated',
+      description: 'ویرایش فاکتور',
       orderId: existing.orderId
     });
 
@@ -207,7 +207,7 @@ export class InvoicesService extends BaseService {
       entityType: 'Invoice',
       entityId: id,
       action: 'DELETE',
-      description: 'Invoice soft deleted',
+      description: 'حذف فاکتور',
       orderId: existing.orderId
     });
 

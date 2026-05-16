@@ -77,7 +77,7 @@ export class CollaboratorsService extends BaseService {
       entityType: 'Collaborator',
       entityId: created.id,
       action: 'CREATE',
-      description: 'Collaborator created'
+      description: 'ایجاد همکار'
     });
 
     return created;
@@ -102,7 +102,7 @@ export class CollaboratorsService extends BaseService {
       entityType: 'Collaborator',
       entityId: updated.id,
       action: 'UPDATE',
-      description: 'Collaborator updated'
+      description: 'ویرایش همکار'
     });
 
     return updated;
@@ -120,7 +120,7 @@ export class CollaboratorsService extends BaseService {
       entityType: 'Collaborator',
       entityId: id,
       action: 'DELETE',
-      description: 'Collaborator soft deleted'
+      description: 'حذف همکار'
     });
 
     return { success: true };
