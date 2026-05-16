@@ -231,24 +231,52 @@ export function InvoicesPage() {
               </DialogHeader>
               <form onSubmit={submit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
-                  <Input placeholder="عنوان فاکتور (اختیاری)" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} className="md:col-span-2" />
-                  <SearchableSelect options={orderOptions} value={form.orderId} onChange={(value) => setForm((prev) => ({ ...prev, orderId: value }))} placeholder="انتخاب سفارش" />
-                  <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value as InvoiceFormState['status'] }))} placeholder="وضعیت فاکتور" />
-                  <Input placeholder="مبلغ کل" value={form.amount} onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))} />
-                  <Input placeholder="مالیات ارزش افزوده" value={form.extraAmount} onChange={(e) => setForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
-                  <Input placeholder="تخفیف" value={form.discountAmount} onChange={(e) => setForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
-                  <Input placeholder="مبلغ پرداختی" value={form.paidAmount} onChange={(e) => setForm((prev) => ({ ...prev, paidAmount: e.target.value }))} />
-                  <SearchableSelect
-                    options={[
-                      { value: 'CUSTOMER', label: 'نوع فاکتور: مشتری' },
-                      { value: 'COLLABORATOR', label: 'نوع فاکتور: همکار' }
-                    ]}
-                    value={form.payerType}
-                    onChange={(value) => setForm((prev) => ({ ...prev, payerType: value as InvoiceFormState['payerType'], payerId: '' }))}
-                    placeholder="نوع فاکتور"
-                  />
-                  <SearchableSelect options={createPayerOptions} value={form.payerId} onChange={(value) => setForm((prev) => ({ ...prev, payerId: value }))} placeholder="انتخاب شخص پرداخت‌کننده" />
-                  <div className="md:col-span-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">عنوان فاکتور</label>
+                    <Input placeholder="عنوان فاکتور (اختیاری)" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">سفارش</label>
+                    <SearchableSelect options={orderOptions} value={form.orderId} onChange={(value) => setForm((prev) => ({ ...prev, orderId: value }))} placeholder="انتخاب سفارش" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">وضعیت فاکتور</label>
+                    <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value as InvoiceFormState['status'] }))} placeholder="وضعیت فاکتور" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">تخفیف (ریال)</label>
+                    <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={form.discountAmount} onChange={(e) => setForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">مبلغ کل فاکتور (ریال)</label>
+                    <Input type="number" min="0" step="0.01" placeholder="مثال: 2100000" value={form.amount} onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">مالیات ارزش افزوده (ریال)</label>
+                    <Input type="number" min="0" step="0.01" placeholder="مثال: 200000" value={form.extraAmount} onChange={(e) => setForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">مبلغ پرداختی (ریال)</label>
+                    <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={form.paidAmount} onChange={(e) => setForm((prev) => ({ ...prev, paidAmount: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">نوع فاکتور</label>
+                    <SearchableSelect
+                      options={[
+                        { value: 'CUSTOMER', label: 'نوع فاکتور: مشتری' },
+                        { value: 'COLLABORATOR', label: 'نوع فاکتور: همکار' }
+                      ]}
+                      value={form.payerType}
+                      onChange={(value) => setForm((prev) => ({ ...prev, payerType: value as InvoiceFormState['payerType'], payerId: '' }))}
+                      placeholder="نوع فاکتور"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">پرداخت‌کننده</label>
+                    <SearchableSelect options={createPayerOptions} value={form.payerId} onChange={(value) => setForm((prev) => ({ ...prev, payerId: value }))} placeholder="انتخاب شخص پرداخت‌کننده" />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">تاریخ سررسید پرداخت</label>
                     <PersianDatePicker value={form.dueDate} onChange={(value) => setForm((prev) => ({ ...prev, dueDate: value ?? '' }))} placeholder="تاریخ سررسید پرداخت" />
                   </div>
                 </div>
@@ -383,24 +411,52 @@ export function InvoicesPage() {
           </DialogHeader>
           <form onSubmit={submitEdit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              <Input placeholder="عنوان فاکتور (اختیاری)" value={editForm.title} onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))} className="md:col-span-2" />
-              <SearchableSelect options={editingOrderOptions} value={editForm.orderId} onChange={(value) => setEditForm((prev) => ({ ...prev, orderId: value }))} placeholder="سفارش" disabled />
-              <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={editForm.status} onChange={(value) => setEditForm((prev) => ({ ...prev, status: value as InvoiceFormState['status'] }))} placeholder="وضعیت فاکتور" />
-              <Input placeholder="مبلغ کل" value={editForm.amount} onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))} />
-              <Input placeholder="مالیات ارزش افزوده" value={editForm.extraAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
-              <Input placeholder="تخفیف" value={editForm.discountAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
-              <Input placeholder="مبلغ پرداختی" value={editForm.paidAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, paidAmount: e.target.value }))} />
-              <SearchableSelect
-                options={[
-                  { value: 'CUSTOMER', label: 'نوع فاکتور: مشتری' },
-                  { value: 'COLLABORATOR', label: 'نوع فاکتور: همکار' }
-                ]}
-                value={editForm.payerType}
-                onChange={(value) => setEditForm((prev) => ({ ...prev, payerType: value as InvoiceFormState['payerType'], payerId: '' }))}
-                placeholder="نوع فاکتور"
-              />
-              <SearchableSelect options={editPayerOptions} value={editForm.payerId} onChange={(value) => setEditForm((prev) => ({ ...prev, payerId: value }))} placeholder="انتخاب شخص پرداخت‌کننده" />
-              <div className="md:col-span-2">
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium">عنوان فاکتور</label>
+                <Input placeholder="عنوان فاکتور (اختیاری)" value={editForm.title} onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">سفارش</label>
+                <SearchableSelect options={editingOrderOptions} value={editForm.orderId} onChange={(value) => setEditForm((prev) => ({ ...prev, orderId: value }))} placeholder="سفارش" disabled />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">وضعیت فاکتور</label>
+                <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={editForm.status} onChange={(value) => setEditForm((prev) => ({ ...prev, status: value as InvoiceFormState['status'] }))} placeholder="وضعیت فاکتور" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">تخفیف (ریال)</label>
+                <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={editForm.discountAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">مبلغ کل فاکتور (ریال)</label>
+                <Input type="number" min="0" step="0.01" placeholder="مثال: 2100000" value={editForm.amount} onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">مالیات ارزش افزوده (ریال)</label>
+                <Input type="number" min="0" step="0.01" placeholder="مثال: 200000" value={editForm.extraAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">مبلغ پرداختی (ریال)</label>
+                <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={editForm.paidAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, paidAmount: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">نوع فاکتور</label>
+                <SearchableSelect
+                  options={[
+                    { value: 'CUSTOMER', label: 'نوع فاکتور: مشتری' },
+                    { value: 'COLLABORATOR', label: 'نوع فاکتور: همکار' }
+                  ]}
+                  value={editForm.payerType}
+                  onChange={(value) => setEditForm((prev) => ({ ...prev, payerType: value as InvoiceFormState['payerType'], payerId: '' }))}
+                  placeholder="نوع فاکتور"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">پرداخت‌کننده</label>
+                <SearchableSelect options={editPayerOptions} value={editForm.payerId} onChange={(value) => setEditForm((prev) => ({ ...prev, payerId: value }))} placeholder="انتخاب شخص پرداخت‌کننده" />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium">تاریخ سررسید پرداخت</label>
                 <PersianDatePicker value={editForm.dueDate} onChange={(value) => setEditForm((prev) => ({ ...prev, dueDate: value ?? '' }))} placeholder="تاریخ سررسید پرداخت" />
               </div>
             </div>
