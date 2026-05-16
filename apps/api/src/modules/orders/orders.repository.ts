@@ -4,6 +4,68 @@ import { BaseRepository } from '../../common/repositories/base.repository';
 
 @Injectable()
 export class OrdersRepository extends BaseRepository {
+  private buildOrderCreateData(data: {
+    orderNumber: string;
+    title?: string;
+    orderDateJalali: string;
+    collaboratorId?: string | null;
+    customerId: string;
+    createdById: string;
+    workType: 'NEW_CONSTRUCTION' | 'REPAIR';
+    width?: number;
+    height?: number;
+    quantity?: number;
+    unitPrice?: number;
+    totalPrice: number;
+    discountAmount?: number;
+    extraAmount?: number;
+    lineItems?: Array<{
+      meshTypeId: string;
+      width: number;
+      height: number;
+      quantity: number;
+      unitPrice: number;
+      lineTotal: number;
+    }>;
+    description?: string;
+    stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+    stageNote?: string;
+    expectedCompletionDate?: Date;
+  }) {
+    return {
+      orderNumber: data.orderNumber,
+      title: data.title,
+      orderDateJalali: data.orderDateJalali,
+      collaboratorId: data.collaboratorId,
+      customerId: data.customerId,
+      createdById: data.createdById,
+      workType: data.workType as any,
+      width: data.width,
+      height: data.height,
+      quantity: data.quantity,
+      unitPrice: data.unitPrice,
+      totalPrice: data.totalPrice,
+      discountAmount: data.discountAmount,
+      extraAmount: data.extraAmount,
+      lineItems: data.lineItems?.length
+        ? {
+            create: data.lineItems.map((item) => ({
+              meshTypeId: item.meshTypeId,
+              width: item.width,
+              height: item.height,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              lineTotal: item.lineTotal
+            }))
+          }
+        : undefined,
+      description: data.description,
+      stage: data.stage as any,
+      stageNote: data.stageNote,
+      expectedCompletionDate: data.expectedCompletionDate
+    };
+  }
+
   list(filter: {
     q?: string;
     stage?: string;
@@ -137,38 +199,79 @@ export class OrdersRepository extends BaseRepository {
     expectedCompletionDate?: Date;
   }) {
     return this.prisma.order.create({
-      data: {
-        orderNumber: data.orderNumber,
-        title: data.title,
-        orderDateJalali: data.orderDateJalali,
-        collaboratorId: data.collaboratorId,
-        customerId: data.customerId,
-        createdById: data.createdById,
-        workType: data.workType as any,
-        width: data.width,
-        height: data.height,
-        quantity: data.quantity,
-        unitPrice: data.unitPrice,
-        totalPrice: data.totalPrice,
-        discountAmount: data.discountAmount,
-        extraAmount: data.extraAmount,
-        lineItems: data.lineItems?.length
-          ? {
-              create: data.lineItems.map((item) => ({
-                meshTypeId: item.meshTypeId,
-                width: item.width,
-                height: item.height,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                lineTotal: item.lineTotal
-              }))
-            }
-          : undefined,
-        description: data.description,
-        stage: data.stage as any,
-        stageNote: data.stageNote,
-        expectedCompletionDate: data.expectedCompletionDate
+      data: this.buildOrderCreateData(data)
+    });
+  }
+
+  createWithInitialInvoice(
+    data: {
+      orderNumber: string;
+      title?: string;
+      orderDateJalali: string;
+      collaboratorId?: string | null;
+      customerId: string;
+      createdById: string;
+      workType: 'NEW_CONSTRUCTION' | 'REPAIR';
+      width?: number;
+      height?: number;
+      quantity?: number;
+      unitPrice?: number;
+      totalPrice: number;
+      discountAmount?: number;
+      extraAmount?: number;
+      lineItems?: Array<{
+        meshTypeId: string;
+        width: number;
+        height: number;
+        quantity: number;
+        unitPrice: number;
+        lineTotal: number;
+      }>;
+      description?: string;
+      stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+      stageNote?: string;
+      expectedCompletionDate?: Date;
+      initialInvoice?: {
+        invoiceNumber: string;
+        title?: string;
+        amount: number;
+        discountAmount: number;
+        extraAmount: number;
+        paidAmount: number;
+        status: 'UNPAID' | 'PARTIAL' | 'PAID';
+        payerType: 'CUSTOMER' | 'COLLABORATOR';
+        payerId?: string | null;
+        dueDate?: Date;
+        description?: string;
+      };
+    }
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const createdOrder = await tx.order.create({
+        data: this.buildOrderCreateData(data)
+      });
+
+      if (data.initialInvoice) {
+        await tx.invoice.create({
+          data: {
+            orderId: createdOrder.id,
+            invoiceNumber: data.initialInvoice.invoiceNumber,
+            title: data.initialInvoice.title,
+            createdById: data.createdById,
+            amount: data.initialInvoice.amount,
+            discountAmount: data.initialInvoice.discountAmount,
+            extraAmount: data.initialInvoice.extraAmount,
+            paidAmount: data.initialInvoice.paidAmount,
+            status: data.initialInvoice.status as any,
+            payerType: data.initialInvoice.payerType as any,
+            payerId: data.initialInvoice.payerId ?? null,
+            description: data.initialInvoice.description,
+            dueDate: data.initialInvoice.dueDate
+          }
+        });
       }
+
+      return createdOrder;
     });
   }
 

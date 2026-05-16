@@ -20,8 +20,15 @@ async function bootstrap() {
     })
   );
 
+  const corsOrigins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const isProduction = (process.env.NODE_ENV ?? '').toLowerCase() === 'production';
+  const corsOriginOption = isProduction ? (corsOrigins.length ? corsOrigins : false) : (corsOrigins.length ? corsOrigins : true);
+
   await app.register(cors, {
-    origin: true,
+    origin: corsOriginOption,
     credentials: true
   });
 

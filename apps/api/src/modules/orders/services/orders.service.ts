@@ -1,11 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from '../../../common/services/base.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, derivePaymentStatus, maxMoney, minMoney, multiplyMoney, percentOf, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
 import { OrdersRepository } from '../orders.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
-import { InvoicesService } from '../../invoices/services/invoices.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderDto } from '../dto/update-order.dto';
 import { ListOrdersQueryDto } from '../dto/list-orders-query.dto';
@@ -14,8 +13,7 @@ import { ListOrdersQueryDto } from '../dto/list-orders-query.dto';
 export class OrdersService extends BaseService {
   constructor(
     private readonly ordersRepository: OrdersRepository,
-    private readonly operationLogsService: OperationLogsService,
-    private readonly invoicesService: InvoicesService
+    private readonly operationLogsService: OperationLogsService
   ) {
     super();
   }
@@ -63,13 +61,18 @@ export class OrdersService extends BaseService {
     const calculatedBaseTotal = lineItems.length ? lineItemsTotal : fallbackTotal;
     const defaultVatAmount = multiplyMoney(calculatedBaseTotal, 0.1);
     const extraAmount = dto.extraAmount === undefined ? defaultVatAmount : clampMoneyNonNegative(dto.extraAmount);
-    const totalPrice = dto.totalPrice === undefined ? maxMoney(addMoney(calculatedBaseTotal, extraAmount), discountAmount).sub(discountAmount) : clampMoneyNonNegative(dto.totalPrice);
+    const totalPrice =
+      dto.totalPrice === undefined
+        ? maxMoney(addMoney(calculatedBaseTotal, extraAmount), discountAmount).sub(discountAmount)
+        : clampMoneyNonNegative(dto.totalPrice);
     const firstLine = lineItems[0];
 
-    let created: Awaited<ReturnType<OrdersRepository['create']>> | null = null;
+    const hasInitialInvoice = dto.createInitialInvoice !== false;
+    let created: Awaited<ReturnType<OrdersRepository['createWithInitialInvoice']>> | null = null;
+
     for (let attempt = 0; attempt < 10; attempt += 1) {
       try {
-        created = await this.ordersRepository.create({
+        created = await this.ordersRepository.createWithInitialInvoice({
           orderNumber: this.generateOrderNumber(orderDateJalali),
           title: dto.title?.trim(),
           orderDateJalali,
@@ -88,7 +91,21 @@ export class OrdersService extends BaseService {
           description: dto.description?.trim(),
           stage: dto.stage,
           stageNote: dto.stageNote?.trim(),
-          expectedCompletionDate: dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : undefined
+          expectedCompletionDate: dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : undefined,
+          initialInvoice: hasInitialInvoice
+            ? {
+                invoiceNumber: this.generateInvoiceNumber(orderDateJalali),
+                amount: toMoneyNumber(totalPrice),
+                discountAmount: toMoneyNumber(discountAmount),
+                extraAmount: toMoneyNumber(extraAmount),
+                paidAmount: 0,
+                status: 'UNPAID',
+                payerType: dto.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
+                payerId: dto.collaboratorId ?? dto.customerId,
+                dueDate: dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : undefined,
+                description: 'فاکتور اولیه سفارش'
+              }
+            : undefined
         });
         break;
       } catch (error) {
@@ -110,22 +127,6 @@ export class OrdersService extends BaseService {
       description: 'Order created',
       orderId: created.id
     });
-
-    if (dto.createInitialInvoice !== false) {
-      const invoiceAmount = toMoneyNumber(totalPrice);
-      await this.invoicesService.create(actorId, {
-        orderId: created.id,
-        amount: invoiceAmount,
-        discountAmount: toMoneyNumber(discountAmount),
-        extraAmount: toMoneyNumber(extraAmount),
-        paidAmount: 0,
-        status: 'UNPAID',
-        payerType: created.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
-        payerId: created.collaboratorId ?? created.customerId,
-        dueDate: dto.expectedCompletionDate,
-        description: 'فاکتور اولیه سفارش'
-      });
-    }
 
     return this.detail(created.id);
   }
@@ -274,6 +275,12 @@ export class OrdersService extends BaseService {
     return `OR-${shortDate}-${randomPart}`;
   }
 
+  private generateInvoiceNumber(jalaliCode: string) {
+    const shortDate = jalaliCode.slice(-4);
+    const randomPart = randomUUID().replace(/-/g, '').slice(0, 5).toUpperCase();
+    return `IN-${shortDate}-${randomPart}`;
+  }
+
   private isUniqueConstraintError(error: unknown) {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
@@ -304,3 +311,4 @@ export class OrdersService extends BaseService {
     return multiplyMoney(quantity, unitPrice);
   }
 }
+

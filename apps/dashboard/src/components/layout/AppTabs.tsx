@@ -40,18 +40,22 @@ export function AppTabs({
   active,
   onChange,
   collapsed,
+  visibleTabs,
   onItemClick,
   onDisabledItemClick
 }: {
   active: AppTab;
   onChange: (tab: AppTab) => void;
   collapsed?: boolean;
+  visibleTabs?: AppTab[];
   onItemClick?: () => void;
   onDisabledItemClick?: (label: string) => void;
 }) {
+  const visible = visibleTabs?.length ? TABS.filter((item) => visibleTabs.includes(item.key)) : TABS;
+
   return (
     <nav className="space-y-1">
-      {TABS.map((item) => {
+      {visible.map((item) => {
         const Icon = item.icon;
         const isActive = active === item.key;
         return (

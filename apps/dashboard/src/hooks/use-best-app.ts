@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { apiBasePath, apiCall, configureApiAuth } from '../lib/api';
+import { ApiError, apiBasePath, apiCall, configureApiAuth } from '../lib/api';
 import { ActivityLog, BackupLog, DashboardStats, Invoice, MeshType, NotificationItem, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
 
 const ACCESS_TOKEN_KEY = 'best_admin_token';
@@ -102,6 +102,17 @@ export function useBestApp() {
     clearDetails();
   };
 
+  const tryAdminCall = async <T,>(path: string, accessToken: string, fallback: T): Promise<T> => {
+    try {
+      return await apiCall<T>(path, accessToken);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        return fallback;
+      }
+      throw error;
+    }
+  };
+
   const reload = async () => {
     const accessToken = tokenRef.current;
     if (!accessToken) return;
@@ -110,35 +121,28 @@ export function useBestApp() {
     setError('');
 
     try {
-      const [
-        me,
-        dashboardData,
-        meshData,
-        collaboratorData,
-        customerData,
-        orderData,
-        invoiceData,
-        backupData,
-        activityData,
-        userData,
-        roleData,
-        permissionData,
-        settings
-      ] = await Promise.all([
-        apiCall<SessionUser>('/auth/me', accessToken),
+      const me = await apiCall<SessionUser>('/auth/me', accessToken);
+
+      const [dashboardData, meshData, collaboratorData, customerData, orderData, invoiceData] = await Promise.all([
         apiCall<DashboardStats>('/reports/dashboard', accessToken),
         apiCall<MeshType[]>('/mesh-types', accessToken),
         apiCall<Person[]>('/collaborators', accessToken),
         apiCall<Person[]>('/customers', accessToken),
         apiCall<Order[]>('/orders', accessToken),
-        apiCall<Invoice[]>('/invoices', accessToken),
-        apiCall<BackupLog[]>('/backups/logs', accessToken),
-        apiCall<ActivityLog[]>('/operation-logs?limit=100', accessToken),
-        apiCall<User[]>('/users', accessToken),
-        apiCall<Role[]>('/roles', accessToken),
-        apiCall<Permission[]>('/permissions', accessToken),
-        apiCall<{ backupIntervalMinutes: number }>('/backups/settings', accessToken)
+        apiCall<Invoice[]>('/invoices', accessToken)
       ]);
+
+      const isManager = me.roleKeys.includes('manager');
+      const [backupData, activityData, userData, roleData, permissionData, settings] = isManager
+        ? await Promise.all([
+            tryAdminCall<BackupLog[]>('/backups/logs', accessToken, []),
+            tryAdminCall<ActivityLog[]>('/operation-logs?limit=100', accessToken, []),
+            tryAdminCall<User[]>('/users', accessToken, []),
+            tryAdminCall<Role[]>('/roles', accessToken, []),
+            tryAdminCall<Permission[]>('/permissions', accessToken, []),
+            tryAdminCall<{ backupIntervalMinutes: number }>('/backups/settings', accessToken, { backupIntervalMinutes: 1440 })
+          ])
+        : [[], [], [], [], [], { backupIntervalMinutes: 1440 }];
 
       setSession(me);
       setDashboard(dashboardData);
@@ -361,7 +365,7 @@ export function useBestApp() {
     const normalized = (date?: string | null) => (date ? new Date(date) : null);
 
     const invoiceItems: NotificationItem[] = invoices
-      .filter((invoice) => invoice.status !== 'PAID')
+      .filter((invoice) => invoice.status !== 'PAID' && invoice.order?.stage !== 'CANCELLED')
       .flatMap((invoice) => {
         const due = normalized(invoice.dueDate);
         if (!due || due > soonThreshold) return [];

@@ -20,7 +20,9 @@ describe('format helpers', () => {
   });
 
   it('fixes common mojibake persian text', () => {
-    expect(textFa('Ù…ÙˆØ¹Ø¯ ØªÚ©Ù…ÛŒÙ„')).toBe('موعد تکمیل');
+    const source = 'موعد تکمیل';
+    const mojibake = String.fromCharCode(...new TextEncoder().encode(source));
+    expect(textFa(mojibake)).toBe(source);
   });
 
   it('replaces unreadable placeholders', () => {

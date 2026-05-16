@@ -25,6 +25,7 @@ const SIDEBAR_KEY = 'best_sidebar_collapsed';
 const ACTIVE_TAB_KEY = 'best_active_tab';
 const PROJECT_VERSION = '0.1.1';
 const APP_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'users', 'backups', 'notifications', 'activity'];
+const ASSISTANT_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'notifications'];
 
 export function App() {
   const app = useBestApp();
@@ -43,6 +44,11 @@ export function App() {
     return stored === 'dark' ? 'dark' : 'light';
   });
 
+  const visibleTabs = useMemo(
+    () => (app.session?.roleKeys?.includes('manager') ? APP_TABS : ASSISTANT_TABS),
+    [app.session]
+  );
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem(THEME_KEY, theme);
@@ -55,6 +61,12 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(ACTIVE_TAB_KEY, tab);
   }, [tab]);
+
+  useEffect(() => {
+    if (!app.token || !app.session) return;
+    if (visibleTabs.includes(tab)) return;
+    setTab('dashboard');
+  }, [app.token, app.session, tab, visibleTabs]);
 
   useEffect(() => {
     let alive = true;
@@ -219,6 +231,7 @@ export function App() {
                     active={tab}
                     onChange={navigateToTab}
                     collapsed={sidebarCollapsed}
+                    visibleTabs={visibleTabs}
                     onItemClick={() => setMobileSidebarOpen(false)}
                     onDisabledItemClick={openComingSoon}
                   />

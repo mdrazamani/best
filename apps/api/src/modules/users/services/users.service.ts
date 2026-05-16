@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import { BaseService } from '../../../common/services/base.service';
 import { RolesService } from '../../roles/services/roles.service';
@@ -12,7 +13,8 @@ export class UsersService extends BaseService {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly rolesService: RolesService,
-    private readonly operationLogsService: OperationLogsService
+    private readonly operationLogsService: OperationLogsService,
+    private readonly configService: ConfigService
   ) {
     super();
   }
@@ -118,7 +120,8 @@ export class UsersService extends BaseService {
       throw new NotFoundException('\u06a9\u0627\u0631\u0628\u0631 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
-    const isDefaultManager = existing.username.trim().toLowerCase() === 'superadmin';
+    const protectedManagerUsername = (this.configService.get<string>('SEED_SUPER_ADMIN_USERNAME') ?? 'superadmin').trim().toLowerCase();
+    const isDefaultManager = existing.username.trim().toLowerCase() === protectedManagerUsername;
     if (isDefaultManager) {
       throw new BadRequestException('\u062d\u0630\u0641 \u06a9\u0627\u0631\u0628\u0631 \u0645\u062f\u06cc\u0631 \u0627\u0635\u0644\u06cc \u0645\u062c\u0627\u0632 \u0646\u06cc\u0633\u062a.');
     }

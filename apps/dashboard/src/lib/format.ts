@@ -47,14 +47,29 @@ function hasPersianChars(value: string) {
 }
 
 function decodeMojibake(value: string) {
-  if (!/[ÙØ]/.test(value)) return value;
+  if (!/[\u00D8\u00D9]/.test(value)) return value;
+
+  const candidates: string[] = [];
+
   try {
     const bytes = Uint8Array.from(Array.from(value).map((char) => char.charCodeAt(0) & 0xff));
-    const decoded = new TextDecoder('utf-8').decode(bytes);
-    return hasPersianChars(decoded) ? decoded : value;
+    candidates.push(new TextDecoder('utf-8').decode(bytes));
   } catch {
-    return value;
+    // ignored
   }
+
+  try {
+    const decoded = decodeURIComponent(
+      Array.from(value)
+        .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`)
+        .join('')
+    );
+    candidates.push(decoded);
+  } catch {
+    // ignored
+  }
+
+  return candidates.find((item) => hasPersianChars(item)) ?? value;
 }
 
 export const textFa = (value?: string | null, fallback = '-') => {

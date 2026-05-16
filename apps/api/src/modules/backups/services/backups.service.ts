@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execFile } from 'child_process';
 import { createWriteStream, existsSync } from 'fs';
@@ -145,7 +145,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     if (!log) {
       throw new NotFoundException('بکاپ پیدا نشد.');
     }
-
+    this.assertSafeExcelFileName(fileName);
     const fullPath = join(log.excelDirectory, fileName);
     if (!existsSync(fullPath)) {
       throw new NotFoundException('فایل اکسل پیدا نشد.');
@@ -443,4 +443,21 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     const ctorName = (value as any).constructor?.name;
     return ctorName === 'Decimal' && typeof (value as any).toString === 'function';
   }
+
+  private assertSafeExcelFileName(fileName: string) {
+    const normalized = fileName?.trim();
+    if (!normalized) {
+      throw new BadRequestException('نام فایل نامعتبر است.');
+    }
+
+    if (normalized.includes('/') || normalized.includes('\\') || normalized.includes('..')) {
+      throw new BadRequestException('نام فایل نامعتبر است.');
+    }
+
+    if (!/^[A-Za-z0-9._-]+$/.test(normalized) || !normalized.toLowerCase().endsWith('.xlsx')) {
+      throw new BadRequestException('نام فایل نامعتبر است.');
+    }
+  }
 }
+
+

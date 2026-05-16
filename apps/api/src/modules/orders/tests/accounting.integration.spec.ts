@@ -87,7 +87,7 @@ describe('Accounting integration (orders + invoices)', () => {
   };
 
   const invoicesService = new InvoicesService(invoicesRepository as any, operationLogsService as any);
-  const ordersService = new OrdersService(ordersRepository as any, operationLogsService as any, invoicesService as any);
+  const ordersService = new OrdersService(ordersRepository as any, operationLogsService as any);
 
   beforeEach(() => {
     jest.clearAllMocks();

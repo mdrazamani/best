@@ -40,10 +40,15 @@ Endpoints:
 - API: `http://localhost:3000/v1`
 - Swagger: `http://localhost:3000/docs`
 
-Default super admin (seeded automatically):
+Default manager account (seeded automatically in development):
 
 - username: `superadmin`
 - password: `Best@123456`
+
+Production note:
+
+- Set `SEED_SUPER_ADMIN_PASSWORD` explicitly in environment.
+- Set `AUTH_JWT_SECRET` explicitly in environment.
 
 ## Run API
 

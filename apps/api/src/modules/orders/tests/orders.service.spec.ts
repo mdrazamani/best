@@ -7,6 +7,7 @@ describe('OrdersService', () => {
     findById: jest.fn(),
     countByOrderPrefix: jest.fn(),
     create: jest.fn(),
+    createWithInitialInvoice: jest.fn(),
     update: jest.fn(),
     softDelete: jest.fn()
   };
@@ -15,11 +16,7 @@ describe('OrdersService', () => {
     log: jest.fn()
   };
 
-  const invoicesService = {
-    create: jest.fn()
-  };
-
-  const service = new OrdersService(ordersRepository as any, operationLogsService as any, invoicesService as any);
+  const service = new OrdersService(ordersRepository as any, operationLogsService as any);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -109,7 +106,7 @@ describe('OrdersService', () => {
   });
 
   it('applies discount and extra amounts to auto invoice when creating order', async () => {
-    ordersRepository.create.mockResolvedValue({
+    ordersRepository.createWithInitialInvoice.mockResolvedValue({
       id: 'order-1',
       collaboratorId: null,
       customerId: 'customer-1'
@@ -128,27 +125,22 @@ describe('OrdersService', () => {
       extraAmount: 20
     } as any);
 
-    expect(ordersRepository.create).toHaveBeenCalledWith(
+    expect(ordersRepository.createWithInitialInvoice).toHaveBeenCalledWith(
       expect.objectContaining({
         totalPrice: 70,
         discountAmount: 50,
-        extraAmount: 20
-      })
-    );
-
-    expect(invoicesService.create).toHaveBeenCalledWith(
-      'actor-1',
-      expect.objectContaining({
-        orderId: 'order-1',
-        amount: 70,
-        discountAmount: 50,
-        extraAmount: 20
+        extraAmount: 20,
+        initialInvoice: expect.objectContaining({
+          amount: 70,
+          discountAmount: 50,
+          extraAmount: 20
+        })
       })
     );
   });
 
   it('uses 10 percent vat by default when extra amount is not provided', async () => {
-    ordersRepository.create.mockResolvedValue({
+    ordersRepository.createWithInitialInvoice.mockResolvedValue({
       id: 'order-2',
       collaboratorId: null,
       customerId: 'customer-1'
@@ -165,19 +157,14 @@ describe('OrdersService', () => {
       lineItems: [{ meshTypeId: 'mesh-1', width: 200, height: 300, quantity: 1, unitPrice: 100 }]
     } as any);
 
-    expect(ordersRepository.create).toHaveBeenCalledWith(
+    expect(ordersRepository.createWithInitialInvoice).toHaveBeenCalledWith(
       expect.objectContaining({
         totalPrice: 110,
-        extraAmount: 10
-      })
-    );
-
-    expect(invoicesService.create).toHaveBeenCalledWith(
-      'actor-1',
-      expect.objectContaining({
-        orderId: 'order-2',
-        amount: 110,
-        extraAmount: 10
+        extraAmount: 10,
+        initialInvoice: expect.objectContaining({
+          amount: 110,
+          extraAmount: 10
+        })
       })
     );
   });
