@@ -346,10 +346,14 @@ export function OrdersPage() {
     const detailMeshTypeText = meshTypeLabelsFromItems(detailLineItems);
     const detailInvoices = Array.isArray(orderDetail.invoices) ? orderDetail.invoices : [];
     const detailLogs = Array.isArray(orderDetail.operationLogs) ? orderDetail.operationLogs : [];
-    const detailTotal = Number(orderDetail.paymentSummary?.total ?? orderDetail.totalPrice ?? 0);
-    const detailDiscount = Number(orderDetail.discountAmount ?? 0);
-    const detailExtra = Number(orderDetail.extraAmount ?? 0);
-    const detailBase = detailTotal - detailExtra + detailDiscount;
+    const hasInvoices = detailInvoices.length > 0;
+    const detailTotal = Number(orderDetail.paymentSummary?.total ?? 0);
+    const detailPaidAmount = Number(orderDetail.paymentSummary?.paidAmount ?? 0);
+    const detailRemainingAmount = Number(orderDetail.paymentSummary?.remainingAmount ?? 0);
+    const detailDiscount = detailInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice?.discountAmount ?? 0), 0);
+    const detailExtra = detailInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice?.extraAmount ?? 0), 0);
+    const detailBase = Math.max(detailTotal - detailExtra + detailDiscount, 0);
+    const detailMoneyLabel = (value: number) => (hasInvoices ? money(value) : '-');
 
     return (
       <section className="space-y-4">
@@ -373,7 +377,8 @@ export function OrdersPage() {
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">درصد پرداخت</p>
-                <p className="mt-1 font-bold">{orderDetail.paymentSummary?.percent ?? 0}%</p>
+                <p className="mt-1 font-bold">{hasInvoices ? `${orderDetail.paymentSummary?.percent ?? 0}%` : '-'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">بر اساس فاکتورهای ثبت‌شده</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">تاریخ تکمیل تقریبی</p>
@@ -396,30 +401,36 @@ export function OrdersPage() {
                 ذخیره مرحله
               </Button>
             </div>
+            {!hasInvoices ? (
+              <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2 text-sm text-amber-900">
+                <p className="font-semibold">هنوز فاکتوری برای این سفارش ثبت نشده است.</p>
+                <p className="text-xs">تا زمان ثبت اولین فاکتور، اعداد مالی بر اساس فاکتور قابل محاسبه نیست.</p>
+              </div>
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مبلغ کل سفارش</p>
-                <p className="mt-1 text-lg font-bold">{money(detailTotal)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">پایه: {money(detailBase)}</p>
+                <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailTotal)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">پایه: {hasInvoices ? money(detailBase) : '-'}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مبلغ مالیات ارزش افزوده</p>
-                <p className="mt-1 text-lg font-bold">{money(detailExtra)}</p>
+                <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailExtra)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">تخفیف</p>
-                <p className="mt-1 text-lg font-bold">{money(detailDiscount)}</p>
+                <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailDiscount)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مبلغ پرداخت‌شده</p>
-                <p className="mt-1 text-lg font-bold">{money(Number(orderDetail.paymentSummary?.paidAmount ?? 0))}</p>
+                <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailPaidAmount)}</p>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مانده</p>
-                <p className="mt-1 text-lg font-bold text-destructive">{money(Number(orderDetail.paymentSummary?.remainingAmount ?? 0))}</p>
+                <p className={`mt-1 text-lg font-bold ${hasInvoices && detailRemainingAmount > 0 ? 'text-destructive' : ''}`}>{detailMoneyLabel(detailRemainingAmount)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">تعداد فاکتورها</p>
