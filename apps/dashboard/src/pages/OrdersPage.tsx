@@ -402,7 +402,7 @@ export function OrdersPage() {
                 <p className="mt-1 text-xs text-muted-foreground">پایه: {money(detailBase)}</p>
               </div>
               <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">مبلغ افزوده</p>
+                <p className="text-xs text-muted-foreground">مبلغ مالیات ارزش افزوده</p>
                 <p className="mt-1 text-lg font-bold">{money(detailExtra)}</p>
               </div>
               <div className="rounded-lg border p-3">
@@ -621,7 +621,7 @@ export function OrdersPage() {
                   min="0"
                   step="0.01"
                   value={detailInvoiceForm.extraAmount}
-                  placeholder="مبلغ افزوده"
+                  placeholder="مبلغ  مالیات ارزش افزوده"
                   onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, extraAmount: e.target.value }))}
                 />
                 <Input

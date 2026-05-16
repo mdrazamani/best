@@ -235,7 +235,7 @@ export function InvoicesPage() {
                   <SearchableSelect options={orderOptions} value={form.orderId} onChange={(value) => setForm((prev) => ({ ...prev, orderId: value }))} placeholder="انتخاب سفارش" />
                   <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value as InvoiceFormState['status'] }))} placeholder="وضعیت فاکتور" />
                   <Input placeholder="مبلغ کل" value={form.amount} onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))} />
-                  <Input placeholder="مبلغ افزوده" value={form.extraAmount} onChange={(e) => setForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
+                  <Input placeholder="مالیات ارزش افزوده" value={form.extraAmount} onChange={(e) => setForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
                   <Input placeholder="تخفیف" value={form.discountAmount} onChange={(e) => setForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
                   <Input placeholder="مبلغ پرداختی" value={form.paidAmount} onChange={(e) => setForm((prev) => ({ ...prev, paidAmount: e.target.value }))} />
                   <SearchableSelect
@@ -387,7 +387,7 @@ export function InvoicesPage() {
               <SearchableSelect options={editingOrderOptions} value={editForm.orderId} onChange={(value) => setEditForm((prev) => ({ ...prev, orderId: value }))} placeholder="سفارش" disabled />
               <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={editForm.status} onChange={(value) => setEditForm((prev) => ({ ...prev, status: value as InvoiceFormState['status'] }))} placeholder="وضعیت فاکتور" />
               <Input placeholder="مبلغ کل" value={editForm.amount} onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))} />
-              <Input placeholder="مبلغ افزوده" value={editForm.extraAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
+              <Input placeholder="مالیات ارزش افزوده" value={editForm.extraAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
               <Input placeholder="تخفیف" value={editForm.discountAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
               <Input placeholder="مبلغ پرداختی" value={editForm.paidAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, paidAmount: e.target.value }))} />
               <SearchableSelect

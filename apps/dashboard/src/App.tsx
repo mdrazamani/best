@@ -198,8 +198,8 @@ export function App() {
               <div className={`mb-4 flex items-center gap-2 ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
                 {!sidebarCollapsed ? (
                   <div>
-                    <p className="text-xl font-extrabold tracking-tight text-primary">بست</p>
-                    <p className="text-xs text-muted-foreground">پنل حسابداری تولیدی توری</p>
+                    <p className="text-xl font-extrabold tracking-tight text-primary">توربست</p>
+                    <p className="text-xs text-muted-foreground">پنل حسابداری تولیدی</p>
                   </div>
                 ) : null}
                 <Button

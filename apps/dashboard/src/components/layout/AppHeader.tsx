@@ -33,8 +33,8 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
 
   return (
     <header className="mb-4 rounded-xl border border-slate-300/90 bg-white px-3 py-2 shadow-sm dark:border-slate-700/80 dark:bg-card sm:px-4">
-      <div className="flex items-start justify-between gap-2 sm:items-center sm:gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-2.5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="order-2 flex w-full min-w-0 flex-nowrap items-center justify-end gap-2 sm:order-1 sm:w-auto sm:justify-start sm:gap-2.5">
           <Button variant="outline" size="icon" className="lg:hidden" onClick={onToggleSidebar} aria-label="باز کردن منو">
             <Menu className="h-4 w-4" />
           </Button>
@@ -109,12 +109,11 @@ export function AppHeader({ onToggleSidebar, theme, onToggleTheme }: AppHeaderPr
             </DropdownMenu>
         </div>
 
-        <div className="min-w-0 text-left">
-          <p className="truncate text-base font-extrabold tracking-tight text-foreground sm:text-2xl">پنل مدیریت بست</p>
+        <div className="order-1 min-w-0 w-full text-right sm:order-2 sm:w-auto">
+          <p className="truncate text-base font-extrabold tracking-tight text-foreground sm:text-2xl">پنل مدیریت توربست</p>
           <p className="truncate text-[10px] text-muted-foreground sm:text-xs">به نام خدا | {todayShamsi}</p>
         </div>
       </div>
     </header>
   );
 }
-

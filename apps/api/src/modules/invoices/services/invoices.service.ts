@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from '../../../common/services/base.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -301,21 +301,37 @@ export class InvoicesService extends BaseService {
     return '';
   }
 
+  private getInvoiceLogoDataUri() {
+    const candidates = [
+      path.resolve(process.cwd(), 'src/modules/invoices/assets/torbest-logo.jpg'),
+      path.resolve(process.cwd(), 'apps/api/src/modules/invoices/assets/torbest-logo.jpg'),
+      path.resolve(__dirname, '../assets/torbest-logo.jpg')
+    ];
+
+    for (const logoPath of candidates) {
+      if (!fs.existsSync(logoPath)) continue;
+      const encoded = fs.readFileSync(logoPath).toString('base64');
+      return `data:image/jpeg;base64,${encoded}`;
+    }
+
+    return null;
+  }
+
   private renderInvoiceHtml(invoice: any): string {
     const customer = invoice.order?.customer;
     const collaborator = invoice.order?.collaborator;
     const buyer = invoice.payerType === 'COLLABORATOR' ? collaborator : customer;
 
-    const sellerName = 'کارگاه تولیدی بست';
-    const sellerPhone = '021-12345678';
-    const sellerAddress = 'تهران، خیابان ولیعصر، پلاک 123، واحد 4';
+    const sellerName = 'تولیدی توربست';
+    const sellerPhonePrimary = '09124617758';
+    const sellerPhoneSecondary = '09004617758';
+    const sellerPhone = `${sellerPhonePrimary} - ${sellerPhoneSecondary}`;
+    const sellerAddress = 'میانجاده، جنب خیابان عدل، بن‌بست 12، پلاک 1';
+    const logoDataUri = this.getInvoiceLogoDataUri();
 
     const buyerName = [buyer?.firstName, buyer?.lastName].filter(Boolean).join(' ') || '-';
     const buyerPhone = buyer?.phone || '-';
     const buyerAddress = buyer?.address || '-';
-
-    const statusLabel = invoice.status === 'PAID' ? 'پرداخت شده' : invoice.status === 'PARTIAL' ? 'پرداخت ناقص' : 'پرداخت نشده';
-    const payerTypeLabel = invoice.payerType === 'COLLABORATOR' ? 'همکار' : 'مشتری';
 
     const lineItems = Array.isArray(invoice.order?.lineItems) ? invoice.order.lineItems : [];
     const orderInvoices = Array.isArray(invoice.order?.invoices) ? invoice.order.invoices : [];
@@ -366,7 +382,7 @@ export class InvoicesService extends BaseService {
     if (extraAmount > 0) {
       summaryRows.push(`
         <div class="sum-row">
-          <div class="sum-label">مالیات / مبلغ افزوده</div>
+          <div class="sum-label">مبلغ مالیات ارزش افزوده</div>
           <div class="sum-amount">${this.formatMoney(extraAmount)}</div>
         </div>
       `);
@@ -389,7 +405,7 @@ export class InvoicesService extends BaseService {
     `);
 
     const installmentInfo = showInstallmentInfo
-      ? `<p>این فاکتور پارت ${this.escapeHtml(invoicePart)} از ${this.escapeHtml(totalInvoiceParts)} است و مانده سفارش بعد از این فاکتور ${this.escapeHtml(this.formatMoney(remainingAfterCurrent))} ریال می‌باشد.</p>`
+      ? `<p class="installment-note">این فاکتور پارت ${this.escapeHtml(invoicePart)} از ${this.escapeHtml(totalInvoiceParts)} است و مانده سفارش بعد از این فاکتور ${this.escapeHtml(this.formatMoney(remainingAfterCurrent))} ریال می‌باشد.</p>`
       : '';
 
     const fontFace = this.getVazirmatnFontFaceCss();
@@ -483,38 +499,31 @@ export class InvoicesService extends BaseService {
       letter-spacing: -0.4px;
     }
 
-    .title-block p {
-      margin: 8px 0 0;
-      font-size: 14px;
-      color: #374151;
-      font-weight: 500;
-    }
-
     .logo-card {
       border: 1px solid var(--border);
       border-radius: 12px;
-      background: var(--surface);
+      background: #fff;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       text-align: center;
-      gap: 8px;
-      padding: 14px 10px;
+      gap: 6px;
+      padding: 8px;
     }
 
-    .logo-card svg {
-      width: 44px;
-      height: 44px;
-      stroke: #111827;
-      stroke-width: 1.8;
-      fill: none;
+    .logo-image {
+      width: 100%;
+      max-width: 140px;
+      max-height: 130px;
+      object-fit: contain;
     }
 
-    .logo-card span {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--heading);
+    .logo-fallback {
+      font-size: 19px;
+      font-weight: 800;
+      color: #f59e0b;
+      letter-spacing: 1px;
     }
 
     .party-grid {
@@ -573,10 +582,23 @@ export class InvoicesService extends BaseService {
       color: #111827;
     }
 
+    .party-info strong.single-line {
+      white-space: nowrap;
+      font-size: 12px;
+      letter-spacing: -0.1px;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 8px 0 12px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      margin: 8px 0 12px;
+      margin: 0;
     }
 
     th,
@@ -652,7 +674,6 @@ export class InvoicesService extends BaseService {
       border-radius: 12px;
       padding: 12px 14px;
       margin-bottom: 12px;
-      min-height: 84px;
       text-align: right;
     }
 
@@ -675,41 +696,15 @@ export class InvoicesService extends BaseService {
       fill: none;
     }
 
-    .notes p {
-      margin: 0 0 4px;
+    .installment-note {
+      margin: 0;
+      font-size: 12px;
       color: #4b5563;
-      font-size: 12.5px;
-      text-align: right;
     }
 
     .footer {
-      border-top: 1px solid var(--border);
-      padding-top: 10px;
-      margin-top: 6px;
-    }
-
-    .contacts {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 6px;
-      margin-bottom: 6px;
-      font-size: 12px;
-      color: #1f2937;
-    }
-
-    .contact {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    }
-
-    .contact svg {
-      width: 16px;
-      height: 16px;
-      stroke: #374151;
-      stroke-width: 1.9;
-      fill: none;
+      padding-top: 4px;
+      margin-top: 2px;
     }
 
     .thank-you {
@@ -735,15 +730,10 @@ export class InvoicesService extends BaseService {
 
       <div class="title-block">
         <h1>فاکتور فروش</h1>
-        <p>از همراهی شما سپاسگزاریم.</p>
       </div>
 
       <div class="logo-card">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 8V7a6 6 0 0 1 12 0v1"></path>
-          <path d="M5 8h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8z"></path>
-        </svg>
-        <span>لوگوی شما</span>
+        ${logoDataUri ? `<img class="logo-image" src="${logoDataUri}" alt="لوگوی توربست" />` : '<span class="logo-fallback">TORBEST</span>'}
       </div>
     </section>
 
@@ -760,7 +750,6 @@ export class InvoicesService extends BaseService {
           <span class="label">نام خریدار</span><span>:</span><strong>${this.escapeHtml(buyerName)}</strong>
           <span class="label">شماره همراه</span><span>:</span><strong>${this.escapeHtml(buyerPhone)}</strong>
           <span class="label">آدرس</span><span>:</span><strong>${this.escapeHtml(buyerAddress)}</strong>
-          <span class="label">نوع فاکتور</span><span>:</span><strong>${this.escapeHtml(payerTypeLabel)}</strong>
         </div>
       </article>
 
@@ -776,30 +765,33 @@ export class InvoicesService extends BaseService {
         <div class="party-info">
           <span class="label">نام فروشگاه</span><span>:</span><strong>${this.escapeHtml(sellerName)}</strong>
           <span class="label">تلفن</span><span>:</span><strong>${this.escapeHtml(sellerPhone)}</strong>
-          <span class="label">آدرس</span><span>:</span><strong>${this.escapeHtml(sellerAddress)}</strong>
+          <span class="label">آدرس</span><span>:</span><strong class="single-line">${this.escapeHtml(sellerAddress)}</strong>
         </div>
       </article>
     </section>
 
-    <table>
-      <thead>
-        <tr>
-          <th style="width:58px;">ردیف</th>
-          <th>نام کالا</th>
-          <th style="width:95px;">تعداد</th>
-          <th style="width:170px;">قیمت واحد (ریال)</th>
-          <th style="width:180px;">مبلغ کل (ریال)</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${emptyRows}
-      </tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:58px;">ردیف</th>
+            <th>نام کالا</th>
+            <th style="width:95px;">تعداد</th>
+            <th style="width:170px;">قیمت واحد (ریال)</th>
+            <th style="width:180px;">مبلغ کل (ریال)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${emptyRows}
+        </tbody>
+      </table>
+    </div>
 
     <section class="summary">
       ${summaryRows.join('')}
     </section>
 
+    ${showInstallmentInfo ? `
     <section class="notes">
       <div class="notes-head">
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -809,45 +801,17 @@ export class InvoicesService extends BaseService {
         </svg>
         <span>توضیحات</span>
       </div>
-      ${invoice.title ? `<p>عنوان: ${this.escapeHtml(invoice.title)}</p>` : ''}
-      <p>وضعیت: ${this.escapeHtml(statusLabel)}</p>
-      ${showInstallmentInfo ? installmentInfo : ''}
-      ${invoice.description ? `<p>${this.escapeHtml(invoice.description)}</p>` : ''}
+      ${installmentInfo}
     </section>
+    ` : ''}
 
     <footer class="footer">
-      <div class="contacts">
-        <div class="contact">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 3.1 5.18 2 2 0 0 1 5.08 3h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.6a2 2 0 0 1-.45 2.11L9.1 10.6a16 16 0 0 0 4.3 4.3l1.17-1.15a2 2 0 0 1 2.11-.45c.83.29 1.7.5 2.6.62A2 2 0 0 1 22 16.92z"></path>
-          </svg>
-          <span>${this.escapeHtml(sellerPhone)}</span>
-        </div>
-        <div class="contact">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-            <path d="M16 11.37a4 4 0 1 1-3.37-3.37 4 4 0 0 1 3.37 3.37z"></path>
-            <line x1="17.5" y1="6.5" x2="17.5" y2="6.5"></line>
-          </svg>
-          <span>@best_factory</span>
-        </div>
-        <div class="contact">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M2 12h20"></path>
-            <path d="M12 2a15 15 0 0 1 0 20"></path>
-            <path d="M12 2a15 15 0 0 0 0 20"></path>
-          </svg>
-          <span>www.best.example</span>
-        </div>
-      </div>
       <p class="thank-you">از اعتماد و خرید شما سپاسگزاریم.</p>
     </footer>
   </div>
 </body>
 </html>`;
   }
-
   private async renderPdfFromHtml(html: string): Promise<Buffer> {
     const browser = await puppeteer.launch({
       headless: true,
@@ -871,5 +835,7 @@ export class InvoicesService extends BaseService {
     }
   }
 }
+
+
 
 
