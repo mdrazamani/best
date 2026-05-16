@@ -419,6 +419,11 @@ export class InvoicesService extends BaseService {
   <meta charset="UTF-8" />
   <style>
     ${fontFace}
+    @page {
+      size: A4;
+      margin: 12mm 10mm 12mm 10mm;
+    }
+
     :root {
       --text: #111827;
       --muted: #6b7280;
@@ -444,7 +449,8 @@ export class InvoicesService extends BaseService {
       width: 100%;
       max-width: 820px;
       margin: 0 auto;
-      padding: 6px 2px;
+      padding: 0;
+      page-break-after: auto;
     }
 
     .header {
@@ -592,9 +598,6 @@ export class InvoicesService extends BaseService {
     }
 
     .table-wrap {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
       margin: 8px 0 12px;
     }
 
@@ -602,6 +605,15 @@ export class InvoicesService extends BaseService {
       width: 100%;
       border-collapse: collapse;
       margin: 0;
+      table-layout: fixed;
+    }
+
+    thead {
+      display: table-header-group;
+    }
+
+    tfoot {
+      display: table-footer-group;
     }
 
     th,
@@ -611,19 +623,28 @@ export class InvoicesService extends BaseService {
       font-size: 12.5px;
       text-align: center;
       vertical-align: middle;
-      white-space: nowrap;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
 
     th {
       background: #f3f4f6;
       color: #111827;
       font-weight: 700;
+      white-space: nowrap;
+    }
+
+    td {
+      white-space: nowrap;
     }
 
     .name-cell {
       text-align: right;
       white-space: normal;
       font-weight: 500;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      line-height: 1.45;
     }
 
     .summary {
@@ -716,6 +737,21 @@ export class InvoicesService extends BaseService {
       font-size: 12px;
       font-weight: 500;
       margin: 0;
+    }
+
+    .header,
+    .party-grid,
+    .party-card,
+    .summary,
+    .notes,
+    .footer {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
   </style>
 </head>
