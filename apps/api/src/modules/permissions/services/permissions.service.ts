@@ -27,8 +27,8 @@ export class PermissionsService extends BaseService {
       throw new NotFoundException('\u0646\u0642\u0634 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
-    if (role.isSystem && role.key === 'super_admin') {
-      throw new BadRequestException('\u062f\u0633\u062a\u0631\u0633\u06cc \u0646\u0642\u0634 \u0645\u062f\u06cc\u0631 \u0627\u0635\u0644\u06cc \u0642\u0627\u0628\u0644 \u062a\u063a\u06cc\u06cc\u0631 \u0646\u06cc\u0633\u062a.');
+    if (role.key === 'manager') {
+      throw new BadRequestException('\u062f\u0633\u062a\u0631\u0633\u06cc \u0646\u0642\u0634 \u0645\u062f\u06cc\u0631 \u0642\u0627\u0628\u0644 \u062a\u063a\u06cc\u06cc\u0631 \u0646\u06cc\u0633\u062a.');
     }
 
     const uniqueKeys = Array.from(new Set(permissionKeys.map((item) => item.trim()).filter(Boolean)));
@@ -73,18 +73,27 @@ export class PermissionsService extends BaseService {
       permissionIds.push(permission.id);
     }
 
-    const superAdminRole = await this.rolesService.findByKey('super_admin');
-    if (superAdminRole) {
-      for (const permissionId of permissionIds) {
-        await this.permissionsRepository.rolePermissionAssign(superAdminRole.id, permissionId);
-      }
-    }
-
     const managerRole = await this.rolesService.findByKey('manager');
     if (managerRole) {
-      for (const permissionId of permissionIds) {
-        await this.permissionsRepository.rolePermissionAssign(managerRole.id, permissionId);
-      }
+      await this.permissionsRepository.syncRolePermissions(managerRole.id, permissionIds);
+    }
+
+    const assistantRole = await this.rolesService.findByKey('assistant');
+    if (assistantRole) {
+      const assistantPermissionKeys = [
+        'collaborators.all',
+        'customers.all',
+        'mesh_types.all',
+        'orders.all',
+        'invoices.all',
+        'reports.all'
+      ];
+
+      const assistantPermissions = await this.permissionsRepository.listByKeys(assistantPermissionKeys);
+      await this.permissionsRepository.syncRolePermissions(
+        assistantRole.id,
+        assistantPermissions.map((permission) => permission.id)
+      );
     }
   }
 }

@@ -16,16 +16,16 @@ export class BootstrapService implements OnModuleInit {
   async onModuleInit() {
     await this.rolesService.ensureSystemRoles();
     await this.permissionsService.ensureDefaultPermissions();
-    await this.ensureSuperAdmin();
+    await this.ensureSystemManager();
   }
 
-  private async ensureSuperAdmin() {
+  private async ensureSystemManager() {
     const username = (this.configService.get<string>('SEED_SUPER_ADMIN_USERNAME') ?? 'superadmin').trim();
     const password = (this.configService.get<string>('SEED_SUPER_ADMIN_PASSWORD') ?? 'Best@123456').trim();
     const firstName = (this.configService.get<string>('SEED_SUPER_ADMIN_FIRSTNAME') ?? '\u0645\u062f\u06cc\u0631').trim();
     const lastName = (this.configService.get<string>('SEED_SUPER_ADMIN_LASTNAME') ?? '\u0627\u0635\u0644\u06cc').trim();
 
-    await this.usersService.createSystemSuperAdmin({
+    await this.usersService.createSystemManager({
       username,
       password,
       firstName,

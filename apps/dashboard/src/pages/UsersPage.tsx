@@ -34,7 +34,7 @@ export function UsersPage() {
     roleKey: 'manager'
   });
 
-  const editableRoles = useMemo(() => roles.filter((role) => role.key !== 'super_admin'), [roles]);
+  const editableRoles = useMemo(() => roles.filter((role) => role.key === 'assistant'), [roles]);
   const roleOptions = useMemo(() => roles.map((role) => ({ value: role.key, label: role.name })), [roles]);
   const roleFilterOptions = useMemo(() => [{ value: 'all', label: 'همه نقش‌ها' }, ...roleOptions], [roleOptions]);
   const statusFilterOptions = useMemo(
@@ -46,7 +46,7 @@ export function UsersPage() {
     []
   );
 
-  const [selectedRoleKey, setSelectedRoleKey] = useState('manager');
+  const [selectedRoleKey, setSelectedRoleKey] = useState('assistant');
 
   const selectedRolePermissionKeys = useMemo(() => {
     const role = roles.find((item) => item.key === selectedRoleKey);
@@ -60,8 +60,7 @@ export function UsersPage() {
   }, [selectedRoleKey]);
 
   const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) ?? null, [users, selectedUserId]);
-  const isSuperAdminUser = (user: { userRoles?: Array<{ role?: { key?: string } }> }) =>
-    (user.userRoles ?? []).some((entry) => entry.role?.key === 'super_admin');
+  const isDefaultManagerUser = (user: { username: string }) => user.username.trim().toLowerCase() === 'superadmin';
 
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -111,7 +110,7 @@ export function UsersPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>تعریف کاربر مدیریتی</DialogTitle>
+                <DialogTitle>تعریف کاربر سیستم</DialogTitle>
                 <DialogDescription>برای کاربر جدید نقش مناسب انتخاب کنید.</DialogDescription>
               </DialogHeader>
               <form onSubmit={submit} className="space-y-4">
@@ -185,7 +184,7 @@ export function UsersPage() {
                         <Eye className="h-4 w-4" />
                         مشاهده
                       </Button>
-                      {isSuperAdminUser(item) ? null : (
+                      {isDefaultManagerUser(item) ? null : (
                         <Button size="sm" variant="destructive" className="flex-1" onClick={() => void removeUser(item.id)}>
                           <Trash2 className="h-4 w-4" />
                           حذف
@@ -235,7 +234,7 @@ export function UsersPage() {
                                 <Eye className="h-4 w-4" />
                                 مشاهده
                               </DropdownMenuItem>
-                              {isSuperAdminUser(item) ? null : (
+                              {isDefaultManagerUser(item) ? null : (
                                 <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeUser(item.id)}>
                                   <Trash2 className="h-4 w-4" />
                                   حذف

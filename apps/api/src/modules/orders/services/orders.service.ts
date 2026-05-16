@@ -38,7 +38,7 @@ export class OrdersService extends BaseService {
     }
 
     const target = query.paymentStatus === 'PAID' ? 'paid' : query.paymentStatus === 'PARTIAL' ? 'partial' : 'unpaid';
-    return normalized.filter((item) => item.paymentSummary.status === target);
+    return normalized.filter((item) => item.stage !== 'CANCELLED' && item.paymentSummary.status === target);
   }
 
   async detail(id: string) {
@@ -217,14 +217,27 @@ export class OrdersService extends BaseService {
     return { success: true };
   }
 
-  private withPaymentSummary<T extends { invoices: Array<{ paidAmount: unknown; amount: unknown }>; totalPrice: unknown }>(order: T) {
-    const total = clampMoneyNonNegative(order.totalPrice ?? 0);
+  private withPaymentSummary<T extends { invoices: Array<{ paidAmount: unknown; amount: unknown }>; stage?: string }>(order: T) {
     const normalizedInvoices = Array.isArray(order.invoices)
       ? order.invoices.map((invoice) => ({
           ...invoice,
           status: deriveInvoiceStatus(invoice.amount, invoice.paidAmount)
         }))
       : [];
+    if (order.stage === 'CANCELLED') {
+      return {
+        ...order,
+        invoices: normalizedInvoices,
+        paymentSummary: {
+          total: 0,
+          paidAmount: 0,
+          remainingAmount: 0,
+          percent: 0,
+          status: 'paid' as const
+        }
+      };
+    }
+    const total = addMoney(...normalizedInvoices.map((invoice) => clampMoneyNonNegative(invoice.amount ?? 0)));
     const paidAmount = addMoney(
       ...normalizedInvoices.map((invoice) => minMoney(clampMoneyNonNegative(invoice.paidAmount ?? 0), clampMoneyNonNegative(invoice.amount ?? 0)))
     );

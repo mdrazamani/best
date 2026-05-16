@@ -105,7 +105,9 @@ export function DashboardPage() {
                       <Badge variant={orderBadgeVariant(order.stage)}>{orderStageLabel(order.stage)}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">{fullName(order.customer)} • {shamsiDate(order.createdAt)}</p>
-                    <p className="text-sm font-semibold">{money(Number(order.totalPrice ?? 0))}</p>
+                    <p className="text-sm font-semibold">
+                      {money(Number(order.paymentSummary?.paidAmount ?? 0))} / {money(Number(order.paymentSummary?.total ?? 0))}
+                    </p>
                   </button>
                 ))}
               </div>

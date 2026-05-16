@@ -24,17 +24,17 @@ export class CustomersService extends BaseService {
       throw new NotFoundException('مشتری پيدا نشد.');
     }
 
-    const totalOrderAmount = customer.orders.reduce((sum, order) => sum + Number(order.totalPrice), 0);
-    const allInvoices = customer.orders.flatMap((order) => order.invoices.map((invoice) => ({ ...invoice, order })));
+    const activeOrders = customer.orders.filter((order) => order.stage !== 'CANCELLED');
+    const allInvoices = activeOrders.flatMap((order) => order.invoices.map((invoice) => ({ ...invoice, order })));
     const customerInvoices = allInvoices.filter((invoice) => invoice.payerType === 'CUSTOMER' || !invoice.payerType);
     const totalInvoiced = customerInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
     const totalPaid = customerInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount), 0);
-    const completedOrders = customer.orders.filter((order) => order.stage === 'DELIVERED').length;
-    const inProgressOrders = customer.orders.filter((order) => ['STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
+    const completedOrders = activeOrders.filter((order) => order.stage === 'DELIVERED').length;
+    const inProgressOrders = activeOrders.filter((order) => ['STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
 
     const collaborators = Array.from(
       new Map(
-        customer.orders
+        activeOrders
           .filter((order) => Boolean(order.collaborator))
           .map((order) => [
             order.collaborator!.id,
@@ -51,8 +51,8 @@ export class CustomersService extends BaseService {
     return {
       ...customer,
       summary: {
-        totalOrders: customer.orders.length,
-        totalOrderAmount,
+        totalOrders: activeOrders.length,
+        totalOrderAmount: totalInvoiced,
         totalInvoiced,
         totalPaid,
         totalRemaining: Math.max(totalInvoiced - totalPaid, 0),

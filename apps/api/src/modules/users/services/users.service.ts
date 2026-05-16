@@ -25,7 +25,12 @@ export class UsersService extends BaseService {
     const normalizedUsername = dto.username.trim();
     const existing = await this.usersRepository.findByUsername(normalizedUsername);
     if (existing) {
-      throw new BadRequestException('نام کاربری قبلاً ثبت شده است.');
+      throw new BadRequestException('\u0646\u0627\u0645 \u06a9\u0627\u0631\u0628\u0631\u06cc \u0642\u0628\u0644\u0627\u064b \u062b\u0628\u062a \u0634\u062f\u0647 \u0627\u0633\u062a.');
+    }
+
+    const roleKey = dto.roleKey?.trim() || 'manager';
+    if (!this.rolesService.getSystemRoleKeys().includes(roleKey as 'manager' | 'assistant')) {
+      throw new BadRequestException('\u0646\u0642\u0634 \u0627\u0646\u062a\u062e\u0627\u0628\u200c\u0634\u062f\u0647 \u0645\u0639\u062a\u0628\u0631 \u0646\u06cc\u0633\u062a.');
     }
 
     const created = await this.usersRepository.create({
@@ -36,7 +41,7 @@ export class UsersService extends BaseService {
       locale: dto.locale ?? 'fa'
     });
 
-    const role = await this.rolesService.findByKey(dto.roleKey?.trim() || 'manager');
+    const role = await this.rolesService.findByKey(roleKey);
     if (role) {
       await this.usersRepository.addRole(created.id, role.id);
     }
@@ -46,7 +51,7 @@ export class UsersService extends BaseService {
       entityType: 'User',
       entityId: created.id,
       action: 'CREATE',
-      description: 'ایجاد کاربر مدیریتی'
+      description: '\u0627\u06cc\u062c\u0627\u062f \u06a9\u0627\u0631\u0628\u0631'
     });
 
     return this.usersRepository.findById(created.id);
@@ -55,7 +60,7 @@ export class UsersService extends BaseService {
   async update(actorId: string, id: string, dto: UpdateUserDto) {
     const existing = await this.usersRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException('کاربر پیدا نشد.');
+      throw new NotFoundException('\u06a9\u0627\u0631\u0628\u0631 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
     const updated = await this.usersRepository.update(id, {
@@ -72,7 +77,7 @@ export class UsersService extends BaseService {
       entityType: 'User',
       entityId: updated.id,
       action: 'UPDATE',
-      description: 'ویرایش کاربر مدیریتی'
+      description: '\u0648\u06cc\u0631\u0627\u06cc\u0634 \u06a9\u0627\u0631\u0628\u0631'
     });
 
     return this.usersRepository.findById(updated.id);
@@ -81,12 +86,17 @@ export class UsersService extends BaseService {
   async assignRole(actorId: string, userId: string, roleKey: string) {
     const user = await this.usersRepository.findById(userId);
     if (!user) {
-      throw new NotFoundException('کاربر پیدا نشد.');
+      throw new NotFoundException('\u06a9\u0627\u0631\u0628\u0631 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
-    const role = await this.rolesService.findByKey(roleKey.trim());
+    const normalizedRoleKey = roleKey.trim();
+    if (!this.rolesService.getSystemRoleKeys().includes(normalizedRoleKey as 'manager' | 'assistant')) {
+      throw new BadRequestException('\u0646\u0642\u0634 \u0627\u0646\u062a\u062e\u0627\u0628\u200c\u0634\u062f\u0647 \u0645\u0639\u062a\u0628\u0631 \u0646\u06cc\u0633\u062a.');
+    }
+
+    const role = await this.rolesService.findByKey(normalizedRoleKey);
     if (!role) {
-      throw new NotFoundException('نقش پیدا نشد.');
+      throw new NotFoundException('\u0646\u0642\u0634 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
     await this.usersRepository.addRole(userId, role.id);
@@ -96,7 +106,7 @@ export class UsersService extends BaseService {
       entityType: 'UserRole',
       entityId: userId,
       action: 'ASSIGN_ROLE',
-      description: `اختصاص نقش ${role.name}`
+      description: `\u0627\u062e\u062a\u0635\u0627\u0635 \u0646\u0642\u0634 ${role.name}`
     });
 
     return this.usersRepository.findById(userId);
@@ -105,12 +115,12 @@ export class UsersService extends BaseService {
   async remove(actorId: string, id: string) {
     const existing = await this.usersRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException('کاربر پیدا نشد.');
+      throw new NotFoundException('\u06a9\u0627\u0631\u0628\u0631 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f.');
     }
 
-    const isSuperAdmin = (existing.userRoles ?? []).some((entry) => entry.role?.key === 'super_admin');
-    if (isSuperAdmin) {
-      throw new BadRequestException('حذف کاربر مدیر اصلی مجاز نیست.');
+    const isDefaultManager = existing.username.trim().toLowerCase() === 'superadmin';
+    if (isDefaultManager) {
+      throw new BadRequestException('\u062d\u0630\u0641 \u06a9\u0627\u0631\u0628\u0631 \u0645\u062f\u06cc\u0631 \u0627\u0635\u0644\u06cc \u0645\u062c\u0627\u0632 \u0646\u06cc\u0633\u062a.');
     }
 
     await this.usersRepository.softDelete(id);
@@ -134,7 +144,7 @@ export class UsersService extends BaseService {
     return this.usersRepository.findByUsername(username);
   }
 
-  async createSystemSuperAdmin(input: { firstName: string; lastName: string; username: string; password: string }) {
+  async createSystemManager(input: { firstName: string; lastName: string; username: string; password: string }) {
     const existing = await this.usersRepository.findByUsername(input.username.trim());
     if (existing) {
       return existing;
@@ -149,7 +159,7 @@ export class UsersService extends BaseService {
       status: 'ACTIVE'
     });
 
-    const role = await this.rolesService.findByKey('super_admin');
+    const role = await this.rolesService.findByKey('manager');
     if (role) {
       await this.usersRepository.addRole(created.id, role.id);
     }

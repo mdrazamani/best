@@ -144,7 +144,7 @@ export function CustomersPage() {
                 <p className="mt-1 text-lg font-bold">{detail.summary?.totalOrders ?? 0}</p>
               </div>
               <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">مجموع مبلغ سفارش‌ها</p>
+                <p className="text-xs text-muted-foreground">مجموع مبلغ فاکتورها</p>
                 <p className="mt-1 text-lg font-bold">{money(detail.summary?.totalOrderAmount ?? 0)}</p>
               </div>
               <div className="rounded-lg border p-3">

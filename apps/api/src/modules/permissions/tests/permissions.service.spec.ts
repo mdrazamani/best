@@ -28,20 +28,20 @@ describe('PermissionsService', () => {
     await expect(service.setRolePermissions('x', [])).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('prevents editing super_admin permissions', async () => {
-    rolesService.findByKey.mockResolvedValue({ id: '1', key: 'super_admin', isSystem: true });
+  it('prevents editing manager permissions', async () => {
+    rolesService.findByKey.mockResolvedValue({ id: '1', key: 'manager', isSystem: true });
 
-    await expect(service.setRolePermissions('super_admin', ['users.list'])).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.setRolePermissions('manager', ['users.list'])).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('syncs permissions for normal role', async () => {
-    rolesService.findByKey.mockResolvedValue({ id: 'r1', key: 'manager', isSystem: false });
+    rolesService.findByKey.mockResolvedValue({ id: 'r1', key: 'assistant', isSystem: true });
     permissionsRepository.listByKeys.mockResolvedValue([
       { id: 'p1', key: 'users.list' },
       { id: 'p2', key: 'orders.all' }
     ]);
 
-    const result = await service.setRolePermissions('manager', ['users.list', 'orders.all']);
+    const result = await service.setRolePermissions('assistant', ['users.list', 'orders.all']);
 
     expect(permissionsRepository.syncRolePermissions).toHaveBeenCalledWith('r1', ['p1', 'p2']);
     expect(result.permissionKeys).toEqual(['users.list', 'orders.all']);

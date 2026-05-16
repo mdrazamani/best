@@ -24,7 +24,7 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('کاربر احراز هویت نشده است.');
     }
 
-    if (user.roleKeys.includes('super_admin')) {
+    if (user.roleKeys.includes('manager')) {
       return true;
     }
 

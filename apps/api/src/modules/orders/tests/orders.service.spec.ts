@@ -39,6 +39,17 @@ describe('OrdersService', () => {
     expect(result[0].paymentSummary.status).toBe('partial');
   });
 
+  it('excludes cancelled orders from payment status filtering cycle', async () => {
+    ordersRepository.list.mockResolvedValue([
+      { id: 'c1', stage: 'CANCELLED', totalPrice: 1000, invoices: [{ paidAmount: 0, amount: 1000 }] },
+      { id: 'a1', stage: 'IN_PROGRESS', totalPrice: 1000, invoices: [{ paidAmount: 200, amount: 1000 }] }
+    ]);
+
+    const result = await service.list({ paymentStatus: 'PARTIAL' } as any);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a1');
+  });
+
   it('throws when order does not exist', async () => {
     ordersRepository.findById.mockResolvedValue(null);
 
@@ -78,8 +89,9 @@ describe('OrdersService', () => {
 
     const result = await service.detail('order-cap');
     expect(result.paymentSummary.paidAmount).toBe(800);
-    expect(result.paymentSummary.remainingAmount).toBe(200);
-    expect(result.paymentSummary.status).toBe('partial');
+    expect(result.paymentSummary.total).toBe(800);
+    expect(result.paymentSummary.remainingAmount).toBe(0);
+    expect(result.paymentSummary.status).toBe('paid');
   });
 
   it('normalizes invoice statuses based on amount and paidAmount in order detail', async () => {

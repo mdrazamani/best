@@ -65,7 +65,7 @@ describe('AuthService', () => {
       passwordHash: 'hashed:123456',
       firstName: 'Ali',
       lastName: 'Best',
-      userRoles: [{ role: { key: 'super_admin' } }]
+      userRoles: [{ role: { key: 'manager' } }]
     });
     sessionsService.createSession.mockResolvedValue({ id: 's1' });
 
