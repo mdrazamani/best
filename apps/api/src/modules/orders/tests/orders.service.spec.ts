@@ -104,21 +104,21 @@ describe('OrdersService', () => {
     });
     ordersRepository.findById.mockResolvedValue({
       id: 'order-1',
-      totalPrice: 570,
+      totalPrice: 70,
       invoices: []
     });
 
     await service.create('actor-1', {
       customerId: 'customer-1',
       workType: 'NEW_CONSTRUCTION',
-      lineItems: [{ meshTypeId: 'mesh-1', width: 2, height: 3, quantity: 1, unitPrice: 100 }],
+      lineItems: [{ meshTypeId: 'mesh-1', width: 200, height: 300, quantity: 1, unitPrice: 100 }],
       discountAmount: 50,
       extraAmount: 20
     } as any);
 
     expect(ordersRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalPrice: 570,
+        totalPrice: 70,
         discountAmount: 50,
         extraAmount: 20
       })
@@ -128,7 +128,7 @@ describe('OrdersService', () => {
       'actor-1',
       expect.objectContaining({
         orderId: 'order-1',
-        amount: 570,
+        amount: 70,
         discountAmount: 50,
         extraAmount: 20
       })
@@ -143,20 +143,20 @@ describe('OrdersService', () => {
     });
     ordersRepository.findById.mockResolvedValue({
       id: 'order-2',
-      totalPrice: 660,
+      totalPrice: 110,
       invoices: []
     });
 
     await service.create('actor-1', {
       customerId: 'customer-1',
       workType: 'NEW_CONSTRUCTION',
-      lineItems: [{ meshTypeId: 'mesh-1', width: 2, height: 3, quantity: 1, unitPrice: 100 }]
+      lineItems: [{ meshTypeId: 'mesh-1', width: 200, height: 300, quantity: 1, unitPrice: 100 }]
     } as any);
 
     expect(ordersRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalPrice: 660,
-        extraAmount: 60
+        totalPrice: 110,
+        extraAmount: 10
       })
     );
 
@@ -164,8 +164,8 @@ describe('OrdersService', () => {
       'actor-1',
       expect.objectContaining({
         orderId: 'order-2',
-        amount: 660,
-        extraAmount: 60
+        amount: 110,
+        extraAmount: 10
       })
     );
   });

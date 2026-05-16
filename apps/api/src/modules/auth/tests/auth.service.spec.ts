@@ -76,4 +76,22 @@ describe('AuthService', () => {
     expect(sessionsService.rotateSession).toHaveBeenCalled();
     expect(operationLogsService.log).toHaveBeenCalled();
   });
+
+  it('locks account for one hour after 4 failed attempts', async () => {
+    let attemptState: { failedCount: number; lockedUntil: Date | null } = { failedCount: 0, lockedUntil: null };
+    authRepository.findLoginAttempt.mockImplementation(async () => attemptState);
+    authRepository.upsertLoginAttempt.mockImplementation(async (_username: string, failedCount: number, lockedUntil: Date | null) => {
+      attemptState = { failedCount, lockedUntil };
+      return attemptState;
+    });
+    usersService.findByUsernameWithRoles.mockResolvedValue(null);
+
+    for (let i = 0; i < 4; i += 1) {
+      await expect(service.login({ username: 'admin', password: 'wrong-pass', context: {} })).rejects.toBeInstanceOf(UnauthorizedException);
+    }
+
+    expect(attemptState.lockedUntil).toBeInstanceOf(Date);
+    expect(attemptState.lockedUntil!.getTime()).toBeGreaterThan(Date.now() + 59 * 60 * 1000);
+    await expect(service.login({ username: 'admin', password: 'wrong-pass', context: {} })).rejects.toBeInstanceOf(UnauthorizedException);
+  });
 });

@@ -303,9 +303,9 @@ export class InvoicesService extends BaseService {
 
   private getInvoiceLogoDataUri() {
     const candidates = [
-      path.resolve(process.cwd(), 'src/modules/invoices/assets/torbest-logo.jpg'),
-      path.resolve(process.cwd(), 'apps/api/src/modules/invoices/assets/torbest-logo.jpg'),
-      path.resolve(__dirname, '../assets/torbest-logo.jpg')
+      path.resolve(process.cwd(), 'src/modules/invoices/assets/torbest-logo.png'),
+      path.resolve(process.cwd(), 'apps/api/src/modules/invoices/assets/torbest-logo.png'),
+      path.resolve(__dirname, '../assets/torbest-logo.png')
     ];
 
     for (const logoPath of candidates) {
@@ -399,7 +399,7 @@ export class InvoicesService extends BaseService {
 
     summaryRows.push(`
       <div class="sum-row final">
-        <div class="sum-label">مبلغ قابل پرداخت</div>
+        <div class="sum-label">مبلغ قابل پرداخت (ریال)</div>
         <div class="sum-amount">${this.formatMoney(finalAmount)}</div>
       </div>
     `);

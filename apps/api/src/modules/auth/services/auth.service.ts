@@ -12,6 +12,8 @@ import { AuthTokenPayload } from '../auth.entity';
 
 @Injectable()
 export class AuthService extends BaseService {
+  private readonly loginRateByIp = new Map<string, { count: number; windowStartedAt: number; blockedUntil: number | null }>();
+
   constructor(
     private readonly configService: ConfigService,
     private readonly usersService: UsersService,
@@ -23,6 +25,8 @@ export class AuthService extends BaseService {
   }
 
   async login(input: { username: string; password: string; context: Record<string, string | undefined> }) {
+    this.assertLoginRateLimit(input.context);
+
     const username = input.username.trim();
     const password = input.password.trim();
 
@@ -192,8 +196,63 @@ export class AuthService extends BaseService {
   private async registerFailedLogin(username: string) {
     const old = await this.authRepository.findLoginAttempt(username);
     const nextFailed = (old?.failedCount ?? 0) + 1;
-    const lockedUntil = nextFailed >= 5 ? new Date(Date.now() + 60 * 60 * 1000) : null;
-    await this.authRepository.upsertLoginAttempt(username, nextFailed >= 5 ? 0 : nextFailed, lockedUntil);
+    const lockedUntil = nextFailed >= this.loginMaxAttempts ? new Date(Date.now() + this.loginLockMs) : null;
+    await this.authRepository.upsertLoginAttempt(username, nextFailed >= this.loginMaxAttempts ? 0 : nextFailed, lockedUntil);
+  }
+
+  private assertLoginRateLimit(context: Record<string, string | undefined>) {
+    const ip = this.extractClientIp(context);
+    if (!ip) return;
+
+    const now = Date.now();
+    this.pruneLoginRateStore(now);
+
+    const existing = this.loginRateByIp.get(ip);
+    if (!existing || now - existing.windowStartedAt > this.loginRateWindowMs) {
+      this.loginRateByIp.set(ip, { count: 1, windowStartedAt: now, blockedUntil: null });
+      return;
+    }
+
+    if (existing.blockedUntil && existing.blockedUntil > now) {
+      throw new UnauthorizedException('تلاش‌های ورود شما موقتاً محدود شده است. لطفاً بعداً دوباره تلاش کنید.');
+    }
+
+    const nextCount = existing.count + 1;
+    if (nextCount > this.loginRateMaxAttempts) {
+      this.loginRateByIp.set(ip, {
+        count: 0,
+        windowStartedAt: now,
+        blockedUntil: now + this.loginRateLockMs
+      });
+      throw new UnauthorizedException('تلاش‌های ورود شما موقتاً محدود شده است. لطفاً بعداً دوباره تلاش کنید.');
+    }
+
+    this.loginRateByIp.set(ip, {
+      ...existing,
+      count: nextCount
+    });
+  }
+
+  private pruneLoginRateStore(now: number) {
+    if (this.loginRateByIp.size <= 5000) return;
+    const staleBefore = now - this.loginRateWindowMs * 4;
+
+    for (const [ip, state] of this.loginRateByIp.entries()) {
+      const isBlocked = Boolean(state.blockedUntil && state.blockedUntil > now);
+      if (isBlocked) continue;
+      if (state.windowStartedAt < staleBefore) {
+        this.loginRateByIp.delete(ip);
+      }
+    }
+  }
+
+  private extractClientIp(context: Record<string, string | undefined>) {
+    const forwardedFor = context['x-forwarded-for']?.split(',')[0]?.trim();
+    const realIp = context['x-real-ip']?.trim();
+    const clientIp = context['x-client-ip']?.trim();
+    const cloudflareIp = context['cf-connecting-ip']?.trim();
+    const ip = forwardedFor || realIp || clientIp || cloudflareIp || context.ip?.trim();
+    return ip || null;
   }
 
   private signToken(payload: AuthTokenPayload, expiresIn: string) {
@@ -250,5 +309,30 @@ export class AuthService extends BaseService {
   private get refreshRotationGraceMs() {
     const seconds = Number(this.configService.get<string>('AUTH_REFRESH_GRACE_SECONDS') ?? '1200');
     return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 1_200_000;
+  }
+
+  private get loginMaxAttempts() {
+    const value = Number(this.configService.get<string>('AUTH_LOGIN_MAX_ATTEMPTS') ?? '4');
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 4;
+  }
+
+  private get loginLockMs() {
+    const minutes = Number(this.configService.get<string>('AUTH_LOGIN_LOCK_MINUTES') ?? '60');
+    return Number.isFinite(minutes) && minutes > 0 ? minutes * 60 * 1000 : 3_600_000;
+  }
+
+  private get loginRateWindowMs() {
+    const seconds = Number(this.configService.get<string>('AUTH_LOGIN_RATE_WINDOW_SECONDS') ?? '300');
+    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 300_000;
+  }
+
+  private get loginRateMaxAttempts() {
+    const value = Number(this.configService.get<string>('AUTH_LOGIN_RATE_MAX_ATTEMPTS') ?? '30');
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 30;
+  }
+
+  private get loginRateLockMs() {
+    const minutes = Number(this.configService.get<string>('AUTH_LOGIN_RATE_LOCK_MINUTES') ?? '15');
+    return Number.isFinite(minutes) && minutes > 0 ? minutes * 60 * 1000 : 900_000;
   }
 }

@@ -13,11 +13,14 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
-  login(@Req() request: { headers?: Record<string, string | undefined> }, @Body() dto: LoginDto) {
+  login(@Req() request: { headers?: Record<string, string | undefined>; ip?: string }, @Body() dto: LoginDto) {
     return this.authService.login({
       username: dto.username,
       password: dto.password,
-      context: request.headers ?? {}
+      context: {
+        ...(request.headers ?? {}),
+        ip: request.ip
+      }
     });
   }
 

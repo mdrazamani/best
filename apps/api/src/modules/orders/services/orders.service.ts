@@ -58,7 +58,7 @@ export class OrdersService extends BaseService {
     }
 
     const lineItemsTotal = addMoney(...lineItems.map((item) => item.lineTotal));
-    const fallbackTotal = multiplyMoney(dto.width ?? 0, dto.height ?? 0, dto.quantity ?? 0, dto.unitPrice ?? 0);
+    const fallbackTotal = this.calculateLineTotal(dto.quantity ?? 0, dto.unitPrice ?? 0);
     const discountAmount = clampMoneyNonNegative(dto.discountAmount ?? 0);
     const calculatedBaseTotal = lineItems.length ? lineItemsTotal : fallbackTotal;
     const defaultVatAmount = multiplyMoney(calculatedBaseTotal, 0.1);
@@ -151,9 +151,7 @@ export class OrdersService extends BaseService {
       lineItems && lineItems.length
         ? lineItemsTotal
         : dto.unitPrice !== undefined || dto.quantity !== undefined || dto.width !== undefined || dto.height !== undefined
-        ? multiplyMoney(
-            Number(dto.width ?? existing.width ?? 0),
-            Number(dto.height ?? existing.height ?? 0),
+        ? this.calculateLineTotal(
             Number(dto.quantity ?? existing.quantity ?? 0),
             Number(dto.unitPrice ?? existing.unitPrice ?? 0)
           )
@@ -285,7 +283,11 @@ export class OrdersService extends BaseService {
         height: toMoneyNumber(item.height),
         quantity: toMoneyNumber(item.quantity),
         unitPrice: toMoneyNumber(item.unitPrice),
-        lineTotal: toMoneyNumber(multiplyMoney(item.width, item.height, item.quantity, item.unitPrice))
+        lineTotal: toMoneyNumber(this.calculateLineTotal(item.quantity, item.unitPrice))
       }));
+  }
+
+  private calculateLineTotal(quantity: unknown, unitPrice: unknown) {
+    return multiplyMoney(quantity, unitPrice);
   }
 }

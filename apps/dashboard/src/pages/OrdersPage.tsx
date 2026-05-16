@@ -48,6 +48,10 @@ const toNumber = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const calculateLineTotal = (quantity: number, unitPrice: number) => {
+  return quantity * unitPrice;
+};
+
 const payerTypeLabel = (value?: string) => {
   if (value === 'COLLABORATOR') return 'همکار';
   return 'مشتری';
@@ -172,11 +176,9 @@ export function OrdersPage() {
 
   const calculatedTotal = useMemo(() => {
     return lineItems.reduce((sum, item) => {
-      const width = toNumber(item.width);
-      const height = toNumber(item.height);
       const quantity = toNumber(item.quantity);
       const unitPrice = toNumber(item.unitPrice);
-      return sum + width * height * quantity * unitPrice;
+      return sum + calculateLineTotal(quantity, unitPrice);
     }, 0);
   }, [lineItems]);
 
@@ -756,7 +758,7 @@ export function OrdersPage() {
 
                   <div className="space-y-3">
                     {lineItems.map((item, index) => {
-                      const lineTotal = toNumber(item.width) * toNumber(item.height) * toNumber(item.quantity) * toNumber(item.unitPrice);
+                      const lineTotal = calculateLineTotal(toNumber(item.quantity), toNumber(item.unitPrice));
                       return (
                         <div key={item.id} className="rounded-lg border border-slate-300/70 bg-card p-3 dark:border-slate-700/80">
                           <div className="mb-2 flex items-center justify-between">
