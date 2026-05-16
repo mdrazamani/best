@@ -56,7 +56,7 @@ export type Order = {
   id: string;
   orderNumber: string;
   title?: string | null;
-  customerId: string;
+  customerId?: string | null;
   collaboratorId?: string | null;
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
   stage: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';

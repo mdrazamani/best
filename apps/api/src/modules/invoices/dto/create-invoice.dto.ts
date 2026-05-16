@@ -1,38 +1,40 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsDefined, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateInvoiceDto {
   @IsOptional()
   @IsString()
   title?: string;
 
-  @IsString()
+  @IsDefined({ message: 'انتخاب سفارش الزامی است.' })
+  @IsString({ message: 'شناسه سفارش معتبر نیست.' })
+  @IsNotEmpty({ message: 'انتخاب سفارش الزامی است.' })
   orderId!: string;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'مبلغ فاکتور باید عدد باشد.' })
   amount?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
-  @Min(0)
+  @IsNumber({}, { message: 'تخفیف باید عدد باشد.' })
+  @Min(0, { message: 'تخفیف نمی‌تواند منفی باشد.' })
   discountAmount?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
-  @Min(0)
+  @IsNumber({}, { message: 'مبلغ افزوده باید عدد باشد.' })
+  @Min(0, { message: 'مبلغ افزوده نمی‌تواند منفی باشد.' })
   extraAmount?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'مبلغ پرداختی باید عدد باشد.' })
   paidAmount?: number;
 
   @IsOptional()
-  @IsIn(['UNPAID', 'PARTIAL', 'PAID'])
+  @IsIn(['UNPAID', 'PARTIAL', 'PAID'], { message: 'وضعیت فاکتور نامعتبر است.' })
   status?: 'UNPAID' | 'PARTIAL' | 'PAID';
 
   @IsOptional()
@@ -40,7 +42,7 @@ export class CreateInvoiceDto {
   dueDate?: string;
 
   @IsOptional()
-  @IsIn(['CUSTOMER', 'COLLABORATOR'])
+  @IsIn(['CUSTOMER', 'COLLABORATOR'], { message: 'نوع پرداخت‌کننده نامعتبر است.' })
   payerType?: 'CUSTOMER' | 'COLLABORATOR';
 
   @IsOptional()

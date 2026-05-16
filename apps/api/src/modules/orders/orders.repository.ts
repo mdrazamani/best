@@ -9,7 +9,7 @@ export class OrdersRepository extends BaseRepository {
     title?: string;
     orderDateJalali: string;
     collaboratorId?: string | null;
-    customerId: string;
+    customerId?: string | null;
     createdById: string;
     workType: 'NEW_CONSTRUCTION' | 'REPAIR';
     width?: number;
@@ -175,7 +175,7 @@ export class OrdersRepository extends BaseRepository {
     title?: string;
     orderDateJalali: string;
     collaboratorId?: string | null;
-    customerId: string;
+    customerId?: string | null;
     createdById: string;
     workType: 'NEW_CONSTRUCTION' | 'REPAIR';
     width?: number;
@@ -209,7 +209,7 @@ export class OrdersRepository extends BaseRepository {
       title?: string;
       orderDateJalali: string;
       collaboratorId?: string | null;
-      customerId: string;
+      customerId?: string | null;
       createdById: string;
       workType: 'NEW_CONSTRUCTION' | 'REPAIR';
       width?: number;
@@ -278,7 +278,7 @@ export class OrdersRepository extends BaseRepository {
   update(id: string, data: {
     title?: string | null;
     collaboratorId?: string | null;
-    customerId?: string;
+    customerId?: string | null;
     workType?: 'NEW_CONSTRUCTION' | 'REPAIR';
     width?: number | null;
     height?: number | null;

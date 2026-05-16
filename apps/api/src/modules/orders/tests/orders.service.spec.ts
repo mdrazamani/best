@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OrdersService } from '../services/orders.service';
 
 describe('OrdersService', () => {
@@ -167,5 +167,14 @@ describe('OrdersService', () => {
         })
       })
     );
+  });
+
+  it('rejects create when both customer and collaborator are missing', async () => {
+    await expect(
+      service.create('actor-1', {
+        workType: 'NEW_CONSTRUCTION',
+        lineItems: [{ meshTypeId: 'mesh-1', width: 200, height: 300, quantity: 1, unitPrice: 100 }]
+      } as any)
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

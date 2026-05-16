@@ -229,7 +229,7 @@ model Order {
   title           String?
   orderDateJalali String
   collaboratorId  String?
-  customerId      String
+  customerId      String?
   createdById     String
   workType        WorkType
   width           Decimal?   @db.Decimal(18, 2)
@@ -248,7 +248,7 @@ model Order {
   deletedAt       DateTime?
 
   collaborator Collaborator? @relation(fields: [collaboratorId], references: [id])
-  customer     Customer      @relation(fields: [customerId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
   createdBy    User          @relation("OrderCreator", fields: [createdById], references: [id])
   lineItems    OrderLineItem[]
   invoices     Invoice[]

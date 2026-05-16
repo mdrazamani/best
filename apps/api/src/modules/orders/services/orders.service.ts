@@ -49,6 +49,12 @@ export class OrdersService extends BaseService {
 
   async create(actorId: string, dto: CreateOrderDto) {
     const orderDateJalali = this.jalaliDateCode(new Date());
+    const customerId = this.normalizeId(dto.customerId);
+    const collaboratorId = this.normalizeId(dto.collaboratorId);
+
+    if (!customerId && !collaboratorId) {
+      throw new BadRequestException('برای ثبت سفارش، حداقل یکی از «مشتری» یا «همکار» الزامی است.');
+    }
 
     const lineItems = this.normalizeLineItems(dto.lineItems);
     if (!lineItems.length) {
@@ -76,8 +82,8 @@ export class OrdersService extends BaseService {
           orderNumber: this.generateOrderNumber(orderDateJalali),
           title: dto.title?.trim(),
           orderDateJalali,
-          collaboratorId: dto.collaboratorId ?? null,
-          customerId: dto.customerId,
+          collaboratorId: collaboratorId ?? null,
+          customerId: customerId ?? null,
           createdById: actorId,
           workType: dto.workType,
           width: firstLine?.width ?? dto.width,
@@ -100,8 +106,8 @@ export class OrdersService extends BaseService {
                 extraAmount: toMoneyNumber(extraAmount),
                 paidAmount: 0,
                 status: 'UNPAID',
-                payerType: dto.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
-                payerId: dto.collaboratorId ?? dto.customerId,
+                payerType: collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
+                payerId: collaboratorId ?? customerId,
                 dueDate: dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : undefined,
                 description: 'فاکتور اولیه سفارش'
               }
@@ -135,6 +141,13 @@ export class OrdersService extends BaseService {
     const existing = await this.ordersRepository.findById(id);
     if (!existing) {
       throw new NotFoundException('سفارش پیدا نشد.');
+    }
+    const nextCustomerId = dto.customerId === undefined ? existing.customerId ?? null : this.normalizeId(dto.customerId) ?? null;
+    const nextCollaboratorId =
+      dto.collaboratorId === undefined ? existing.collaboratorId ?? null : this.normalizeId(dto.collaboratorId) ?? null;
+
+    if (!nextCustomerId && !nextCollaboratorId) {
+      throw new BadRequestException('برای ثبت سفارش، حداقل یکی از «مشتری» یا «همکار» الزامی است.');
     }
 
     const lineItems = dto.lineItems ? this.normalizeLineItems(dto.lineItems) : undefined;
@@ -171,8 +184,8 @@ export class OrdersService extends BaseService {
 
     await this.ordersRepository.update(id, {
       title: dto.title === undefined ? undefined : dto.title?.trim() ?? null,
-      collaboratorId: dto.collaboratorId === undefined ? undefined : dto.collaboratorId ?? null,
-      customerId: dto.customerId,
+      collaboratorId: dto.collaboratorId === undefined ? undefined : nextCollaboratorId,
+      customerId: dto.customerId === undefined ? undefined : nextCustomerId,
       workType: dto.workType,
       width: firstLine ? firstLine.width : dto.width,
       height: firstLine ? firstLine.height : dto.height,
@@ -309,6 +322,12 @@ export class OrdersService extends BaseService {
 
   private calculateLineTotal(quantity: unknown, unitPrice: unknown) {
     return multiplyMoney(quantity, unitPrice);
+  }
+
+  private normalizeId(value: unknown) {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed || undefined;
   }
 }
 

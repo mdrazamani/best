@@ -117,4 +117,20 @@ describe('InvoicesService', () => {
     const rows = await service.list({} as any);
     expect(rows[0].status).toBe('UNPAID');
   });
+
+  it('rejects creating customer invoice when order has no customer', async () => {
+    invoicesRepository.findOrderForPayer.mockResolvedValue({
+      id: 'order-2',
+      customerId: null,
+      collaboratorId: 'col-1',
+      totalPrice: 1000
+    });
+
+    await expect(
+      service.create('actor-1', {
+        orderId: 'order-2',
+        payerType: 'CUSTOMER'
+      } as any)
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
 });

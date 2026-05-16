@@ -62,6 +62,9 @@ export class InvoicesService extends BaseService {
     if (payerType === 'COLLABORATOR' && !orderRef.collaboratorId) {
       throw new NotFoundException('برای این سفارش همکار ثبت نشده است.');
     }
+    if (payerType === 'CUSTOMER' && !orderRef.customerId) {
+      throw new NotFoundException('برای این سفارش مشتری ثبت نشده است.');
+    }
 
     let created: Awaited<ReturnType<InvoicesRepository['create']>> | null = null;
     for (let attempt = 0; attempt < 10; attempt += 1) {

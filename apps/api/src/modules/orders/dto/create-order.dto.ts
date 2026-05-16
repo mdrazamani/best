@@ -1,24 +1,24 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsDefined, IsIn, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 
 class OrderLineItemDto {
-  @IsString()
+  @IsString({ message: 'شناسه نوع توری معتبر نیست.' })
   meshTypeId!: string;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'عرض باید عدد باشد.' })
   width!: number;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'ارتفاع باید عدد باشد.' })
   height!: number;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'تعداد باید عدد باشد.' })
   quantity!: number;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'قیمت واحد باید عدد باشد.' })
   unitPrice!: number;
 }
 
@@ -28,54 +28,56 @@ export class CreateOrderDto {
   title?: string;
 
   @IsOptional()
-  @IsString()
-  collaboratorId?: string;
+  @IsString({ message: 'شناسه همکار معتبر نیست.' })
+  collaboratorId?: string | null;
 
-  @IsString()
-  customerId!: string;
+  @IsOptional()
+  @IsString({ message: 'شناسه مشتری معتبر نیست.' })
+  customerId?: string | null;
 
-  @IsIn(['NEW_CONSTRUCTION', 'REPAIR'])
+  @IsDefined({ message: 'نوع کار الزامی است.' })
+  @IsIn(['NEW_CONSTRUCTION', 'REPAIR'], { message: 'نوع کار نامعتبر است.' })
   workType!: 'NEW_CONSTRUCTION' | 'REPAIR';
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'عرض باید عدد باشد.' })
   width?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'ارتفاع باید عدد باشد.' })
   height?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'تعداد باید عدد باشد.' })
   quantity?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'قیمت واحد باید عدد باشد.' })
   unitPrice?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({}, { message: 'مبلغ کل باید عدد باشد.' })
   totalPrice?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
-  @Min(0)
+  @IsNumber({}, { message: 'تخفیف باید عدد باشد.' })
+  @Min(0, { message: 'تخفیف نمی‌تواند منفی باشد.' })
   discountAmount?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
-  @Min(0)
+  @IsNumber({}, { message: 'مبلغ افزوده باید عدد باشد.' })
+  @Min(0, { message: 'مبلغ افزوده نمی‌تواند منفی باشد.' })
   extraAmount?: number;
 
   @IsOptional()
-  @IsArray()
+  @IsArray({ message: 'ردیف‌های سفارش باید آرایه باشند.' })
   @ValidateNested({ each: true })
   @Type(() => OrderLineItemDto)
   lineItems?: OrderLineItemDto[];
@@ -85,7 +87,9 @@ export class CreateOrderDto {
   description?: string;
 
   @IsOptional()
-  @IsIn(['RECEIVED', 'STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE', 'DELIVERED', 'CANCELLED'])
+  @IsIn(['RECEIVED', 'STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE', 'DELIVERED', 'CANCELLED'], {
+    message: 'مرحله سفارش نامعتبر است.'
+  })
   stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
 
   @IsOptional()

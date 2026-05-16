@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Download, MoreHorizontal, Plus, Search } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { useBestContext } from '../contexts/best-context';
 import { INVOICE_STATUS, fullName, invoiceStatusBadgeVariant, money, shamsiDate, textFa } from '../lib/format';
 import { Button } from '../components/ui/button';
@@ -153,6 +154,10 @@ export function InvoicesPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!form.orderId.trim()) {
+      toast.error('برای ثبت فاکتور، انتخاب سفارش الزامی است.');
+      return;
+    }
     await createInvoice({
       title: form.title || undefined,
       orderId: form.orderId,
@@ -193,6 +198,10 @@ export function InvoicesPage() {
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
     if (!editingInvoiceId) return;
+    if (!editForm.orderId.trim()) {
+      toast.error('انتخاب سفارش الزامی است.');
+      return;
+    }
 
     await updateInvoice(editingInvoiceId, {
       title: editForm.title || undefined,

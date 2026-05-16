@@ -34,15 +34,17 @@ export class CollaboratorsService extends BaseService {
 
     const customers = Array.from(
       new Map(
-        activeOrders.map((order) => [
-          order.customer.id,
-          {
-            id: order.customer.id,
-            firstName: order.customer.firstName,
-            lastName: order.customer.lastName,
-            phone: order.customer.phone
-          }
-        ])
+        activeOrders
+          .filter((order) => Boolean(order.customer))
+          .map((order) => [
+            order.customer!.id,
+            {
+              id: order.customer!.id,
+              firstName: order.customer!.firstName,
+              lastName: order.customer!.lastName,
+              phone: order.customer!.phone
+            }
+          ])
       ).values()
     );
 

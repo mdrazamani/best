@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Download, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { useBestContext } from '../contexts/best-context';
 import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
 import { Button } from '../components/ui/button';
@@ -240,6 +241,10 @@ export function OrdersPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!form.customerId.trim() && !form.collaboratorId.trim()) {
+      toast.error('برای ثبت سفارش، حداقل یکی از مشتری یا همکار را انتخاب کنید.');
+      return;
+    }
 
     const normalizedLineItems = lineItems
       .map((item) => ({
@@ -256,7 +261,7 @@ export function OrdersPage() {
 
     await createOrder({
       title: form.title || undefined,
-      customerId: form.customerId,
+      customerId: form.customerId || undefined,
       collaboratorId: form.collaboratorId || null,
       workType: form.workType,
       expectedCompletionDate: form.expectedCompletionDate || undefined,
