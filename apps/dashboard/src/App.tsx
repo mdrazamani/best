@@ -458,14 +458,20 @@ export function App() {
                 </div>
 
                 <div className="mt-3 border-t border-slate-200/80 pt-3 dark:border-slate-700/80">
-                  <div className="flex items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground">
-                    <span>نسخه {PROJECT_VERSION}</span>
-                    <span>•</span>
-                    <span className="inline-flex items-center gap-1">
-                      ساخته شده با
-                      <Heart className="h-3 w-3 fill-red-500 text-red-500" />
-                    </span>
-                  </div>
+                  {sidebarCollapsed ? (
+                    <div className="text-center text-[9px] font-medium text-muted-foreground">
+                      <span>{PROJECT_VERSION}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground">
+                      <span>نسخه {PROJECT_VERSION}</span>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1">
+                        ساخته شده با
+                        <Heart className="h-3 w-3 fill-red-500 text-red-500" />
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </aside>

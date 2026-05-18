@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react';
-import { ArrowRight, Download, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowRight, ClipboardList, Download, Eye, FileText, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
@@ -122,7 +122,10 @@ export function CollaboratorsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-2xl font-extrabold">جزئیات همکار</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-2xl font-extrabold">
+                <Users className="h-6 w-6 text-muted-foreground" />
+                جزئیات همکار
+              </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">{fullName(detail)} - تاریخ ثبت: {shamsiDate(detail.createdAt)}</p>
               <p className="text-[11px] text-muted-foreground sm:text-xs">تمام مبالغ در این صفحه به ریال هستند.</p>
             </div>
@@ -169,7 +172,10 @@ export function CollaboratorsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">سفارشات همکار</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+              <ClipboardList className="h-5 w-5 text-muted-foreground" />
+              سفارشات همکار
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {orders.length === 0 ? (
@@ -252,7 +258,10 @@ export function CollaboratorsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">فاکتورهای همکار</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              فاکتورهای همکار
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {invoices.length === 0 ? (
@@ -337,7 +346,10 @@ export function CollaboratorsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">مشتریان مرتبط</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+              <User className="h-5 w-5 text-muted-foreground" />
+              مشتریان مرتبط
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {customers.length === 0 ? (

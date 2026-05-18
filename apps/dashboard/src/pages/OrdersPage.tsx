@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Download, Eye, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowRight, ClipboardList, Download, Eye, FileText, History, List, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useBestContext } from '../contexts/best-context';
 import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
@@ -365,7 +365,10 @@ export function OrdersPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-2xl font-extrabold">جزئیات سفارش {orderDetail.orderNumber}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-2xl font-extrabold">
+                <ClipboardList className="h-6 w-6 text-muted-foreground" />
+                جزئیات سفارش {orderDetail.orderNumber}
+              </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">عنوان: {orderDetail.title || '-'}</p>
               <p className="mt-1 text-sm text-muted-foreground">تاریخ ثبت: {shamsiDate(orderDetail.createdAt)}</p>
             </div>
@@ -445,7 +448,10 @@ export function OrdersPage() {
 
             <div className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-2">
               <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">مشخصات مشتری</p>
+                <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <User className="h-3.5 w-3.5" />
+                  مشخصات مشتری
+                </p>
                 {orderDetail.customer?.id ? (
                   <button
                     type="button"
@@ -464,7 +470,10 @@ export function OrdersPage() {
                 <p className="mt-1 text-xs text-muted-foreground">آدرس: {orderDetail.customer?.address || '-'}</p>
               </div>
               <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">مشخصات همکار</p>
+                <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Users className="h-3.5 w-3.5" />
+                  مشخصات همکار
+                </p>
                 {orderDetail.collaborator?.id ? (
                   <button
                     type="button"
@@ -491,7 +500,10 @@ export function OrdersPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">ردیف‌های سفارش</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+              <List className="h-5 w-5 text-muted-foreground" />
+              ردیف‌های سفارش
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {detailLineItems.length === 0 ? (
@@ -527,7 +539,10 @@ export function OrdersPage() {
 
         <Card>
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-xl font-bold">فاکتورهای سفارش و وضعیت پرداخت</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              فاکتورهای سفارش و وضعیت پرداخت
+            </CardTitle>
             <Button onClick={() => setDetailInvoiceOpen(true)}>
               <Plus className="h-4 w-4" />
               افزودن فاکتور
@@ -702,7 +717,10 @@ export function OrdersPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-bold">آخرین تغییرات سفارش</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+              <History className="h-5 w-5 text-muted-foreground" />
+              آخرین تغییرات سفارش
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {detailLogs.length === 0 ? (
