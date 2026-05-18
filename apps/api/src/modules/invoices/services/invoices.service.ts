@@ -599,11 +599,16 @@ export class InvoicesService extends BaseService {
 
     .table-wrap {
       margin: 8px 0 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      overflow: hidden;
     }
 
     table {
       width: 100%;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       margin: 0;
       table-layout: fixed;
     }
@@ -618,13 +623,24 @@ export class InvoicesService extends BaseService {
 
     th,
     td {
-      border: 1px solid var(--border);
+      border: 0;
+      border-inline-start: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
       padding: 9px 10px;
       font-size: 12.5px;
       text-align: center;
       vertical-align: middle;
       page-break-inside: avoid;
       break-inside: avoid;
+    }
+
+    th:first-child,
+    td:first-child {
+      border-inline-start: 0;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
     }
 
     th {

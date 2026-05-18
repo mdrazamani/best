@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Heart, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
@@ -26,15 +26,40 @@ const ACTIVE_TAB_KEY = 'best_active_tab';
 const PROJECT_VERSION = '0.1.1';
 const APP_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'users', 'backups', 'notifications', 'activity'];
 const ASSISTANT_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'notifications'];
+const TAB_HASH: Record<AppTab, string> = {
+  dashboard: 'dashboard',
+  orders: 'orders',
+  invoices: 'invoices',
+  collaborators: 'collaborators',
+  customers: 'customers',
+  mesh: 'mesh',
+  users: 'users',
+  backups: 'backups',
+  notifications: 'notifications',
+  activity: 'activity'
+};
+
+const parseTabFromHash = (): AppTab | null => {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash.replace(/^#\/?/, '').trim();
+  if (!hash) return null;
+  const entry = Object.entries(TAB_HASH).find(([, value]) => value === hash);
+  return (entry?.[0] as AppTab | undefined) ?? null;
+};
+
+const hashForTab = (tab: AppTab) => `#/${TAB_HASH[tab]}`;
 
 export function App() {
   const app = useBestApp();
   const [bootReady, setBootReady] = useState(false);
   const [tab, setTab] = useState<AppTab>(() => {
+    const tabFromHash = parseTabFromHash();
+    if (tabFromHash) return tabFromHash;
     const stored = localStorage.getItem(ACTIVE_TAB_KEY);
     return stored && APP_TABS.includes(stored as AppTab) ? (stored as AppTab) : 'dashboard';
   });
   const [tabHistory, setTabHistory] = useState<AppTab[]>([]);
+  const skipHashSyncRef = useRef(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === '1');
   const [comingSoonOpen, setComingSoonOpen] = useState(false);
@@ -63,8 +88,33 @@ export function App() {
   }, [tab]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const targetHash = hashForTab(tab);
+    if (window.location.hash !== targetHash) {
+      if (skipHashSyncRef.current) {
+        skipHashSyncRef.current = false;
+      } else {
+        window.location.hash = targetHash;
+      }
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const hashTab = parseTabFromHash();
+      if (!hashTab) return;
+      setTab(hashTab);
+      setMobileSidebarOpen(false);
+    };
+
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  useEffect(() => {
     if (!app.token || !app.session) return;
     if (visibleTabs.includes(tab)) return;
+    skipHashSyncRef.current = true;
     setTab('dashboard');
   }, [app.token, app.session, tab, visibleTabs]);
 
