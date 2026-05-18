@@ -26,7 +26,7 @@ const ACTIVE_TAB_KEY = 'best_active_tab';
 const PROJECT_VERSION = '0.1.1';
 const APP_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'users', 'backups', 'notifications', 'activity'];
 const ASSISTANT_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'notifications'];
-const TAB_HASH: Record<AppTab, string> = {
+const TAB_PATH: Record<AppTab, string> = {
   dashboard: 'dashboard',
   orders: 'orders',
   invoices: 'invoices',
@@ -39,27 +39,51 @@ const TAB_HASH: Record<AppTab, string> = {
   activity: 'activity'
 };
 
-const parseTabFromHash = (): AppTab | null => {
-  if (typeof window === 'undefined') return null;
-  const hash = window.location.hash.replace(/^#\/?/, '').trim();
-  if (!hash) return null;
-  const entry = Object.entries(TAB_HASH).find(([, value]) => value === hash);
-  return (entry?.[0] as AppTab | undefined) ?? null;
+type RouteSnapshot = {
+  tab: AppTab | null;
+  detailId?: string;
 };
 
-const hashForTab = (tab: AppTab) => `#/${TAB_HASH[tab]}`;
+const decodePathSegment = (value?: string) => {
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const parseRouteFromPath = (): RouteSnapshot => {
+  if (typeof window === 'undefined') return { tab: null };
+  const [segment, detailSegment] = window.location.pathname.split('/').filter(Boolean);
+  if (!segment) return { tab: null };
+  const entry = Object.entries(TAB_PATH).find(([, value]) => value === segment);
+  const tab = (entry?.[0] as AppTab | undefined) ?? null;
+  if (!tab) return { tab: null };
+  return { tab, detailId: decodePathSegment(detailSegment) };
+};
+
+const pathForTab = (tab: AppTab, detailId?: string) => {
+  const base = `/${TAB_PATH[tab]}`;
+  if (!detailId) return base;
+  if (tab === 'orders' || tab === 'collaborators' || tab === 'customers') {
+    return `${base}/${encodeURIComponent(detailId)}`;
+  }
+  return base;
+};
 
 export function App() {
   const app = useBestApp();
   const [bootReady, setBootReady] = useState(false);
   const [tab, setTab] = useState<AppTab>(() => {
-    const tabFromHash = parseTabFromHash();
-    if (tabFromHash) return tabFromHash;
+    const route = parseRouteFromPath();
+    if (route.tab) return route.tab;
     const stored = localStorage.getItem(ACTIVE_TAB_KEY);
     return stored && APP_TABS.includes(stored as AppTab) ? (stored as AppTab) : 'dashboard';
   });
   const [tabHistory, setTabHistory] = useState<AppTab[]>([]);
-  const skipHashSyncRef = useRef(false);
+  const skipPathSyncRef = useRef(false);
+  const initialRouteAppliedRef = useRef(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === '1');
   const [comingSoonOpen, setComingSoonOpen] = useState(false);
@@ -89,32 +113,103 @@ export function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const targetHash = hashForTab(tab);
-    if (window.location.hash !== targetHash) {
-      if (skipHashSyncRef.current) {
-        skipHashSyncRef.current = false;
-      } else {
-        window.location.hash = targetHash;
-      }
+    const detailId =
+      tab === 'orders'
+        ? app.orderDetail?.id
+        : tab === 'collaborators'
+          ? app.collaboratorDetail?.id
+          : tab === 'customers'
+            ? app.customerDetail?.id
+            : undefined;
+    const targetPath = pathForTab(tab, detailId);
+    if (window.location.pathname === targetPath) return;
+    if (skipPathSyncRef.current) {
+      skipPathSyncRef.current = false;
+      return;
     }
-  }, [tab]);
+    window.history.replaceState({}, '', targetPath);
+  }, [tab, app.orderDetail?.id, app.collaboratorDetail?.id, app.customerDetail?.id]);
 
   useEffect(() => {
-    const onHashChange = () => {
-      const hashTab = parseTabFromHash();
-      if (!hashTab) return;
-      setTab(hashTab);
+    const onPopState = () => {
+      const route = parseRouteFromPath();
+      const pathTab = route.tab ?? 'dashboard';
+      skipPathSyncRef.current = true;
+      setTab(pathTab);
       setMobileSidebarOpen(false);
+
+      if (pathTab === 'orders') {
+        app.closeCollaboratorDetail();
+        app.closeCustomerDetail();
+        if (route.detailId) void app.openOrderDetail(route.detailId);
+        else app.closeOrderDetail();
+        return;
+      }
+      if (pathTab === 'collaborators') {
+        app.closeOrderDetail();
+        app.closeCustomerDetail();
+        if (route.detailId) void app.openCollaboratorDetail(route.detailId);
+        else app.closeCollaboratorDetail();
+        return;
+      }
+      if (pathTab === 'customers') {
+        app.closeOrderDetail();
+        app.closeCollaboratorDetail();
+        if (route.detailId) void app.openCustomerDetail(route.detailId);
+        else app.closeCustomerDetail();
+        return;
+      }
+
+      app.closeOrderDetail();
+      app.closeCollaboratorDetail();
+      app.closeCustomerDetail();
     };
 
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [app]);
+
+  useEffect(() => {
+    if (!app.token || !app.session || initialRouteAppliedRef.current) return;
+    initialRouteAppliedRef.current = true;
+    const route = parseRouteFromPath();
+    const routeTab = route.tab ?? 'dashboard';
+    const nextTab = visibleTabs.includes(routeTab) ? routeTab : 'dashboard';
+    if (tab !== nextTab) {
+      setTab(nextTab);
+    }
+
+    if (nextTab === 'orders') {
+      app.closeCollaboratorDetail();
+      app.closeCustomerDetail();
+      if (route.detailId) void app.openOrderDetail(route.detailId);
+      else app.closeOrderDetail();
+      return;
+    }
+    if (nextTab === 'collaborators') {
+      app.closeOrderDetail();
+      app.closeCustomerDetail();
+      if (route.detailId) void app.openCollaboratorDetail(route.detailId);
+      else app.closeCollaboratorDetail();
+      return;
+    }
+    if (nextTab === 'customers') {
+      app.closeOrderDetail();
+      app.closeCollaboratorDetail();
+      if (route.detailId) void app.openCustomerDetail(route.detailId);
+      else app.closeCustomerDetail();
+      return;
+    }
+
+    app.closeOrderDetail();
+    app.closeCollaboratorDetail();
+    app.closeCustomerDetail();
+  }, [app, tab, app.token, app.session, visibleTabs]);
 
   useEffect(() => {
     if (!app.token || !app.session) return;
     if (visibleTabs.includes(tab)) return;
-    skipHashSyncRef.current = true;
+    skipPathSyncRef.current = true;
     setTab('dashboard');
   }, [app.token, app.session, tab, visibleTabs]);
 
@@ -184,10 +279,16 @@ export function App() {
   };
 
   const navigateToTab = (nextTab: AppTab) => {
-    resetTabDetails(nextTab);
+    if (tab !== nextTab) {
+      resetTabDetails(nextTab);
+    }
     setTab((prev) => {
       if (prev === nextTab) {
         return prev;
+      }
+      const targetPath = pathForTab(nextTab);
+      if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+        window.history.pushState({}, '', targetPath);
       }
       setTabHistory((history) => [...history, prev]);
       return nextTab;
@@ -200,15 +301,78 @@ export function App() {
       if (!history.length) return history;
       const nextHistory = [...history];
       const previousTab = nextHistory.pop() as AppTab;
+      const targetPath = pathForTab(previousTab);
+      if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+        window.history.replaceState({}, '', targetPath);
+      }
       setTab(previousTab);
       return nextHistory;
     });
   };
 
+  const openOrderDetailWithRoute = async (id: string) => {
+    if (tab !== 'orders') {
+      setTabHistory((history) => [...history, tab]);
+      setTab('orders');
+    }
+    await app.openOrderDetail(id);
+    const targetPath = pathForTab('orders', id);
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
+  const openCollaboratorDetailWithRoute = async (id: string) => {
+    if (tab !== 'collaborators') {
+      setTabHistory((history) => [...history, tab]);
+      setTab('collaborators');
+    }
+    await app.openCollaboratorDetail(id);
+    const targetPath = pathForTab('collaborators', id);
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
+  const openCustomerDetailWithRoute = async (id: string) => {
+    if (tab !== 'customers') {
+      setTabHistory((history) => [...history, tab]);
+      setTab('customers');
+    }
+    await app.openCustomerDetail(id);
+    const targetPath = pathForTab('customers', id);
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
+  const closeOrderDetailWithRoute = () => {
+    app.closeOrderDetail();
+    const targetPath = pathForTab('orders');
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
+  const closeCollaboratorDetailWithRoute = () => {
+    app.closeCollaboratorDetail();
+    const targetPath = pathForTab('collaborators');
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
+  const closeCustomerDetailWithRoute = () => {
+    app.closeCustomerDetail();
+    const targetPath = pathForTab('customers');
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
   const openNotificationTarget = (item: { type: 'INVOICE_DUE' | 'ORDER_DUE'; orderId?: string }) => {
     if (item.orderId) {
-      void app.openOrderDetail(item.orderId);
-      navigateToTab('orders');
+      void openOrderDetailWithRoute(item.orderId);
       return;
     }
     navigateToTab(item.type === 'ORDER_DUE' ? 'orders' : 'invoices');
@@ -221,6 +385,12 @@ export function App() {
 
   const contextValue = {
     ...app,
+    openOrderDetail: openOrderDetailWithRoute,
+    openCollaboratorDetail: openCollaboratorDetailWithRoute,
+    openCustomerDetail: openCustomerDetailWithRoute,
+    closeOrderDetail: closeOrderDetailWithRoute,
+    closeCollaboratorDetail: closeCollaboratorDetailWithRoute,
+    closeCustomerDetail: closeCustomerDetailWithRoute,
     currentTab: tab,
     canGoBack: tabHistory.length > 0,
     navigateToTab,
