@@ -14,7 +14,7 @@ describe('Accounting integration (orders + invoices)', () => {
     totalPrice: 1000,
     discountAmount: 0,
     customerId: 'customer-1',
-    collaboratorId: null,
+    collaboratorId: 'col-1',
     stage: 'IN_PROGRESS',
     createdAt: new Date('2026-01-01T00:00:00.000Z')
   };
@@ -183,4 +183,3 @@ describe('Accounting integration (orders + invoices)', () => {
     await expect(invoicesService.addPayment('actor-1', createdInvoice.id, { amount: 1 } as any)).rejects.toBeInstanceOf(BadRequestException);
   });
 });
-

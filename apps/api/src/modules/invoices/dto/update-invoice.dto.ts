@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+﻿import { Type } from 'class-transformer';
 import { IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class UpdateInvoiceDto {
@@ -26,8 +26,8 @@ export class UpdateInvoiceDto {
   dueDate?: string;
 
   @IsOptional()
-  @IsIn(['CUSTOMER', 'COLLABORATOR'])
-  payerType?: 'CUSTOMER' | 'COLLABORATOR';
+  @IsIn(['COLLABORATOR'])
+  payerType?: 'COLLABORATOR';
 
   @IsOptional()
   @IsString()

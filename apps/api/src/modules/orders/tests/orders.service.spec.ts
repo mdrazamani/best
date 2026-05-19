@@ -108,17 +108,18 @@ describe('OrdersService', () => {
   it('applies discount when creating order', async () => {
     ordersRepository.createWithInitialInvoice.mockResolvedValue({
       id: 'order-1',
-      collaboratorId: null,
+      collaboratorId: 'col-1',
       customerId: 'customer-1'
     });
     ordersRepository.findById.mockResolvedValue({
       id: 'order-1',
-      totalPrice: 50,
+      totalPrice: 550,
       invoices: []
     });
 
     await service.create('actor-1', {
       customerId: 'customer-1',
+      collaboratorId: 'col-1',
       workType: 'NEW_CONSTRUCTION',
       lineItems: [{ meshTypeId: 'mesh-1', width: 200, height: 300, quantity: 1, unitPrice: 100 }],
       discountAmount: 50
@@ -126,10 +127,10 @@ describe('OrdersService', () => {
 
     expect(ordersRepository.createWithInitialInvoice).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalPrice: 50,
+        totalPrice: 550,
         discountAmount: 50,
         initialInvoice: expect.objectContaining({
-          amount: 50,
+          amount: 550,
           discountAmount: 50
         })
       })
@@ -139,26 +140,27 @@ describe('OrdersService', () => {
   it('does not send extra amount fields in create payload', async () => {
     ordersRepository.createWithInitialInvoice.mockResolvedValue({
       id: 'order-2',
-      collaboratorId: null,
+      collaboratorId: 'col-1',
       customerId: 'customer-1'
     });
     ordersRepository.findById.mockResolvedValue({
       id: 'order-2',
-      totalPrice: 100,
+      totalPrice: 600,
       invoices: []
     });
 
     await service.create('actor-1', {
       customerId: 'customer-1',
+      collaboratorId: 'col-1',
       workType: 'NEW_CONSTRUCTION',
       lineItems: [{ meshTypeId: 'mesh-1', width: 200, height: 300, quantity: 1, unitPrice: 100 }]
     } as any);
 
     expect(ordersRepository.createWithInitialInvoice).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalPrice: 100,
+        totalPrice: 600,
         initialInvoice: expect.objectContaining({
-          amount: 100
+          amount: 600
         })
       })
     );

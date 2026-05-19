@@ -142,7 +142,15 @@ export function CollaboratorsPage() {
   );
 
   const meshOptions = useMemo(
-    () => meshTypes.filter((item) => item.isActive).map((item) => ({ value: item.id, label: item.title })),
+    () =>
+      meshTypes
+        .filter((item) => item.isActive)
+        .map((item) => ({
+          value: item.id,
+          label: item.title,
+          unitPrice: Number(item.unitPrice ?? 0),
+          isDefault: Boolean(item.isDefault)
+        })),
     [meshTypes]
   );
 
@@ -160,7 +168,9 @@ export function CollaboratorsPage() {
       .filter((item: any) => canInvoiceOrder(item))
       .map((item: any) => ({
         value: item.id,
-        label: `${item.orderNumber ?? item.id}${item.customer ? ` - ${fullName(item.customer)}` : ''}`
+        label: `${item.orderNumber ?? item.id}${item.customer ? ` - ${fullName(item.customer)}` : ''}`,
+        totalPrice: Number(item.totalPrice ?? 0),
+        discountAmount: Number(item.discountAmount ?? 0)
       }));
   }, [collaboratorDetail?.orders]);
 

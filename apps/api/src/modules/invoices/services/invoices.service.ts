@@ -88,10 +88,10 @@ export class InvoicesService extends BaseService {
     }
     const status = dto.status ?? computedStatus;
 
-    const payerType = dto.payerType ?? this.resolveDefaultPayerType(orderRefs);
-    const payerId = dto.payerId ?? this.resolveDefaultPayerId(orderRefs, payerType);
+    const payerType = 'COLLABORATOR' as const;
+    const payerId = dto.payerId ?? this.resolveDefaultCollaboratorPayerId(orderRefs);
     const normalizedPayerId = payerId ?? undefined;
-    this.validatePayerForOrders(orderRefs, payerType, normalizedPayerId);
+    this.validateCollaboratorPayerForOrders(orderRefs, normalizedPayerId);
 
     let created: Awaited<ReturnType<InvoicesRepository['createWithOrders']>> | null = null;
     for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -177,9 +177,11 @@ export class InvoicesService extends BaseService {
       throw new BadRequestException('وضعیت فاکتور از روی تاریخچه پرداخت محاسبه می‌شود.');
     }
 
-    const payerType = dto.payerType ?? existing.payerType;
-    const payerId = dto.payerId === undefined ? existing.payerId : dto.payerId || null;
-    this.validatePayerForOrders(orderRefs, payerType, payerId ?? undefined);
+    const payerType = 'COLLABORATOR' as const;
+    const payerIdFromExisting = existing.payerType === 'COLLABORATOR' ? existing.payerId : null;
+    const payerId = dto.payerId === undefined ? payerIdFromExisting : dto.payerId || null;
+    const resolvedPayerId = payerId ?? this.resolveDefaultCollaboratorPayerId(orderRefs) ?? null;
+    this.validateCollaboratorPayerForOrders(orderRefs, resolvedPayerId ?? undefined);
 
     await this.invoicesRepository.update(id, {
       title: dto.title === undefined ? undefined : dto.title?.trim() ?? null,
@@ -188,7 +190,7 @@ export class InvoicesService extends BaseService {
       paidAmount: toMoneyNumber(paidAmount),
       status: computedStatus,
       payerType,
-      payerId,
+      payerId: resolvedPayerId,
       description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
       dueDate: dto.dueDate === undefined ? undefined : dto.dueDate ? new Date(dto.dueDate) : null,
       paidAt: computedStatus === 'PAID' ? new Date() : null
@@ -309,46 +311,30 @@ export class InvoicesService extends BaseService {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
 
-  private resolveDefaultPayerType(orders: Array<{ collaboratorId: string | null; customerId: string | null }>) {
+  private resolveDefaultCollaboratorPayerId(orders: Array<{ collaboratorId: string | null }>) {
     const collaboratorIds = Array.from(new Set(orders.map((item) => item.collaboratorId).filter(Boolean)));
-    if (collaboratorIds.length === 1) return 'COLLABORATOR' as const;
-
-    const customerIds = Array.from(new Set(orders.map((item) => item.customerId).filter(Boolean)));
-    if (customerIds.length === 1) return 'CUSTOMER' as const;
-
-    throw new BadRequestException('برای فاکتور مشترک، باید نوع پرداخت‌کننده و شخص پرداخت‌کننده را مشخص کنید.');
+    return collaboratorIds.length === 1 ? collaboratorIds[0] : undefined;
   }
 
-  private resolveDefaultPayerId(
-    orders: Array<{ collaboratorId: string | null; customerId: string | null }>,
-    payerType: 'CUSTOMER' | 'COLLABORATOR'
-  ) {
-    const ids = Array.from(
-      new Set(
-        orders
-          .map((item) => (payerType === 'COLLABORATOR' ? item.collaboratorId : item.customerId))
-          .filter(Boolean)
-      )
-    );
-    return ids.length === 1 ? ids[0] : undefined;
-  }
-
-  private validatePayerForOrders(
-    orders: Array<{ orderNumber: string; collaboratorId: string | null; customerId: string | null }>,
-    payerType: 'CUSTOMER' | 'COLLABORATOR',
+  private validateCollaboratorPayerForOrders(
+    orders: Array<{ orderNumber: string; collaboratorId: string | null }>,
     payerId?: string
   ) {
     if (!payerId) {
-      throw new BadRequestException('شناسه پرداخت‌کننده الزامی است.');
+      throw new BadRequestException('برای صدور فاکتور، انتخاب همکار الزامی است.');
     }
 
-    const invalidOrders = orders.filter((item) =>
-      payerType === 'COLLABORATOR' ? item.collaboratorId !== payerId : item.customerId !== payerId
-    );
+    const ordersWithoutCollaborator = orders.filter((item) => !item.collaboratorId);
+    if (ordersWithoutCollaborator.length) {
+      const orderNumbers = ordersWithoutCollaborator.map((item) => item.orderNumber).join('، ');
+      throw new BadRequestException(`سفارش(های) ${orderNumbers} همکار ندارند و قابل صدور فاکتور نیستند.`);
+    }
+
+    const invalidOrders = orders.filter((item) => item.collaboratorId !== payerId);
 
     if (invalidOrders.length) {
       const orderNumbers = invalidOrders.map((item) => item.orderNumber).join('، ');
-      throw new BadRequestException(`پرداخت‌کننده انتخاب‌شده با سفارش(های) ${orderNumbers} هم‌خوانی ندارد.`);
+      throw new BadRequestException(`همکار انتخاب‌شده با سفارش(های) ${orderNumbers} هم‌خوانی ندارد.`);
     }
   }
 
@@ -453,9 +439,8 @@ export class InvoicesService extends BaseService {
   }
 
   private renderInvoiceHtml(invoice: any): string {
-    const customer = invoice.order?.customer;
     const collaborator = invoice.order?.collaborator;
-    const buyer = invoice.payerType === 'COLLABORATOR' ? collaborator : customer;
+    const buyer = collaborator;
 
     const sellerName = 'تولیدی توربست';
     const sellerPhonePrimary = '09124617758';
@@ -489,21 +474,26 @@ export class InvoicesService extends BaseService {
         const meshTitle = this.escapeHtml(item?.meshType?.title ?? 'آیتم');
         const width = Number(item.width ?? 0);
         const height = Number(item.height ?? 0);
-        const title = `${meshTitle} (${this.escapeHtml(width)} × ${this.escapeHtml(height)})`;
+        const dimensions = `${this.escapeHtml(width)} × ${this.escapeHtml(height)}`;
+        const description = this.escapeHtml(item?.description ?? '-');
 
         return `
           <tr>
             <td>${idx + 1}</td>
-            <td class="name-cell">${title}</td>
+            <td class="name-cell">
+              <div class="item-title">${meshTitle}</div>
+              <div class="item-sub">(${dimensions})</div>
+            </td>
             <td>${this.escapeHtml(Number(item.quantity ?? 0))}</td>
             <td>${this.formatMoney(item.unitPrice)}</td>
             <td>${this.formatMoney(item.lineTotal)}</td>
+            <td class="desc-cell">${description}</td>
           </tr>
         `;
       })
       .join('');
 
-    const emptyRows = tableRows || `<tr><td colspan="5">قلمی برای این فاکتور ثبت نشده است.</td></tr>`;
+    const emptyRows = tableRows || `<tr><td colspan="6">قلمی برای این فاکتور ثبت نشده است.</td></tr>`;
 
     const summaryRows: string[] = [];
     summaryRows.push(`
@@ -623,7 +613,7 @@ export class InvoicesService extends BaseService {
 
     .title-block h1 {
       margin: 0;
-      font-size: 42px;
+      font-size: 36px;
       line-height: 1.15;
       color: #020617;
       font-weight: 800;
@@ -680,7 +670,7 @@ export class InvoicesService extends BaseService {
 
     .party-header h3 {
       margin: 0;
-      font-size: 28px;
+      font-size: 22px;
       line-height: 1.1;
       color: var(--heading);
       font-weight: 800;
@@ -732,7 +722,7 @@ export class InvoicesService extends BaseService {
       border-collapse: separate;
       border-spacing: 0;
       margin: 0;
-      table-layout: fixed;
+      table-layout: auto;
     }
 
     thead {
@@ -780,9 +770,31 @@ export class InvoicesService extends BaseService {
       text-align: right;
       white-space: normal;
       font-weight: 500;
-      word-break: break-word;
-      overflow-wrap: anywhere;
+      word-break: normal;
+      overflow-wrap: break-word;
       line-height: 1.45;
+    }
+
+    .desc-cell {
+      text-align: right;
+      white-space: normal;
+      word-break: normal;
+      overflow-wrap: break-word;
+      line-height: 1.45;
+    }
+
+    .item-title {
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 2px;
+    }
+
+    .item-sub {
+      font-size: 12px;
+      color: #4b5563;
+      direction: ltr;
+      unicode-bidi: plaintext;
+      text-align: right;
     }
 
     .summary {
@@ -951,11 +963,12 @@ export class InvoicesService extends BaseService {
       <table>
         <thead>
           <tr>
-            <th style="width:58px;">ردیف</th>
+            <th style="width:54px;">ردیف</th>
             <th>نام کالا</th>
-            <th style="width:95px;">تعداد</th>
-            <th style="width:170px;">قیمت واحد (تومان)</th>
-            <th style="width:180px;">مبلغ کل (تومان)</th>
+            <th style="width:72px;">تعداد</th>
+            <th style="width:138px;">قیمت واحد (تومان)</th>
+            <th style="width:148px;">مبلغ کل (تومان)</th>
+            <th style="width:170px;">توضیحات</th>
           </tr>
         </thead>
         <tbody>

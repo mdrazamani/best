@@ -9,7 +9,9 @@ import { PersianDatePicker } from '../ui/persian-date-picker';
 import { SearchableSelect } from '../ui/searchable-select';
 import { Textarea } from '../ui/textarea';
 
-type Option = { value: string; label: string; referredByCollaboratorId?: string | null };
+type CustomerOption = { value: string; label: string; referredByCollaboratorId?: string | null };
+type CollaboratorOption = { value: string; label: string };
+type MeshOption = { value: string; label: string; unitPrice?: number; isDefault?: boolean };
 
 type QuickCustomerPayload = {
   firstName: string;
@@ -26,6 +28,7 @@ type LineItemForm = {
   quantity: string;
   unitPrice: string;
   lineTotalOverride: string;
+  lineTotalManual: boolean;
   description: string;
 };
 
@@ -60,9 +63,9 @@ type CreateOrderDialogProps = {
   title?: string;
   description?: string;
   submitLabel?: string;
-  customerOptions: Option[];
-  collaboratorOptions?: Option[];
-  meshOptions: Option[];
+  customerOptions: CustomerOption[];
+  collaboratorOptions?: CollaboratorOption[];
+  meshOptions: MeshOption[];
   lockedCollaborator?: { id: string; label: string };
   lockedCustomer?: { id: string; label: string };
   onQuickCreateCustomer?: (payload: QuickCustomerPayload) => Promise<{ id: string; label: string } | null>;
@@ -73,23 +76,42 @@ const WORK_TYPE_OPTIONS: Array<{ value: 'NEW_CONSTRUCTION' | 'REPAIR'; label: st
   { value: 'REPAIR', label: 'تعمیر' }
 ];
 
-const createLineItem = (): LineItemForm => ({
-  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-  meshTypeId: '',
-  width: '',
-  height: '',
-  quantity: '',
-  unitPrice: '',
-  lineTotalOverride: '',
-  description: ''
-});
-
 const toNumber = (value: string) => {
   const normalized = value.trim();
   if (!normalized) return 0;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
+const calculateLineTotal = (width: number, height: number, quantity: number, unitPrice: number) => {
+  const areaMeters = (width * height) / 10000;
+  if (areaMeters > 1) return areaMeters * quantity * unitPrice;
+  return quantity * unitPrice;
+};
+
+const normalizeAmountInput = (value: number) => {
+  const rounded = Math.max(Math.round(value * 100) / 100, 0);
+  return Number.isFinite(rounded) ? String(rounded) : '0';
+};
+
+const withAutoLineTotal = (item: LineItemForm): LineItemForm => {
+  if (item.lineTotalManual) return item;
+  const calculated = calculateLineTotal(toNumber(item.width), toNumber(item.height), toNumber(item.quantity), toNumber(item.unitPrice));
+  return { ...item, lineTotalOverride: normalizeAmountInput(calculated) };
+};
+
+const createLineItem = (defaultMeshId?: string, defaultUnitPrice?: number): LineItemForm =>
+  withAutoLineTotal({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  meshTypeId: defaultMeshId ?? '',
+  width: '',
+  height: '',
+  quantity: '1',
+  unitPrice: defaultUnitPrice !== undefined ? String(defaultUnitPrice) : '',
+  lineTotalOverride: '',
+  lineTotalManual: false,
+  description: ''
+});
 
 const emptyForm = {
   title: '',
@@ -120,14 +142,16 @@ export function CreateOrderDialog({
   lockedCustomer,
   onQuickCreateCustomer
 }: CreateOrderDialogProps) {
+  const defaultMesh = useMemo(() => meshOptions.find((item) => item.isDefault) ?? meshOptions[0], [meshOptions]);
+
   const [form, setForm] = useState(emptyForm);
-  const [lineItems, setLineItems] = useState<LineItemForm[]>([createLineItem()]);
+  const [lineItems, setLineItems] = useState<LineItemForm[]>([createLineItem(defaultMesh?.value, defaultMesh?.unitPrice)]);
   const [finalPrice, setFinalPrice] = useState('');
   const [finalPriceOverridden, setFinalPriceOverridden] = useState(false);
   const [discountAmount, setDiscountAmount] = useState('');
-  const [createInitialInvoice, setCreateInitialInvoice] = useState(true);
+  const [createInitialInvoice, setCreateInitialInvoice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [localCustomerOptions, setLocalCustomerOptions] = useState<Option[]>(customerOptions);
+  const [localCustomerOptions, setLocalCustomerOptions] = useState<CustomerOption[]>(customerOptions);
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [quickCustomerSubmitting, setQuickCustomerSubmitting] = useState(false);
   const [quickCustomerForm, setQuickCustomerForm] = useState(emptyQuickCustomer);
@@ -143,11 +167,11 @@ export function CreateOrderDialog({
         collaboratorId: lockedCollaborator?.id ?? '',
         customerId: lockedCustomer?.id ?? ''
       });
-      setLineItems([createLineItem()]);
+      setLineItems([createLineItem(defaultMesh?.value, defaultMesh?.unitPrice)]);
       setFinalPrice('');
       setFinalPriceOverridden(false);
       setDiscountAmount('');
-      setCreateInitialInvoice(true);
+      setCreateInitialInvoice(false);
       setSubmitting(false);
       setQuickCustomerOpen(false);
       setQuickCustomerSubmitting(false);
@@ -160,7 +184,12 @@ export function CreateOrderDialog({
       collaboratorId: lockedCollaborator?.id ?? prev.collaboratorId,
       customerId: lockedCustomer?.id ?? prev.customerId
     }));
-  }, [open, lockedCollaborator?.id, lockedCustomer?.id]);
+
+    setLineItems((prev) => {
+      if (prev.length) return prev;
+      return [createLineItem(defaultMesh?.value, defaultMesh?.unitPrice)];
+    });
+  }, [open, lockedCollaborator?.id, lockedCustomer?.id, defaultMesh?.value, defaultMesh?.unitPrice]);
 
   const collaboratorSelectOptions = useMemo(
     () => [{ value: '', label: 'بدون همکار' }, ...(collaboratorOptions ?? [])],
@@ -171,8 +200,8 @@ export function CreateOrderDialog({
 
   const prioritizedCustomerOptions = useMemo(() => {
     if (!activeCollaboratorId) return localCustomerOptions;
-    const preferred: Option[] = [];
-    const others: Option[] = [];
+    const preferred: CustomerOption[] = [];
+    const others: CustomerOption[] = [];
     for (const item of localCustomerOptions) {
       if (item.referredByCollaboratorId === activeCollaboratorId) preferred.push(item);
       else others.push(item);
@@ -182,12 +211,14 @@ export function CreateOrderDialog({
 
   const lineTotals = useMemo(() => {
     return lineItems.map((item) => {
+      const width = toNumber(item.width);
+      const height = toNumber(item.height);
       const quantity = toNumber(item.quantity);
       const unitPrice = toNumber(item.unitPrice);
-      const calculated = quantity * unitPrice;
+      const calculated = calculateLineTotal(width, height, quantity, unitPrice);
       const override = toNumber(item.lineTotalOverride);
-      const effective = override > 0 ? override : calculated;
-      return { calculated, effective };
+      const effective = item.lineTotalManual ? Math.max(override, 0) : calculated;
+      return { calculated, effective, width, height, quantity };
     });
   }, [lineItems]);
 
@@ -201,11 +232,28 @@ export function CreateOrderDialog({
     }
   }, [adjustedTotal, finalPriceOverridden]);
 
-  const updateLineItem = (id: string, key: keyof Omit<LineItemForm, 'id'>, value: string) => {
-    setLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
+  const updateLineItem = (id: string, key: keyof Omit<LineItemForm, 'id' | 'lineTotalManual'>, value: string) => {
+    setLineItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const next: LineItemForm = { ...item, [key]: value };
+        if (key === 'lineTotalOverride') {
+          const manual = value.trim() !== '';
+          next.lineTotalManual = manual;
+          return manual ? next : withAutoLineTotal(next);
+        }
+        if (key === 'meshTypeId') {
+          const mesh = meshOptions.find((m) => m.value === value);
+          if (mesh && (item.unitPrice.trim() === '' || Number(item.unitPrice) === Number(meshOptions.find((m) => m.value === item.meshTypeId)?.unitPrice ?? 0))) {
+            next.unitPrice = String(Number(mesh.unitPrice ?? 0));
+          }
+        }
+        return withAutoLineTotal(next);
+      })
+    );
   };
 
-  const addLineItem = () => setLineItems((prev) => [...prev, createLineItem()]);
+  const addLineItem = () => setLineItems((prev) => [...prev, createLineItem(defaultMesh?.value, defaultMesh?.unitPrice)]);
 
   const removeLineItem = (id: string) => {
     setLineItems((prev) => (prev.length === 1 ? prev : prev.filter((item) => item.id !== id)));
@@ -274,7 +322,11 @@ export function CreateOrderDialog({
         const lineTotalOverride = toNumber(item.lineTotalOverride);
         const description = item.description.trim();
 
-        const effectiveUnitPrice = lineTotalOverride > 0 && quantity > 0 ? lineTotalOverride / quantity : unitPrice;
+        const areaMeters = (width * height) / 10000;
+        const factor = areaMeters > 1 ? areaMeters * quantity : quantity;
+        const calculatedLineTotal = calculateLineTotal(width, height, quantity, unitPrice);
+        const effectiveLineTotal = item.lineTotalManual ? Math.max(lineTotalOverride, 0) : calculatedLineTotal;
+        const effectiveUnitPrice = factor > 0 ? effectiveLineTotal / factor : unitPrice;
 
         return {
           meshTypeId,
@@ -428,11 +480,11 @@ export function CreateOrderDialog({
                   </div>
                   <div className="grid gap-3 md:grid-cols-7">
                     <SearchableSelect options={meshOptions} value={item.meshTypeId} onChange={(value) => updateLineItem(item.id, 'meshTypeId', value)} placeholder="نوع توری" className="md:col-span-2" />
-                    <Input type="number" min="0" step="0.01" value={item.width} placeholder="عرض" onChange={(e) => updateLineItem(item.id, 'width', e.target.value)} />
-                    <Input type="number" min="0" step="0.01" value={item.height} placeholder="ارتفاع" onChange={(e) => updateLineItem(item.id, 'height', e.target.value)} />
+                    <Input type="number" min="0" step="0.01" value={item.width} placeholder="عرض (cm)" onChange={(e) => updateLineItem(item.id, 'width', e.target.value)} />
+                    <Input type="number" min="0" step="0.01" value={item.height} placeholder="ارتفاع (cm)" onChange={(e) => updateLineItem(item.id, 'height', e.target.value)} />
                     <Input type="number" min="0" step="0.01" value={item.quantity} placeholder="تعداد" onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)} />
-                    <Input type="number" min="0" step="0.01" value={item.unitPrice} placeholder="قیمت واحد" onChange={(e) => updateLineItem(item.id, 'unitPrice', e.target.value)} />
-                    <Input type="number" min="0" step="0.01" value={item.lineTotalOverride} placeholder="مبلغ نهایی ردیف" onChange={(e) => updateLineItem(item.id, 'lineTotalOverride', e.target.value)} />
+                    <Input type="number" min="0" step="0.01" value={item.unitPrice} placeholder="قیمت واحد نوع توری" onChange={(e) => updateLineItem(item.id, 'unitPrice', e.target.value)} />
+                    <Input type="number" min="0" step="0.01" value={item.lineTotalOverride} placeholder="مبلغ نهایی ردیف (اختیاری)" onChange={(e) => updateLineItem(item.id, 'lineTotalOverride', e.target.value)} />
                   </div>
                   <Input className="mt-3" value={item.description} placeholder="توضیحات ردیف (اختیاری)" onChange={(e) => updateLineItem(item.id, 'description', e.target.value)} />
                   <p className="mt-2 text-xs text-muted-foreground">جمع محاسباتی ردیف: {money(lineTotals[index]?.calculated ?? 0)}</p>
@@ -500,4 +552,3 @@ export function CreateOrderDialog({
     </Dialog>
   );
 }
-

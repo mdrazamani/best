@@ -24,7 +24,6 @@ const emptyInvoiceForm = {
   amount: '',
   discountAmount: '',
   status: 'UNPAID',
-  payerType: 'CUSTOMER',
   payerId: '',
   dueDate: '',
   description: ''
@@ -35,7 +34,6 @@ type InvoiceFormState = {
   amount: string;
   discountAmount: string;
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
-  payerType: 'CUSTOMER' | 'COLLABORATOR';
   payerId: string;
   dueDate: string;
   description: string;
@@ -68,7 +66,7 @@ export function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'UNPAID' | 'PARTIAL' | 'PAID'>('all');
-  const [payerFilter, setPayerFilter] = useState<'all' | 'CUSTOMER' | 'COLLABORATOR'>('all');
+  const [payerFilter, setPayerFilter] = useState<'all' | 'COLLABORATOR'>('all');
   const [editForm, setEditForm] = useState<InvoiceFormState>({ ...emptyInvoiceForm });
   const [paymentForm, setPaymentForm] = useState({ ...emptyPaymentForm });
 
@@ -76,7 +74,12 @@ export function InvoicesPage() {
     () =>
       orders
         .filter((item) => item.stage !== 'CANCELLED' && !(Array.isArray(item.invoices) && item.invoices.length > 0))
-        .map((item) => ({ value: item.id, label: `${item.orderNumber} - ${fullName(item.customer)}${item.collaborator ? ` / ${fullName(item.collaborator)}` : ''}` })),
+        .map((item) => ({
+          value: item.id,
+          label: `${item.orderNumber} - ${fullName(item.customer)}${item.collaborator ? ` / ${fullName(item.collaborator)}` : ''}`,
+          totalPrice: Number(item.totalPrice ?? 0),
+          discountAmount: Number(item.discountAmount ?? 0)
+        })),
     [orders]
   );
 
@@ -84,7 +87,6 @@ export function InvoicesPage() {
   const payerFilterOptions = useMemo(
     () => [
       { value: 'all', label: 'همه پرداخت‌کننده‌ها' },
-      { value: 'CUSTOMER', label: 'مشتری' },
       { value: 'COLLABORATOR', label: 'همکار' }
     ],
     []
@@ -95,16 +97,10 @@ export function InvoicesPage() {
     const map = new Map<string, { value: string; label: string }>();
 
     for (const order of selectedOrders) {
-      if (order.customer?.id) {
-        map.set(`CUSTOMER:${order.customer.id}`, {
-          value: order.customer.id,
-          label: `مشتری: ${fullName(order.customer)}`
-        });
-      }
       if (order.collaborator?.id) {
-        map.set(`COLLABORATOR:${order.collaborator.id}`, {
+        map.set(order.collaborator.id, {
           value: order.collaborator.id,
-          label: `همکار: ${fullName(order.collaborator)}`
+          label: fullName(order.collaborator)
         });
       }
     }
@@ -113,12 +109,9 @@ export function InvoicesPage() {
   };
 
   const getPayerInfo = (invoice: any) => {
-    const payerType = invoice.payerType === 'COLLABORATOR' ? 'COLLABORATOR' : 'CUSTOMER';
-    const typeLabel = payerType === 'COLLABORATOR' ? 'همکار' : 'مشتری';
+    const typeLabel = 'همکار';
     const relatedOrders = Array.isArray(invoice.orders) && invoice.orders.length ? invoice.orders : invoice.order ? [invoice.order] : [];
-    const payerRecord = payerType === 'COLLABORATOR'
-      ? relatedOrders.find((item: any) => item.collaborator?.id === invoice.payerId)?.collaborator ?? relatedOrders[0]?.collaborator
-      : relatedOrders.find((item: any) => item.customer?.id === invoice.payerId)?.customer ?? relatedOrders[0]?.customer;
+    const payerRecord = relatedOrders.find((item: any) => item.collaborator?.id === invoice.payerId)?.collaborator ?? relatedOrders[0]?.collaborator;
     const name = fullName(payerRecord || undefined);
     const phone = payerRecord?.phone || '';
     return {
@@ -145,7 +138,7 @@ export function InvoicesPage() {
         (payerInfo.name || '').toLowerCase().includes(q) ||
         payerInfo.phone.toLowerCase().includes(q);
       const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-      const effectivePayer = item.payerType ?? 'CUSTOMER';
+      const effectivePayer = item.payerType ?? 'COLLABORATOR';
       const matchesPayer = payerFilter === 'all' || effectivePayer === payerFilter;
       return matchesSearch && matchesStatus && matchesPayer;
     });
@@ -165,7 +158,6 @@ export function InvoicesPage() {
       amount: String(Number(invoice.amount ?? 0)),
       discountAmount: String(Number(invoice.discountAmount ?? 0)),
       status: invoice.status,
-      payerType: invoice.payerType ?? 'CUSTOMER',
       payerId: invoice.payerId ?? '',
       dueDate: invoice.dueDate ?? '',
       description: invoice.description ?? ''
@@ -182,7 +174,6 @@ export function InvoicesPage() {
       amount: Number(editForm.amount || 0),
       discountAmount: Number(editForm.discountAmount || 0),
       status: editForm.status,
-      payerType: editForm.payerType,
       payerId: editForm.payerId || undefined,
       dueDate: editForm.dueDate || undefined,
       description: editForm.description || undefined
@@ -385,7 +376,7 @@ export function InvoicesPage() {
             <SearchableSelect
               value={payerFilter}
               onChange={(value) => {
-                setPayerFilter((value || 'all') as 'all' | 'CUSTOMER' | 'COLLABORATOR');
+                setPayerFilter((value || 'all') as 'all' | 'COLLABORATOR');
                 setPage(1);
               }}
               options={payerFilterOptions}

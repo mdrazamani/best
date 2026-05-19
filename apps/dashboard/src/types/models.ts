@@ -103,7 +103,7 @@ export type Invoice = {
   discountAmount: number;
   paidAmount: number;
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
-  payerType?: 'CUSTOMER' | 'COLLABORATOR';
+  payerType?: 'COLLABORATOR';
   payerId?: string | null;
   dueDate?: string;
   description?: string;

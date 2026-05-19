@@ -5,8 +5,6 @@ import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PassThrough } from 'stream';
-import archiver from 'archiver';
-import puppeteer from 'puppeteer';
 import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, derivePaymentStatus, maxMoney, minMoney, multiplyMoney, percentOf, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
 import { OrdersRepository } from '../orders.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
@@ -77,6 +75,9 @@ export class OrdersService extends BaseService {
     const firstLine = lineItems[0];
 
     const hasInitialInvoice = dto.createInitialInvoice !== false;
+    if (hasInitialInvoice && !collaboratorId) {
+      throw new BadRequestException('صدور فاکتور فقط برای همکار انجام می‌شود. لطفا برای سفارش همکار انتخاب کنید.');
+    }
     let created: Awaited<ReturnType<OrdersRepository['createWithInitialInvoice']>> | null = null;
 
     for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -107,8 +108,8 @@ export class OrdersService extends BaseService {
                 discountAmount: toMoneyNumber(discountAmount),
                 paidAmount: 0,
                 status: 'UNPAID',
-                payerType: collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
-                payerId: collaboratorId ?? customerId,
+                payerType: 'COLLABORATOR',
+                payerId: collaboratorId ?? undefined,
                 dueDate: dto.expectedCompletionDate ? new Date(dto.expectedCompletionDate) : undefined,
                 description: 'فاکتور اولیه سفارش'
               }
@@ -438,7 +439,7 @@ ${fontFace}
 *{box-sizing:border-box}
 body{
   margin:0;
-  padding:2mm;
+  padding:1mm;
   width:100%;
   height:100%;
   font-family:'Vazirmatn',Tahoma,sans-serif;
@@ -447,14 +448,14 @@ body{
 }
 .label{
   width:100%;
+  height:100%;
   border:1px solid #cbd5e1;
   border-radius:1.5mm;
-  padding:1.5mm 1mm;
+  padding:1.2mm 0.8mm;
   display:flex;
   flex-direction:column;
-  gap:1.1mm;
+  gap:0.7mm;
   justify-content:center;
-  min-height:100%;
 }
 .line{
   text-align:center;
@@ -462,16 +463,16 @@ body{
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.line-1{font-size:9px;font-weight:800}
-.line-2,.line-3,.line-4{font-size:7px;font-weight:600}
+.line-1{font-size:8.4px;font-weight:800}
+.line-2,.line-3,.line-4{font-size:6.7px;font-weight:600}
 </style>
 </head>
 <body>
   <div class="label">
-    <div class="line line-1">${this.escapeHtml(dimensions)} cm</div>
-    <div class="line line-2">مشتری: ${this.escapeHtml(customerName)}</div>
-    <div class="line line-3">همکار: ${this.escapeHtml(collaboratorName)}</div>
-    <div class="line line-4">شماره همکار: ${this.escapeHtml(collaboratorPhone)}</div>
+    <div class="line line-1">${this.escapeHtml(dimensions)}</div>
+    <div class="line line-2">${this.escapeHtml(customerName)}</div>
+    <div class="line line-3">${this.escapeHtml(collaboratorName)}</div>
+    <div class="line line-4">${this.escapeHtml(collaboratorPhone)}</div>
   </div>
 </body>
 </html>`;
@@ -479,9 +480,10 @@ body{
 
   private async renderLabelPdf(order: any, lineItem: any, index: number) {
     const widthMm = 25;
-    const heightMm = 40;
+    const heightMm = 25;
     const widthPx = this.mmToPx(widthMm);
     const heightPx = this.mmToPx(heightMm);
+    const { default: puppeteer } = await import('puppeteer');
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -506,7 +508,8 @@ body{
   }
 
   private createZipBuffer(files: Array<{ fileName: string; buffer: Buffer }>) {
-    return new Promise<Buffer>((resolve, reject) => {
+    return import('archiver').then(({ default: archiver }) =>
+      new Promise<Buffer>((resolve, reject) => {
       const output = new PassThrough();
       const chunks: Buffer[] = [];
       output.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
@@ -522,7 +525,8 @@ body{
       }
 
       void archive.finalize();
-    });
+      })
+    );
   }
 }
 

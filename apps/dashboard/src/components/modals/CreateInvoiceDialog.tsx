@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -6,7 +6,7 @@ import { PersianDatePicker } from '../ui/persian-date-picker';
 import { SearchableSelect } from '../ui/searchable-select';
 import { Textarea } from '../ui/textarea';
 
-type Option = { value: string; label: string };
+type Option = { value: string; label: string; totalPrice?: number; discountAmount?: number };
 
 type CreateInvoicePayload = {
   title?: string;
@@ -15,7 +15,7 @@ type CreateInvoicePayload = {
   discountAmount?: number;
   initialPaidAmount?: number;
   status?: 'UNPAID' | 'PARTIAL' | 'PAID';
-  payerType?: 'CUSTOMER' | 'COLLABORATOR';
+  payerType?: 'COLLABORATOR';
   payerId?: string;
   dueDate?: string;
   description?: string;
@@ -31,7 +31,7 @@ type CreateInvoiceDialogProps = {
   submitLabel?: string;
   statusOptions?: Option[];
   lockedPayer?: {
-    type: 'CUSTOMER' | 'COLLABORATOR';
+    type: 'COLLABORATOR';
     id: string;
     label: string;
   };
@@ -53,7 +53,6 @@ const emptyForm = {
   discountAmount: '',
   initialPaidAmount: '',
   status: 'UNPAID' as 'UNPAID' | 'PARTIAL' | 'PAID',
-  payerType: 'CUSTOMER' as 'CUSTOMER' | 'COLLABORATOR',
   payerId: '',
   dueDate: '',
   description: '',
@@ -65,6 +64,11 @@ const toNumber = (value: string) => {
   if (!normalized) return 0;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeMoneyString = (value: number) => {
+  const rounded = Math.max(Math.round(value * 100) / 100, 0);
+  return Number.isFinite(rounded) ? String(rounded) : '0';
 };
 
 export function CreateInvoiceDialog({
@@ -85,23 +89,25 @@ export function CreateInvoiceDialog({
   const [form, setForm] = useState(emptyForm);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [amountManual, setAmountManual] = useState(false);
+  const [discountManual, setDiscountManual] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setForm((prev) => ({
         ...emptyForm,
-        payerType: lockedPayer?.type ?? prev.payerType,
         payerId: lockedPayer?.id ?? prev.payerId
       }));
       setSelectedOrderIds(lockedOrderIds ?? defaultSelectedOrderIds ?? []);
       setSubmitting(false);
+      setAmountManual(false);
+      setDiscountManual(false);
       return;
     }
 
     if (lockedPayer) {
       setForm((prev) => ({
         ...prev,
-        payerType: lockedPayer.type,
         payerId: lockedPayer.id
       }));
     }
@@ -111,7 +117,7 @@ export function CreateInvoiceDialog({
     } else {
       setSelectedOrderIds(defaultSelectedOrderIds ?? []);
     }
-  }, [open, lockedPayer?.id, lockedPayer?.type, lockedOrderIds, defaultSelectedOrderIds]);
+  }, [open, lockedPayer?.id, lockedOrderIds, defaultSelectedOrderIds]);
 
   const visibleOrderOptions = useMemo(() => {
     const q = form.orderSearch.trim().toLowerCase();
@@ -144,7 +150,7 @@ export function CreateInvoiceDialog({
         discountAmount: toNumber(form.discountAmount),
         initialPaidAmount: toNumber(form.initialPaidAmount),
         status: form.status,
-        payerType: lockedPayer?.type ?? form.payerType,
+        payerType: 'COLLABORATOR',
         payerId: lockedPayer?.id ?? (form.payerId || undefined),
         dueDate: form.dueDate || undefined,
         description: form.description || undefined
@@ -160,6 +166,23 @@ export function CreateInvoiceDialog({
       .map((id) => orderOptions.find((item) => item.value === id))
       .filter(Boolean) as Option[];
   }, [selectedOrderIds, orderOptions]);
+
+  const selectedOrdersFinancial = useMemo(() => {
+    const totalAmount = selectedOrders.reduce((sum, item) => sum + Number(item.totalPrice ?? 0), 0);
+    const totalDiscount = selectedOrders.reduce((sum, item) => sum + Number(item.discountAmount ?? 0), 0);
+    return {
+      totalAmount,
+      totalDiscount
+    };
+  }, [selectedOrders]);
+
+  useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      amount: amountManual ? prev.amount : (selectedOrders.length ? normalizeMoneyString(selectedOrdersFinancial.totalAmount) : ''),
+      discountAmount: discountManual ? prev.discountAmount : (selectedOrders.length ? normalizeMoneyString(selectedOrdersFinancial.totalDiscount) : '')
+    }));
+  }, [selectedOrders.length, selectedOrdersFinancial.totalAmount, selectedOrdersFinancial.totalDiscount, amountManual, discountManual]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -225,11 +248,33 @@ export function CreateInvoiceDialog({
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">تخفیف (تومان)</label>
-              <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={form.discountAmount} onChange={(e) => setForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="مثال: 100000"
+                value={form.discountAmount}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setDiscountManual(next.trim() !== '');
+                  setForm((prev) => ({ ...prev, discountAmount: next }));
+                }}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">مبلغ کل فاکتور (تومان)</label>
-              <Input type="number" min="0" step="0.01" placeholder="مثال: 2100000" value={form.amount} onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))} />
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="مثال: 2100000"
+                value={form.amount}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setAmountManual(next.trim() !== '');
+                  setForm((prev) => ({ ...prev, amount: next }));
+                }}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">پرداخت اولیه (تومان)</label>
@@ -238,28 +283,14 @@ export function CreateInvoiceDialog({
 
             {lockedPayer ? (
               <div className="space-y-2">
-                <label className="text-sm font-medium">پرداخت‌کننده</label>
+                <label className="text-sm font-medium">همکار بدهکار</label>
                 <Input value={lockedPayer.label} disabled />
               </div>
             ) : (
-              <>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">نوع پرداخت‌کننده</label>
-                  <SearchableSelect
-                    options={[
-                      { value: 'CUSTOMER', label: 'مشتری' },
-                      { value: 'COLLABORATOR', label: 'همکار' }
-                    ]}
-                    value={form.payerType}
-                    onChange={(value) => setForm((prev) => ({ ...prev, payerType: value as 'CUSTOMER' | 'COLLABORATOR', payerId: '' }))}
-                    placeholder="نوع پرداخت‌کننده"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">پرداخت‌کننده</label>
-                  <SearchableSelect options={payerOptions} value={form.payerId} onChange={(value) => setForm((prev) => ({ ...prev, payerId: value }))} placeholder="انتخاب شخص پرداخت‌کننده" />
-                </div>
-              </>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">همکار بدهکار</label>
+                <SearchableSelect options={payerOptions} value={form.payerId} onChange={(value) => setForm((prev) => ({ ...prev, payerId: value }))} placeholder="انتخاب همکار" />
+              </div>
             )}
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium">تاریخ سررسید پرداخت</label>
@@ -276,4 +307,3 @@ export function CreateInvoiceDialog({
     </Dialog>
   );
 }
-

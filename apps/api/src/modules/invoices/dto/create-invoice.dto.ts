@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+﻿import { Type } from 'class-transformer';
 import { ArrayNotEmpty, IsArray, IsDefined, IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateInvoiceDto {
@@ -38,8 +38,8 @@ export class CreateInvoiceDto {
   dueDate?: string;
 
   @IsOptional()
-  @IsIn(['CUSTOMER', 'COLLABORATOR'], { message: 'نوع پرداخت‌کننده نامعتبر است.' })
-  payerType?: 'CUSTOMER' | 'COLLABORATOR';
+  @IsIn(['COLLABORATOR'], { message: 'پرداخت‌کننده فاکتور باید همکار باشد.' })
+  payerType?: 'COLLABORATOR';
 
   @IsOptional()
   @IsString()

@@ -22,7 +22,7 @@ const tokenIssuedAt = (token: string | null) => {
   }
 };
 
-const normalizeErrorMessage = (error: unknown, fallback = 'Ø®Ø·Ø§ Ø¯Ø± Ø§Ù†Ø¬Ø§Ù… Ø¹Ù…Ù„ÛŒØ§Øª') => {
+const normalizeErrorMessage = (error: unknown, fallback = 'خطا در انجام عملیات') => {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string' && error.trim()) return error;
   return fallback;
@@ -160,7 +160,7 @@ export function useBestApp() {
       setPermissions(permissionData);
       setBackupInterval(settings.backupIntervalMinutes);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª');
+      setError(e instanceof Error ? e.message : 'خطا در بارگذاری اطلاعات');
     } finally {
       setLoading(false);
     }
@@ -173,9 +173,9 @@ export function useBestApp() {
         body: JSON.stringify({ username, password })
       });
       setAuthTokens(result.accessToken, result.refreshToken);
-      toast.success('ÙˆØ±ÙˆØ¯ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§Ù†Ø¬Ø§Ù… Ø´Ø¯.');
+      toast.success('ورود با موفقیت انجام شد.');
     } catch (error) {
-      const message = normalizeErrorMessage(error, 'Ø®Ø·Ø§ Ø¯Ø± ÙˆØ±ÙˆØ¯ Ø¨Ù‡ Ø³ÛŒØ³ØªÙ…');
+      const message = normalizeErrorMessage(error, 'خطا در ورود به سیستم');
       setError(message);
       toast.error(message);
       throw error;
@@ -189,7 +189,7 @@ export function useBestApp() {
     successMessage?: string
   ): Promise<T> => {
     const accessToken = tokenRef.current;
-    if (!accessToken) throw new Error('Ù†Ø´Ø³Øª Ú©Ø§Ø±Ø¨Ø± Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+    if (!accessToken) throw new Error('نشست کاربر معتبر نیست.');
     try {
       const response = await apiCall<T>(url, accessToken, {
         method,
@@ -234,10 +234,10 @@ export function useBestApp() {
         body: JSON.stringify({})
       });
       await reload();
-      toast.success('Ø¨Ú©Ø§Ù¾ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§Ø¬Ø±Ø§ Ø´Ø¯.');
+      toast.success('بکاپ با موفقیت اجرا شد.');
       return result;
     } catch (error) {
-      const message = normalizeErrorMessage(error, 'Ø®Ø·Ø§ Ø¯Ø± Ø§Ø¬Ø±Ø§ÛŒ Ø¨Ú©Ø§Ù¾');
+      const message = normalizeErrorMessage(error, 'خطا در اجرای بکاپ');
       setError(message);
       toast.error(message);
       throw error;
@@ -256,7 +256,7 @@ export function useBestApp() {
       });
 
       if (!response.ok) {
-        throw new Error('Ø®Ø·Ø§ Ø¯Ø± Ø¯Ø±ÛŒØ§ÙØª ÙØ§ÛŒÙ„');
+        throw new Error('خطا در دریافت فایل');
       }
 
       const blob = await response.blob();
@@ -268,9 +268,9 @@ export function useBestApp() {
       a.click();
       a.remove();
       URL.revokeObjectURL(href);
-      toast.success('Ø¯Ø§Ù†Ù„ÙˆØ¯ ÙØ§ÛŒÙ„ Ø§Ù†Ø¬Ø§Ù… Ø´Ø¯.');
+      toast.success('دانلود فایل انجام شد.');
     } catch (error) {
-      const message = normalizeErrorMessage(error, 'Ø®Ø·Ø§ Ø¯Ø± Ø¯Ø±ÛŒØ§ÙØª ÙØ§ÛŒÙ„');
+      const message = normalizeErrorMessage(error, 'خطا در دریافت فایل');
       setError(message);
       toast.error(message);
       throw error;
@@ -396,15 +396,15 @@ export function useBestApp() {
         const level: NotificationItem['level'] = due < now ? 'critical' : 'warning';
         const relatedOrders = Array.isArray(invoice.orders) && invoice.orders.length ? invoice.orders : invoice.order ? [invoice.order] : [];
         const firstOrder = relatedOrders[0];
-        const orderLabel = relatedOrders.map((item) => item.orderNumber).join('ØŒ ') || '-';
+        const orderLabel = relatedOrders.map((item) => item.orderNumber).join('، ') || '-';
         return [{
           id: `inv-${invoice.id}`,
           type: 'INVOICE_DUE',
           invoiceId: invoice.id,
           orderId: firstOrder?.id,
           level,
-          title: `Ù…ÙˆØ¹Ø¯ Ø³Ø±Ø±Ø³ÛŒØ¯ ÙØ§Ú©ØªÙˆØ± ${invoice.invoiceNumber}`,
-          description: `ÙØ§Ú©ØªÙˆØ± Ù…Ø±ØªØ¨Ø· Ø¨Ø§ Ø³ÙØ§Ø±Ø´(Ù‡Ø§ÛŒ) ${orderLabel} Ø¯Ø± ØªØ§Ø±ÛŒØ® ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} Ø³Ø±Ø±Ø³ÛŒØ¯ Ù…ÛŒâ€ŒØ´ÙˆØ¯.`,
+          title: `موعد سررسید فاکتور ${invoice.invoiceNumber}`,
+          description: `فاکتور مرتبط با سفارش(های) ${orderLabel} در تاریخ ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} سررسید می‌شود.`,
           dueDate: due.toISOString()
         }];
       });
@@ -420,8 +420,8 @@ export function useBestApp() {
           type: 'ORDER_DUE',
           orderId: order.id,
           level,
-          title: `Ù…ÙˆØ¹Ø¯ ØªÚ©Ù…ÛŒÙ„ Ø³ÙØ§Ø±Ø´ ${order.orderNumber}`,
-          description: `Ù…ÙˆØ¹Ø¯ ØªÚ©Ù…ÛŒÙ„ Ø³ÙØ§Ø±Ø´ Ø¯Ø± ØªØ§Ø±ÛŒØ® ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} Ø§Ø³Øª.`,
+          title: `موعد تکمیل سفارش ${order.orderNumber}`,
+          description: `موعد تکمیل سفارش در تاریخ ${new Date(due).toLocaleDateString('fa-IR-u-ca-persian')} است.`,
           dueDate: due.toISOString()
         }];
       });
@@ -458,31 +458,31 @@ export function useBestApp() {
     logout,
     reload,
     createUser: (payload: { firstName: string; lastName: string; username: string; password: string; roleKey: string }) =>
-      postAndReload('/users', payload, 'POST', 'Ú©Ø§Ø±Ø¨Ø± Ø¬Ø¯ÛŒØ¯ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯.'),
-    removeUser: (userId: string) => deleteAndReload(`/users/${userId}`, 'Ú©Ø§Ø±Ø¨Ø± Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯.'),
+      postAndReload('/users', payload, 'POST', 'کاربر جدید با موفقیت ایجاد شد.'),
+    removeUser: (userId: string) => deleteAndReload(`/users/${userId}`, 'کاربر با موفقیت حذف شد.'),
     updateRolePermissions: (roleKey: string, permissionKeys: string[]) =>
-      postAndReload(`/permissions/roles/${roleKey}`, { permissionKeys }, 'PUT', 'Ø¯Ø³ØªØ±Ø³ÛŒâ€ŒÙ‡Ø§ÛŒ Ù†Ù‚Ø´ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.'),
+      postAndReload(`/permissions/roles/${roleKey}`, { permissionKeys }, 'PUT', 'دسترسی‌های نقش با موفقیت ذخیره شد.'),
     createMeshType: (payload: Record<string, unknown>) => postAndReload('/mesh-types', payload, 'POST', 'نوع توری با موفقیت ایجاد شد.'),
     updateMeshType: (meshTypeId: string, payload: Record<string, unknown>) =>
-      postAndReload(/mesh-types/, payload, 'PATCH', 'نوع توری با موفقیت بروزرسانی شد.'),
-    removeMeshType: (meshTypeId: string) => deleteAndReload(`/mesh-types/${meshTypeId}`, 'Ù†ÙˆØ¹ ØªÙˆØ±ÛŒ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯.'),
-    createCollaborator: (payload: Record<string, unknown>) => postAndReload('/collaborators', payload, 'POST', 'Ù‡Ù…Ú©Ø§Ø± Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯.'),
-    removeCollaborator: (collaboratorId: string) => deleteAndReload(`/collaborators/${collaboratorId}`, 'Ù‡Ù…Ú©Ø§Ø± Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯.'),
-    createCustomer: (payload: Record<string, unknown>) => postAndReload('/customers', payload, 'POST', 'Ù…Ø´ØªØ±ÛŒ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯.'),
-    removeCustomer: (customerId: string) => deleteAndReload(`/customers/${customerId}`, 'Ù…Ø´ØªØ±ÛŒ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯.'),
-    createOrder: (payload: Record<string, unknown>) => postAndReload('/orders', payload, 'POST', 'Ø³ÙØ§Ø±Ø´ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø«Ø¨Øª Ø´Ø¯.'),
-    removeOrder: (orderId: string) => deleteAndReload(`/orders/${orderId}`, 'Ø³ÙØ§Ø±Ø´ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯.'),
+      postAndReload(`/mesh-types/${meshTypeId}`, payload, 'PATCH', 'نوع توری با موفقیت بروزرسانی شد.'),
+    removeMeshType: (meshTypeId: string) => deleteAndReload(`/mesh-types/${meshTypeId}`, 'نوع توری با موفقیت حذف شد.'),
+    createCollaborator: (payload: Record<string, unknown>) => postAndReload('/collaborators', payload, 'POST', 'همکار با موفقیت ایجاد شد.'),
+    removeCollaborator: (collaboratorId: string) => deleteAndReload(`/collaborators/${collaboratorId}`, 'همکار با موفقیت حذف شد.'),
+    createCustomer: (payload: Record<string, unknown>) => postAndReload('/customers', payload, 'POST', 'مشتری با موفقیت ایجاد شد.'),
+    removeCustomer: (customerId: string) => deleteAndReload(`/customers/${customerId}`, 'مشتری با موفقیت حذف شد.'),
+    createOrder: (payload: Record<string, unknown>) => postAndReload('/orders', payload, 'POST', 'سفارش با موفقیت ثبت شد.'),
+    removeOrder: (orderId: string) => deleteAndReload(`/orders/${orderId}`, 'سفارش با موفقیت حذف شد.'),
     updateOrder: (orderId: string, payload: Record<string, unknown>) =>
-      postAndReload(`/orders/${orderId}`, payload, 'PATCH', 'Ø³ÙØ§Ø±Ø´ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø´Ø¯.'),
-    createInvoice: (payload: Record<string, unknown>) => postAndReload('/invoices', payload, 'POST', 'ÙØ§Ú©ØªÙˆØ± Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø«Ø¨Øª Ø´Ø¯.'),
-    removeInvoice: (invoiceId: string) => deleteAndReload(`/invoices/${invoiceId}`, 'ÙØ§Ú©ØªÙˆØ± Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø­Ø°Ù Ø´Ø¯.'),
+      postAndReload(`/orders/${orderId}`, payload, 'PATCH', 'سفارش با موفقیت بروزرسانی شد.'),
+    createInvoice: (payload: Record<string, unknown>) => postAndReload('/invoices', payload, 'POST', 'فاکتور با موفقیت ثبت شد.'),
+    removeInvoice: (invoiceId: string) => deleteAndReload(`/invoices/${invoiceId}`, 'فاکتور با موفقیت حذف شد.'),
     updateInvoice: (invoiceId: string, payload: Record<string, unknown>) =>
-      postAndReload(`/invoices/${invoiceId}`, payload, 'PATCH', 'ÙØ§Ú©ØªÙˆØ± Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø´Ø¯.'),
+      postAndReload(`/invoices/${invoiceId}`, payload, 'PATCH', 'فاکتور با موفقیت بروزرسانی شد.'),
     addInvoicePayment: (invoiceId: string, payload: Record<string, unknown>) =>
-      postAndReload(`/invoices/${invoiceId}/payments`, payload, 'POST', 'Ù¾Ø±Ø¯Ø§Ø®Øª Ø¬Ø¯ÛŒØ¯ Ø«Ø¨Øª Ø´Ø¯.'),
+      postAndReload(`/invoices/${invoiceId}/payments`, payload, 'POST', 'پرداخت جدید ثبت شد.'),
     runBackup,
     updateBackupSettings: (minutes: number) =>
-      postAndReload('/backups/settings', { backupIntervalMinutes: minutes }, 'PUT', 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¨Ú©Ø§Ù¾ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.'),
+      postAndReload('/backups/settings', { backupIntervalMinutes: minutes }, 'PUT', 'تنظیمات بکاپ با موفقیت ذخیره شد.'),
     loadCollaboratorDetail,
     loadCustomerDetail,
     loadOrderDetail,

@@ -29,7 +29,7 @@ describe('InvoicesService', () => {
         id: 'order-1',
         orderNumber: 'OR-1',
         customerId: 'customer-1',
-        collaboratorId: null,
+        collaboratorId: 'col-1',
         totalPrice: 1000,
         stage: 'IN_PROGRESS',
         invoiceLinks: []
@@ -70,7 +70,7 @@ describe('InvoicesService', () => {
         id: 'order-1',
         orderNumber: 'OR-1',
         customerId: 'customer-1',
-        collaboratorId: null,
+        collaboratorId: 'col-1',
         totalPrice: 1000,
         stage: 'IN_PROGRESS',
         invoiceLinks: []
@@ -101,7 +101,7 @@ describe('InvoicesService', () => {
           order: {
             id: 'order-1',
             orderNumber: 'OR-1',
-            collaboratorId: null,
+            collaboratorId: 'col-1',
             customerId: 'customer-1'
           }
         }
@@ -146,4 +146,3 @@ describe('InvoicesService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
-

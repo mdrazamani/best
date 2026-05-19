@@ -32,7 +32,7 @@ const toNumber = (value: string) => {
 
 const payerTypeLabel = (value?: string) => {
   if (value === 'COLLABORATOR') return 'همکار';
-  return 'مشتری';
+  return '-';
 };
 
 const meshTypeLabelsFromItems = (lineItems?: Array<{ meshType?: { title?: string } | null }>) => {
@@ -64,6 +64,7 @@ export function OrdersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
   const [stageOrderId, setStageOrderId] = useState<string | null>(null);
+  const [stageSaving, setStageSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<'all' | string>('all');
@@ -80,7 +81,6 @@ export function OrdersPage() {
     discountAmount: '',
     initialPaidAmount: '',
     status: 'UNPAID',
-    payerType: 'CUSTOMER',
     dueDate: '',
     description: ''
   });
@@ -98,7 +98,18 @@ export function OrdersPage() {
     () => [{ value: '', label: 'بدون همکار' }, ...collaborators.map((item) => ({ value: item.id, label: fullName(item) }))],
     [collaborators]
   );
-  const meshOptions = useMemo(() => meshTypes.filter((item) => item.isActive).map((item) => ({ value: item.id, label: item.title })), [meshTypes]);
+  const meshOptions = useMemo(
+    () =>
+      meshTypes
+        .filter((item) => item.isActive)
+        .map((item) => ({
+          value: item.id,
+          label: item.title,
+          unitPrice: Number(item.unitPrice ?? 0),
+          isDefault: Boolean(item.isDefault)
+        })),
+    [meshTypes]
+  );
   const stageFilterOptions = useMemo(
     () => [{ value: 'all', label: 'همه مراحل' }, ...ORDER_STAGES.map((stage) => ({ value: stage.value, label: stage.label }))],
     []
@@ -158,7 +169,6 @@ export function OrdersPage() {
       discountAmount: '',
       initialPaidAmount: '',
       status: 'UNPAID',
-      payerType: orderDetail.collaborator?.id ? 'COLLABORATOR' : 'CUSTOMER',
       dueDate: orderDetail.expectedCompletionDate ?? '',
       description: ''
     });
@@ -170,11 +180,16 @@ export function OrdersPage() {
     setStageOpen(true);
   };
 
-  const saveStage = async () => {
+  const saveStage = async (nextStage: string) => {
     if (!stageOrderId) return;
-    await updateOrder(stageOrderId, { stage: selectedStage });
-    setStageOpen(false);
-    setStageOrderId(null);
+    setStageSaving(true);
+    try {
+      await updateOrder(stageOrderId, { stage: nextStage });
+      setStageOpen(false);
+      setStageOrderId(null);
+    } finally {
+      setStageSaving(false);
+    }
   };
 
   const openDetail = async (orderId: string) => {
@@ -199,6 +214,8 @@ export function OrdersPage() {
     const amount = toNumber(detailInvoiceForm.amount);
     const discountAmount = toNumber(detailInvoiceForm.discountAmount);
     const initialPaidAmount = toNumber(detailInvoiceForm.initialPaidAmount);
+    const collaboratorId = orderDetail.collaborator?.id;
+    if (!collaboratorId) return;
 
     setDetailInvoiceSubmitting(true);
     try {
@@ -209,8 +226,8 @@ export function OrdersPage() {
         discountAmount,
         initialPaidAmount,
         status: detailInvoiceForm.status,
-        payerType: detailInvoiceForm.payerType,
-        payerId: detailInvoiceForm.payerType === 'COLLABORATOR' ? orderDetail.collaborator?.id : orderDetail.customer?.id,
+        payerType: 'COLLABORATOR',
+        payerId: collaboratorId,
         dueDate: detailInvoiceForm.dueDate || undefined,
         description: detailInvoiceForm.description || undefined
       });
@@ -371,11 +388,21 @@ export function OrdersPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="flex items-center gap-2 text-xl font-bold">
               <List className="h-5 w-5 text-muted-foreground" />
               ردیف‌های سفارش
             </CardTitle>
+            {detailLineItems.length > 0 && orderDetail.id ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void downloadProtected(`/orders/${orderDetail.id}/line-items/labels.zip`, `labels-${orderDetail.orderNumber}.zip`)}
+              >
+                <Download className="h-4 w-4" />
+                دانلود همه لیبل‌ها
+              </Button>
+            ) : null}
           </CardHeader>
           <CardContent>
             {detailLineItems.length === 0 ? (
@@ -391,6 +418,7 @@ export function OrdersPage() {
                     <TableHead>قیمت واحد</TableHead>
                     <TableHead>جمع ردیف</TableHead>
                     <TableHead>توضیحات</TableHead>
+                    <TableHead>لیبل</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -403,6 +431,18 @@ export function OrdersPage() {
                       <TableCell>{money(Number(item.unitPrice ?? 0))}</TableCell>
                       <TableCell className="font-semibold">{money(Number(item.lineTotal ?? 0))}</TableCell>
                       <TableCell>{item.description || '-'}</TableCell>
+                      <TableCell>
+                        {orderDetail.id && item.id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void downloadProtected(`/orders/${orderDetail.id}/line-items/${item.id}/label`, `${orderDetail.orderNumber}-item-${idx + 1}.pdf`)}
+                          >
+                            <Download className="h-4 w-4" />
+                            دانلود لیبل
+                          </Button>
+                        ) : '-'}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -536,16 +576,7 @@ export function OrdersPage() {
                   placeholder="وضعیت فاکتور"
                   isSearchable={false}
                 />
-                <SearchableSelect
-                  value={detailInvoiceForm.payerType}
-                  onChange={(value) => setDetailInvoiceForm((prev) => ({ ...prev, payerType: value }))}
-                  options={[
-                    { value: 'CUSTOMER', label: 'پرداخت‌کننده: مشتری' },
-                    ...(orderDetail.collaborator?.id ? [{ value: 'COLLABORATOR', label: 'پرداخت‌کننده: همکار' }] : [])
-                  ]}
-                  placeholder="نوع پرداخت‌کننده"
-                  isSearchable={false}
-                />
+                <Input value={orderDetail.collaborator?.id ? 'همکار' : 'این سفارش همکار ندارد'} disabled />
                 <div className="sm:col-span-2">
                   <PersianDatePicker
                     value={detailInvoiceForm.dueDate}
@@ -563,7 +594,7 @@ export function OrdersPage() {
                 <Button type="button" variant="secondary" onClick={() => setDetailInvoiceOpen(false)}>
                   انصراف
                 </Button>
-                <Button type="submit" disabled={detailInvoiceSubmitting}>
+                <Button type="submit" disabled={detailInvoiceSubmitting || !orderDetail.collaborator?.id}>
                   ذخیره فاکتور
                 </Button>
               </DialogFooter>
@@ -773,10 +804,18 @@ export function OrdersPage() {
             <DialogTitle>تغییر مرحله سفارش</DialogTitle>
             <DialogDescription>مرحله جدید را انتخاب کنید.</DialogDescription>
           </DialogHeader>
-          <SearchableSelect options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))} value={selectedStage} onChange={setSelectedStage} placeholder="انتخاب مرحله" />
+          <SearchableSelect
+            options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
+            value={selectedStage}
+            onChange={(value) => {
+              setSelectedStage(value);
+              void saveStage(value);
+            }}
+            placeholder="انتخاب مرحله"
+            disabled={stageSaving}
+          />
           <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => setStageOpen(false)}>انصراف</Button>
-            <Button type="button" onClick={() => void saveStage()}>ذخیره</Button>
+            <Button type="button" variant="secondary" onClick={() => setStageOpen(false)} disabled={stageSaving}>انصراف</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
