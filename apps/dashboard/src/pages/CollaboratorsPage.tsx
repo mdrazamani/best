@@ -1,4 +1,4 @@
-﻿import { FormEvent, useMemo, useState } from 'react';
+﻿import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ClipboardList, Download, Eye, FileText, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, shamsiDate } from '../lib/format';
@@ -76,6 +76,7 @@ export function CollaboratorsPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
   const [paymentForm, setPaymentForm] = useState({ amount: '', paidAt: '', note: '' });
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
 
   const collaboratorRemainingById = useMemo(() => {
@@ -127,6 +128,34 @@ export function CollaboratorsPage() {
     const start = (safePage - 1) * PAGE_SIZE;
     return filteredItems.slice(start, start + PAGE_SIZE);
   }, [filteredItems, page, totalPages]);
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== '/') return;
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea') return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setSearch('');
+      setPage(1);
+      return;
+    }
+    if (event.key !== 'Enter') return;
+    const firstItem = filteredItems[0];
+    if (firstItem?.id) {
+      event.preventDefault();
+      void openCollaboratorDetail(firstItem.id);
+    }
+  };
 
   const detail = collaboratorDetail;
   const detailId = detail?.id as string | undefined;
@@ -737,7 +766,7 @@ export function CollaboratorsPage() {
           <div className="grid gap-3 md:grid-cols-4">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pr-9" placeholder="جستجو در نام یا شماره تماس" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+              <Input ref={searchInputRef} className="pr-9" placeholder="جستجو در نام یا شماره تماس ( / )" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} onKeyDown={onSearchKeyDown} />
             </div>
             <SearchableSelect
               value={ordersFilter}
@@ -782,7 +811,7 @@ export function CollaboratorsPage() {
                   {pageItems.map((item, idx) => {
                     const remaining = collaboratorRemainingById.get(item.id) ?? 0;
                     return (
-                      <TableRow key={item.id} className={idx % 2 ? 'bg-muted/10' : ''}>
+                      <TableRow key={item.id} className={`${idx % 2 ? 'bg-muted/10' : ''} cursor-pointer`} onDoubleClick={() => void openCollaboratorDetail(item.id)}>
                         <TableCell>
                           <button type="button" className="font-medium text-primary hover:underline" onClick={() => void openCollaboratorDetail(item.id)}>
                             {fullName(item)}
@@ -832,10 +861,4 @@ export function CollaboratorsPage() {
     </section>
   );
 }
-
-
-
-
-
-
 

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+﻿import { KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ClipboardList, Eye, FileText, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, shamsiDate } from '../lib/format';
@@ -41,6 +41,7 @@ export function CustomersPage() {
   const [search, setSearch] = useState('');
   const [referralFilter, setReferralFilter] = useState<'all' | 'with_referrer' | 'without_referrer'>('all');
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const collaboratorOptions = useMemo(
     () => [{ value: '', label: 'بدون معرف' }, ...collaborators.map((item) => ({ value: item.id, label: fullName(item) }))],
@@ -69,6 +70,34 @@ export function CustomersPage() {
 
   const showDetail = async (id: string) => {
     await openCustomerDetail(id);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== '/') return;
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea') return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setSearch('');
+      setPage(1);
+      return;
+    }
+    if (event.key !== 'Enter') return;
+    const firstItem = filteredItems[0];
+    if (firstItem?.id) {
+      event.preventDefault();
+      void showDetail(firstItem.id);
+    }
   };
 
   const detail = customerDetail;
@@ -339,7 +368,7 @@ export function CustomersPage() {
           <div className="grid gap-3 md:grid-cols-3">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pr-9" placeholder="جستجو در نام، موبایل، معرف" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+              <Input ref={searchInputRef} className="pr-9" placeholder="جستجو در نام، موبایل، معرف ( / )" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} onKeyDown={onSearchKeyDown} />
             </div>
             <SearchableSelect
               value={referralFilter}
@@ -371,7 +400,7 @@ export function CustomersPage() {
                 </TableHeader>
                 <TableBody>
                   {pageItems.map((item, idx) => (
-                    <TableRow key={item.id} className={idx % 2 ? 'bg-muted/10' : ''}>
+                    <TableRow key={item.id} className={`${idx % 2 ? 'bg-muted/10' : ''} cursor-pointer`} onDoubleClick={() => void showDetail(item.id)}>
                       <TableCell>
                         <button type="button" className="font-medium text-primary hover:underline" onClick={() => void showDetail(item.id)}>
                           {fullName(item)}
@@ -421,5 +450,4 @@ export function CustomersPage() {
     </section>
   );
 }
-
 

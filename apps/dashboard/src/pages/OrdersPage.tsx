@@ -1,4 +1,4 @@
-﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
+﻿import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ClipboardList, Download, Eye, FileText, History, List, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
@@ -69,6 +69,7 @@ export function OrdersPage() {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<'all' | string>('all');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [selectedStage, setSelectedStage] = useState('RECEIVED');
   const [detailStageDraft, setDetailStageDraft] = useState('RECEIVED');
@@ -153,6 +154,34 @@ export function OrdersPage() {
     const start = (safePage - 1) * PAGE_SIZE;
     return filteredOrders.slice(start, start + PAGE_SIZE);
   }, [filteredOrders, page, totalPages]);
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== '/') return;
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea') return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setSearch('');
+      setPage(1);
+      return;
+    }
+    if (event.key !== 'Enter') return;
+    const firstItem = filteredOrders[0];
+    if (firstItem?.id) {
+      event.preventDefault();
+      void openDetail(firstItem.id);
+    }
+  };
 
   useEffect(() => {
     if (orderDetail?.stage) {
@@ -654,7 +683,7 @@ export function OrdersPage() {
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pr-9" placeholder="جستجو: شماره سفارش، نام/شماره مشتری، نام/شماره همکار" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+              <Input ref={searchInputRef} className="pr-9" placeholder="جستجو: شماره سفارش، نام/شماره مشتری، نام/شماره همکار ( / )" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} onKeyDown={onSearchKeyDown} />
             </div>
             <SearchableSelect
               value={stageFilter}
@@ -698,7 +727,7 @@ export function OrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {pageItems.map((order, idx) => (
-                    <TableRow key={order.id} className={idx % 2 ? 'bg-muted/10' : ''}>
+                    <TableRow key={order.id} className={`${idx % 2 ? 'bg-muted/10' : ''} cursor-pointer`} onDoubleClick={() => void openDetail(order.id)}>
                       <TableCell>
                         <button type="button" className="font-medium text-primary hover:underline" onClick={() => void openDetail(order.id)}>
                           {order.orderNumber}
