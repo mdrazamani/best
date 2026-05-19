@@ -427,7 +427,7 @@ export class OrdersService extends BaseService {
     const customerName = [order.customer?.firstName, order.customer?.lastName].filter(Boolean).join(' ') || '-';
     const collaboratorName = [order.collaborator?.firstName, order.collaborator?.lastName].filter(Boolean).join(' ') || '-';
     const collaboratorPhone = order.collaborator?.phone || '-';
-    const dimensions = `${widthCm}*${heightCm}`;
+    const dimensions = `${widthCm}×${heightCm}`;
     const fontFace = this.getVazirmatnFontFaceCss();
 
     return `<!doctype html>

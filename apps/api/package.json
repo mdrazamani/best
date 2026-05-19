@@ -4,7 +4,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "predev": "node scripts/ensure-port-free.js",
+    "predev": "npm run build && node scripts/ensure-port-free.js",
     "dev": "nest start --watch",
     "clean": "rimraf dist dist-seed",
     "prebuild": "rimraf dist dist-seed",
