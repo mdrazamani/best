@@ -2,8 +2,8 @@
 import { money, permissionLabel, shamsiDate, textFa } from './format';
 
 describe('format helpers', () => {
-  it('formats money output with rial suffix', () => {
-    expect(money(1200000)).toContain('ریال');
+  it('formats money output with toman suffix', () => {
+    expect(money(1200000)).toContain('تومان');
   });
 
   it('returns a non-empty persian calendar value', () => {

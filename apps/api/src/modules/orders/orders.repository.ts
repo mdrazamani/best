@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { BaseRepository } from '../../common/repositories/base.repository';
 
@@ -18,7 +18,6 @@ export class OrdersRepository extends BaseRepository {
     unitPrice?: number;
     totalPrice: number;
     discountAmount?: number;
-    extraAmount?: number;
     lineItems?: Array<{
       meshTypeId: string;
       width: number;
@@ -26,9 +25,10 @@ export class OrdersRepository extends BaseRepository {
       quantity: number;
       unitPrice: number;
       lineTotal: number;
+      description?: string | null;
     }>;
     description?: string;
-    stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+    stage?: 'RECEIVED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
     stageNote?: string;
     expectedCompletionDate?: Date;
   }) {
@@ -46,7 +46,6 @@ export class OrdersRepository extends BaseRepository {
       unitPrice: data.unitPrice,
       totalPrice: data.totalPrice,
       discountAmount: data.discountAmount,
-      extraAmount: data.extraAmount,
       lineItems: data.lineItems?.length
         ? {
             create: data.lineItems.map((item) => ({
@@ -55,7 +54,8 @@ export class OrdersRepository extends BaseRepository {
               height: item.height,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
-              lineTotal: item.lineTotal
+              lineTotal: item.lineTotal,
+              description: item.description
             }))
           }
         : undefined,
@@ -63,6 +63,46 @@ export class OrdersRepository extends BaseRepository {
       stage: data.stage as any,
       stageNote: data.stageNote,
       expectedCompletionDate: data.expectedCompletionDate
+    };
+  }
+
+  private invoiceLinkInclude() {
+    return {
+      where: {
+        invoice: {
+          deletedAt: null
+        }
+      },
+      include: {
+        invoice: {
+          include: {
+            createdBy: {
+              select: { id: true, firstName: true, lastName: true, username: true }
+            },
+            payments: {
+              include: {
+                createdBy: {
+                  select: { id: true, firstName: true, lastName: true, username: true }
+                }
+              },
+              orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] as any
+            },
+            orders: {
+              include: {
+                order: {
+                  select: {
+                    id: true,
+                    orderNumber: true,
+                    totalPrice: true,
+                    customer: true,
+                    collaborator: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     };
   }
 
@@ -114,11 +154,7 @@ export class OrdersRepository extends BaseRepository {
           }
         },
         createdBy: { select: { id: true, firstName: true, lastName: true, username: true } },
-        invoices: {
-          where: {
-            deletedAt: null
-          }
-        }
+        invoiceLinks: this.invoiceLinkInclude()
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -136,17 +172,7 @@ export class OrdersRepository extends BaseRepository {
           }
         },
         createdBy: { select: { id: true, firstName: true, lastName: true, username: true } },
-        invoices: {
-          where: {
-            deletedAt: null
-          },
-          include: {
-            createdBy: {
-              select: { id: true, firstName: true, lastName: true, username: true }
-            }
-          },
-          orderBy: { createdAt: 'desc' }
-        },
+        invoiceLinks: this.invoiceLinkInclude(),
         operationLogs: {
           include: {
             actor: {
@@ -184,7 +210,6 @@ export class OrdersRepository extends BaseRepository {
     unitPrice?: number;
     totalPrice: number;
     discountAmount?: number;
-    extraAmount?: number;
     lineItems?: Array<{
       meshTypeId: string;
       width: number;
@@ -192,9 +217,10 @@ export class OrdersRepository extends BaseRepository {
       quantity: number;
       unitPrice: number;
       lineTotal: number;
+      description?: string | null;
     }>;
     description?: string;
-    stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+    stage?: 'RECEIVED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
     stageNote?: string;
     expectedCompletionDate?: Date;
   }) {
@@ -218,7 +244,6 @@ export class OrdersRepository extends BaseRepository {
       unitPrice?: number;
       totalPrice: number;
       discountAmount?: number;
-      extraAmount?: number;
       lineItems?: Array<{
         meshTypeId: string;
         width: number;
@@ -226,9 +251,10 @@ export class OrdersRepository extends BaseRepository {
         quantity: number;
         unitPrice: number;
         lineTotal: number;
+        description?: string | null;
       }>;
       description?: string;
-      stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+      stage?: 'RECEIVED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
       stageNote?: string;
       expectedCompletionDate?: Date;
       initialInvoice?: {
@@ -236,7 +262,6 @@ export class OrdersRepository extends BaseRepository {
         title?: string;
         amount: number;
         discountAmount: number;
-        extraAmount: number;
         paidAmount: number;
         status: 'UNPAID' | 'PARTIAL' | 'PAID';
         payerType: 'CUSTOMER' | 'COLLABORATOR';
@@ -252,23 +277,41 @@ export class OrdersRepository extends BaseRepository {
       });
 
       if (data.initialInvoice) {
-        await tx.invoice.create({
+        const invoice = await tx.invoice.create({
           data: {
-            orderId: createdOrder.id,
             invoiceNumber: data.initialInvoice.invoiceNumber,
             title: data.initialInvoice.title,
             createdById: data.createdById,
             amount: data.initialInvoice.amount,
             discountAmount: data.initialInvoice.discountAmount,
-            extraAmount: data.initialInvoice.extraAmount,
             paidAmount: data.initialInvoice.paidAmount,
             status: data.initialInvoice.status as any,
             payerType: data.initialInvoice.payerType as any,
             payerId: data.initialInvoice.payerId ?? null,
             description: data.initialInvoice.description,
-            dueDate: data.initialInvoice.dueDate
+            dueDate: data.initialInvoice.dueDate,
+            paidAt: data.initialInvoice.status === 'PAID' ? new Date() : null
           }
         });
+
+        await tx.invoiceOrder.create({
+          data: {
+            invoiceId: invoice.id,
+            orderId: createdOrder.id
+          }
+        });
+
+        if (data.initialInvoice.paidAmount > 0) {
+          await tx.invoicePayment.create({
+            data: {
+              invoiceId: invoice.id,
+              amount: data.initialInvoice.paidAmount,
+              paidAt: new Date(),
+              note: 'پرداخت اولیه سفارش',
+              createdById: data.createdById
+            }
+          });
+        }
       }
 
       return createdOrder;
@@ -286,7 +329,6 @@ export class OrdersRepository extends BaseRepository {
     unitPrice?: number | null;
     totalPrice?: number;
     discountAmount?: number;
-    extraAmount?: number;
     lineItems?: Array<{
       meshTypeId: string;
       width: number;
@@ -294,9 +336,10 @@ export class OrdersRepository extends BaseRepository {
       quantity: number;
       unitPrice: number;
       lineTotal: number;
+      description?: string | null;
     }>;
     description?: string | null;
-    stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+    stage?: 'RECEIVED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
     stageNote?: string | null;
     expectedCompletionDate?: Date | null;
   }) {
@@ -313,7 +356,6 @@ export class OrdersRepository extends BaseRepository {
         unitPrice: data.unitPrice,
         totalPrice: data.totalPrice,
         discountAmount: data.discountAmount,
-        extraAmount: data.extraAmount,
         lineItems: data.lineItems
           ? {
               deleteMany: {},
@@ -323,7 +365,8 @@ export class OrdersRepository extends BaseRepository {
                 height: item.height,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
-                lineTotal: item.lineTotal
+                lineTotal: item.lineTotal,
+                description: item.description
               }))
             }
           : undefined,
@@ -344,3 +387,4 @@ export class OrdersRepository extends BaseRepository {
     });
   }
 }
+

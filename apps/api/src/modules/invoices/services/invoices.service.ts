@@ -5,12 +5,13 @@ import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import puppeteer from 'puppeteer';
-import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, maxMoney, subtractMoney, toMoneyNumber, toMoneyDecimal } from '../../../common/utils/accounting.util';
+import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, maxMoney, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
 import { InvoicesRepository } from '../invoices.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { CreateInvoiceDto } from '../dto/create-invoice.dto';
 import { UpdateInvoiceDto } from '../dto/update-invoice.dto';
 import { ListInvoicesQueryDto } from '../dto/list-invoices-query.dto';
+import { AddInvoicePaymentDto } from '../dto/add-invoice-payment.dto';
 
 @Injectable()
 export class InvoicesService extends BaseService {
@@ -30,60 +31,95 @@ export class InvoicesService extends BaseService {
       from: query.from ? new Date(query.from) : undefined,
       to: query.to ? new Date(query.to) : undefined
     });
-    return rows.map((row) => this.withConsistentStatus(row));
+    return rows.map((row) => this.withConsistentStatus(this.normalizeInvoiceShape(row)));
+  }
+
+  async detail(id: string) {
+    const row = await this.invoicesRepository.findById(id);
+    if (!row) {
+      throw new NotFoundException('فاکتور پیدا نشد.');
+    }
+    return this.withConsistentStatus(this.normalizeInvoiceShape(row));
   }
 
   async create(actorId: string, dto: CreateInvoiceDto) {
     const jalaliCode = this.jalaliDateCode(new Date());
+    const orderIds = Array.from(new Set((dto.orderIds ?? []).map((item) => item?.trim()).filter(Boolean)));
+    if (!orderIds.length) {
+      throw new BadRequestException('حداقل یک سفارش باید انتخاب شود.');
+    }
 
-    const orderRef = await this.invoicesRepository.findOrderForPayer(dto.orderId);
-    if (!orderRef) {
-      throw new NotFoundException('سفارش پیدا نشد.');
+    const orderRefs = await this.invoicesRepository.findOrdersForInvoice(orderIds);
+    if (orderRefs.length !== orderIds.length) {
+      throw new NotFoundException('یک یا چند سفارش انتخاب‌شده پیدا نشد.');
+    }
+
+    const linkedOrders = orderRefs.filter((order) => order.invoiceLinks.length > 0);
+    if (linkedOrders.length) {
+      const orderNumbers = linkedOrders.map((order) => order.orderNumber).join('، ');
+      throw new BadRequestException(`برای سفارش(های) ${orderNumbers} قبلا فاکتور ثبت شده است و امکان ثبت مجدد وجود ندارد.`);
+    }
+
+    const cancelledOrders = orderRefs.filter((order) => order.stage === 'CANCELLED');
+    if (cancelledOrders.length) {
+      const orderNumbers = cancelledOrders.map((order) => order.orderNumber).join('، ');
+      throw new BadRequestException(`سفارش(های) لغوشده (${orderNumbers}) قابل فاکتورکردن نیستند.`);
     }
 
     const discountAmount = clampMoneyNonNegative(dto.discountAmount ?? 0);
-    const extraAmount = clampMoneyNonNegative(dto.extraAmount ?? 0);
     const amount = dto.amount !== undefined && dto.amount !== null
       ? clampMoneyNonNegative(dto.amount)
-      : maxMoney(subtractMoney(addMoney(orderRef.totalPrice ?? 0, extraAmount), discountAmount), 0);
+      : maxMoney(
+          subtractMoney(
+            addMoney(...orderRefs.map((order) => clampMoneyNonNegative(order.totalPrice ?? 0))),
+            discountAmount
+          ),
+          0
+        );
 
-    const paidAmount = this.resolvePaidAmountForCreate(dto, amount);
+    const paidAmount = clampMoneyNonNegative(dto.initialPaidAmount ?? 0);
     if (paidAmount.greaterThan(amount)) {
       throw new BadRequestException('مبلغ پرداختی نمی‌تواند از مبلغ فاکتور بیشتر باشد.');
     }
+
     const computedStatus = deriveInvoiceStatus(amount, paidAmount);
     if (dto.status && dto.status !== computedStatus) {
       throw new BadRequestException('وضعیت فاکتور با مبلغ پرداختی هم‌خوانی ندارد.');
     }
     const status = dto.status ?? computedStatus;
-    const payerType = dto.payerType ?? (orderRef.collaboratorId ? 'COLLABORATOR' : 'CUSTOMER');
-    const payerId = dto.payerId ?? (payerType === 'COLLABORATOR' ? orderRef.collaboratorId : orderRef.customerId);
 
-    if (payerType === 'COLLABORATOR' && !orderRef.collaboratorId) {
-      throw new NotFoundException('برای این سفارش همکار ثبت نشده است.');
-    }
-    if (payerType === 'CUSTOMER' && !orderRef.customerId) {
-      throw new NotFoundException('برای این سفارش مشتری ثبت نشده است.');
-    }
+    const payerType = dto.payerType ?? this.resolveDefaultPayerType(orderRefs);
+    const payerId = dto.payerId ?? this.resolveDefaultPayerId(orderRefs, payerType);
+    const normalizedPayerId = payerId ?? undefined;
+    this.validatePayerForOrders(orderRefs, payerType, normalizedPayerId);
 
-    let created: Awaited<ReturnType<InvoicesRepository['create']>> | null = null;
+    let created: Awaited<ReturnType<InvoicesRepository['createWithOrders']>> | null = null;
     for (let attempt = 0; attempt < 10; attempt += 1) {
       try {
-        created = await this.invoicesRepository.create({
-          orderId: dto.orderId,
+        const now = new Date();
+        created = await this.invoicesRepository.createWithOrders({
           invoiceNumber: this.generateInvoiceNumber(jalaliCode),
           title: dto.title?.trim(),
           createdById: actorId,
           amount: toMoneyNumber(amount),
           discountAmount: toMoneyNumber(discountAmount),
-          extraAmount: toMoneyNumber(extraAmount),
           paidAmount: toMoneyNumber(paidAmount),
           status,
           payerType,
-          payerId: payerId ?? undefined,
+          payerId: normalizedPayerId,
           description: dto.description?.trim(),
           dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-          paidAt: status === 'PAID' ? new Date() : undefined
+          paidAt: status === 'PAID' ? now : undefined,
+          orderIds,
+          initialPayment:
+            paidAmount.greaterThan(0)
+              ? {
+                  amount: toMoneyNumber(paidAmount),
+                  paidAt: now,
+                  note: 'پرداخت اولیه هنگام ثبت فاکتور',
+                  createdById: actorId
+                }
+              : undefined
         });
         break;
       } catch (error) {
@@ -103,59 +139,59 @@ export class InvoicesService extends BaseService {
       entityId: created.id,
       action: 'CREATE',
       description: 'ایجاد فاکتور',
-      orderId: created.orderId
+      orderId: orderIds[0]
     });
 
-    const invoice = await this.invoicesRepository.findById(created.id);
-    return invoice ? this.withConsistentStatus(invoice) : invoice;
+    return this.detail(created.id);
   }
 
   async update(actorId: string, id: string, dto: UpdateInvoiceDto) {
-    const existing = await this.invoicesRepository.findById(id);
+    const existing = await this.invoicesRepository.findForUpdate(id);
     if (!existing) {
       throw new NotFoundException('فاکتور پیدا نشد.');
     }
 
+    const orderRefs = existing.orders.map((item) => item.order).filter(Boolean) as Array<{
+      id: string;
+      orderNumber: string;
+      collaboratorId: string | null;
+      customerId: string | null;
+    }>;
+
     const currentDiscountAmount = clampMoneyNonNegative(existing.discountAmount ?? 0);
-    const currentExtraAmount = clampMoneyNonNegative(existing.extraAmount ?? 0);
     const nextDiscountAmount = dto.discountAmount === undefined ? currentDiscountAmount : clampMoneyNonNegative(dto.discountAmount);
-    const nextExtraAmount = dto.extraAmount === undefined ? currentExtraAmount : clampMoneyNonNegative(dto.extraAmount);
     const amount =
       dto.amount !== undefined
         ? clampMoneyNonNegative(dto.amount)
-        : dto.discountAmount !== undefined || dto.extraAmount !== undefined
-          ? maxMoney(
-              addMoney(
-                subtractMoney(addMoney(existing.amount ?? 0, currentDiscountAmount), currentExtraAmount),
-                nextExtraAmount
-              ).sub(nextDiscountAmount),
-              0
-            )
+        : dto.discountAmount !== undefined
+          ? maxMoney(subtractMoney(addMoney(existing.amount ?? 0, currentDiscountAmount), nextDiscountAmount), 0)
           : clampMoneyNonNegative(existing.amount);
-    const paidAmount = this.resolvePaidAmountForUpdate(existing, dto, amount);
+
+    const paidAmount = clampMoneyNonNegative(existing.paidAmount ?? 0);
     if (paidAmount.greaterThan(amount)) {
-      throw new BadRequestException('مبلغ پرداختی نمی‌تواند از مبلغ فاکتور بیشتر باشد.');
+      throw new BadRequestException('مبلغ فاکتور نمی‌تواند از مجموع پرداخت‌های ثبت‌شده کمتر باشد.');
     }
+
     const computedStatus = deriveInvoiceStatus(amount, paidAmount);
     if (dto.status && dto.status !== computedStatus) {
-      throw new BadRequestException('وضعیت فاکتور با مبلغ پرداختی هم‌خوانی ندارد.');
+      throw new BadRequestException('وضعیت فاکتور از روی تاریخچه پرداخت محاسبه می‌شود.');
     }
-    const status = dto.status ?? computedStatus;
+
     const payerType = dto.payerType ?? existing.payerType;
     const payerId = dto.payerId === undefined ? existing.payerId : dto.payerId || null;
+    this.validatePayerForOrders(orderRefs, payerType, payerId ?? undefined);
 
     await this.invoicesRepository.update(id, {
       title: dto.title === undefined ? undefined : dto.title?.trim() ?? null,
-      amount: dto.amount !== undefined || dto.discountAmount !== undefined || dto.extraAmount !== undefined ? toMoneyNumber(amount) : undefined,
+      amount: dto.amount !== undefined || dto.discountAmount !== undefined ? toMoneyNumber(amount) : undefined,
       discountAmount: dto.discountAmount === undefined ? undefined : toMoneyNumber(nextDiscountAmount),
-      extraAmount: dto.extraAmount === undefined ? undefined : toMoneyNumber(nextExtraAmount),
-      paidAmount: dto.paidAmount !== undefined || dto.status !== undefined ? toMoneyNumber(paidAmount) : undefined,
-      status,
+      paidAmount: toMoneyNumber(paidAmount),
+      status: computedStatus,
       payerType,
       payerId,
       description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
       dueDate: dto.dueDate === undefined ? undefined : dto.dueDate ? new Date(dto.dueDate) : null,
-      paidAt: status === 'PAID' ? new Date() : null
+      paidAt: computedStatus === 'PAID' ? new Date() : null
     });
 
     await this.operationLogsService.log({
@@ -164,42 +200,67 @@ export class InvoicesService extends BaseService {
       entityId: id,
       action: 'UPDATE',
       description: 'ویرایش فاکتور',
-      orderId: existing.orderId
+      orderId: existing.orders[0]?.orderId
     });
 
-    const invoice = await this.invoicesRepository.findById(id);
-    return invoice ? this.withConsistentStatus(invoice) : invoice;
+    return this.detail(id);
   }
 
-  private resolvePaidAmountForCreate(dto: CreateInvoiceDto, amount: Prisma.Decimal) {
-    if (dto.paidAmount !== undefined && dto.paidAmount !== null) {
-      return clampMoneyNonNegative(dto.paidAmount);
+  async addPayment(actorId: string, id: string, dto: AddInvoicePaymentDto) {
+    const existing = await this.invoicesRepository.findForUpdate(id);
+    if (!existing) {
+      throw new NotFoundException('فاکتور پیدا نشد.');
     }
-    if (dto.status === 'PAID') return amount;
-    if (dto.status === 'PARTIAL') {
-      throw new BadRequestException('برای وضعیت پرداخت ناقص باید مبلغ پرداختی وارد شود.');
-    }
-    return toMoneyDecimal(0);
-  }
 
-  private resolvePaidAmountForUpdate(existing: any, dto: UpdateInvoiceDto, amount: Prisma.Decimal) {
-    if (dto.paidAmount !== undefined && dto.paidAmount !== null) {
-      return clampMoneyNonNegative(dto.paidAmount);
+    const amount = clampMoneyNonNegative(existing.amount ?? 0);
+    const paidAmount = clampMoneyNonNegative(existing.paidAmount ?? 0);
+    const remaining = maxMoney(subtractMoney(amount, paidAmount), 0);
+
+    if (remaining.lessThanOrEqualTo(0)) {
+      throw new BadRequestException('این فاکتور قبلا کامل تسویه شده است.');
     }
-    if (dto.status === 'PAID') return amount;
-    if (dto.status === 'UNPAID') return toMoneyDecimal(0);
-    if (dto.status === 'PARTIAL') {
-      const existingPaid = clampMoneyNonNegative(existing.paidAmount ?? 0);
-      if (existingPaid.greaterThan(0) && existingPaid.lessThan(amount)) {
-        return existingPaid;
-      }
-      throw new BadRequestException('برای وضعیت پرداخت ناقص باید مبلغ پرداختی معتبر وارد شود.');
+
+    const paymentAmount = clampMoneyNonNegative(dto.amount ?? 0);
+    if (paymentAmount.lessThanOrEqualTo(0)) {
+      throw new BadRequestException('مبلغ پرداخت باید بیشتر از صفر باشد.');
     }
-    return clampMoneyNonNegative(existing.paidAmount ?? 0);
+    if (paymentAmount.greaterThan(remaining)) {
+      throw new BadRequestException(`مبلغ پرداخت از مانده فاکتور بیشتر است. مانده فعلی: ${toMoneyNumber(remaining)} تومان`);
+    }
+
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
+    if (Number.isNaN(paidAt.getTime())) {
+      throw new BadRequestException('تاریخ پرداخت معتبر نیست.');
+    }
+
+    const nextPaidAmount = addMoney(paidAmount, paymentAmount);
+    const nextStatus = deriveInvoiceStatus(amount, nextPaidAmount);
+
+    await this.invoicesRepository.addPayment({
+      invoiceId: id,
+      amount: toMoneyNumber(paymentAmount),
+      paidAt,
+      note: dto.note?.trim(),
+      createdById: actorId,
+      nextPaidAmount: toMoneyNumber(nextPaidAmount),
+      nextStatus,
+      invoicePaidAt: nextStatus === 'PAID' ? paidAt : null
+    });
+
+    await this.operationLogsService.log({
+      actorId,
+      entityType: 'Invoice',
+      entityId: id,
+      action: 'UPDATE',
+      description: 'ثبت پرداخت فاکتور',
+      orderId: existing.orders[0]?.orderId
+    });
+
+    return this.detail(id);
   }
 
   async remove(actorId: string, id: string) {
-    const existing = await this.invoicesRepository.findById(id);
+    const existing = await this.invoicesRepository.findForUpdate(id);
     if (!existing) {
       throw new NotFoundException('فاکتور پیدا نشد.');
     }
@@ -211,19 +272,15 @@ export class InvoicesService extends BaseService {
       entityId: id,
       action: 'DELETE',
       description: 'حذف فاکتور',
-      orderId: existing.orderId
+      orderId: existing.orders[0]?.orderId
     });
 
     return { success: true };
   }
 
   async pdf(id: string) {
-    const invoice = await this.invoicesRepository.findById(id);
-    if (!invoice) {
-      throw new NotFoundException('فاکتور پیدا نشد.');
-    }
-
-    const html = this.renderInvoiceHtml(this.withConsistentStatus(invoice));
+    const invoice = await this.detail(id);
+    const html = this.renderInvoiceHtml(invoice);
     const buffer = await this.renderPdfFromHtml(html);
 
     return {
@@ -252,6 +309,81 @@ export class InvoicesService extends BaseService {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
 
+  private resolveDefaultPayerType(orders: Array<{ collaboratorId: string | null; customerId: string | null }>) {
+    const collaboratorIds = Array.from(new Set(orders.map((item) => item.collaboratorId).filter(Boolean)));
+    if (collaboratorIds.length === 1) return 'COLLABORATOR' as const;
+
+    const customerIds = Array.from(new Set(orders.map((item) => item.customerId).filter(Boolean)));
+    if (customerIds.length === 1) return 'CUSTOMER' as const;
+
+    throw new BadRequestException('برای فاکتور مشترک، باید نوع پرداخت‌کننده و شخص پرداخت‌کننده را مشخص کنید.');
+  }
+
+  private resolveDefaultPayerId(
+    orders: Array<{ collaboratorId: string | null; customerId: string | null }>,
+    payerType: 'CUSTOMER' | 'COLLABORATOR'
+  ) {
+    const ids = Array.from(
+      new Set(
+        orders
+          .map((item) => (payerType === 'COLLABORATOR' ? item.collaboratorId : item.customerId))
+          .filter(Boolean)
+      )
+    );
+    return ids.length === 1 ? ids[0] : undefined;
+  }
+
+  private validatePayerForOrders(
+    orders: Array<{ orderNumber: string; collaboratorId: string | null; customerId: string | null }>,
+    payerType: 'CUSTOMER' | 'COLLABORATOR',
+    payerId?: string
+  ) {
+    if (!payerId) {
+      throw new BadRequestException('شناسه پرداخت‌کننده الزامی است.');
+    }
+
+    const invalidOrders = orders.filter((item) =>
+      payerType === 'COLLABORATOR' ? item.collaboratorId !== payerId : item.customerId !== payerId
+    );
+
+    if (invalidOrders.length) {
+      const orderNumbers = invalidOrders.map((item) => item.orderNumber).join('، ');
+      throw new BadRequestException(`پرداخت‌کننده انتخاب‌شده با سفارش(های) ${orderNumbers} هم‌خوانی ندارد.`);
+    }
+  }
+
+  private normalizeInvoiceShape(invoice: any) {
+    const orders = Array.isArray(invoice.orders)
+      ? invoice.orders.map((link: any) => link?.order).filter(Boolean)
+      : [];
+
+    const combinedLineItems = orders.flatMap((order: any) =>
+      Array.isArray(order.lineItems)
+        ? order.lineItems.map((item: any) => ({
+            ...item,
+            orderNumber: order.orderNumber
+          }))
+        : []
+    );
+
+    const firstOrder = orders[0];
+    const syntheticOrder = firstOrder
+      ? {
+          ...firstOrder,
+          orderNumber: orders.map((item: any) => item.orderNumber).join(' + '),
+          totalPrice: orders.reduce((sum: number, item: any) => sum + Number(item.totalPrice ?? 0), 0),
+          lineItems: combinedLineItems,
+          invoices: [{ id: invoice.id, amount: invoice.amount, createdAt: invoice.createdAt }]
+        }
+      : null;
+
+    return {
+      ...invoice,
+      orders,
+      order: syntheticOrder,
+      paymentHistory: Array.isArray(invoice.payments) ? invoice.payments : []
+    };
+  }
   private escapeHtml(value: unknown): string {
     const text = String(value ?? '');
     return text
@@ -349,9 +481,8 @@ export class InvoicesService extends BaseService {
     const showInstallmentInfo = totalInvoiceParts > 1;
 
     const discountAmount = Number(invoice.discountAmount ?? 0);
-    const extraAmount = Number(invoice.extraAmount ?? 0);
     const finalAmount = Number(invoice.amount ?? 0);
-    const subtotal = Math.max(finalAmount - extraAmount + discountAmount, 0);
+    const subtotal = Math.max(finalAmount + discountAmount, 0);
 
     const tableRows = lineItems
       .map((item: any, idx: number) => {
@@ -382,15 +513,6 @@ export class InvoicesService extends BaseService {
       </div>
     `);
 
-    if (extraAmount > 0) {
-      summaryRows.push(`
-        <div class="sum-row">
-          <div class="sum-label">مبلغ مالیات ارزش افزوده</div>
-          <div class="sum-amount">${this.formatMoney(extraAmount)}</div>
-        </div>
-      `);
-    }
-
     if (discountAmount > 0) {
       summaryRows.push(`
         <div class="sum-row">
@@ -402,13 +524,13 @@ export class InvoicesService extends BaseService {
 
     summaryRows.push(`
       <div class="sum-row final">
-        <div class="sum-label">مبلغ قابل پرداخت (ریال)</div>
+        <div class="sum-label">مبلغ قابل پرداخت (تومان)</div>
         <div class="sum-amount">${this.formatMoney(finalAmount)}</div>
       </div>
     `);
 
     const installmentInfo = showInstallmentInfo
-      ? `<p class="installment-note">این فاکتور پارت ${this.escapeHtml(invoicePart)} از ${this.escapeHtml(totalInvoiceParts)} است و مانده سفارش بعد از این فاکتور ${this.escapeHtml(this.formatMoney(remainingAfterCurrent))} ریال می‌باشد.</p>`
+      ? `<p class="installment-note">این فاکتور پارت ${this.escapeHtml(invoicePart)} از ${this.escapeHtml(totalInvoiceParts)} است و مانده سفارش بعد از این فاکتور ${this.escapeHtml(this.formatMoney(remainingAfterCurrent))} تومان می‌باشد.</p>`
       : '';
 
     const fontFace = this.getVazirmatnFontFaceCss();
@@ -832,8 +954,8 @@ export class InvoicesService extends BaseService {
             <th style="width:58px;">ردیف</th>
             <th>نام کالا</th>
             <th style="width:95px;">تعداد</th>
-            <th style="width:170px;">قیمت واحد (ریال)</th>
-            <th style="width:180px;">مبلغ کل (ریال)</th>
+            <th style="width:170px;">قیمت واحد (تومان)</th>
+            <th style="width:180px;">مبلغ کل (تومان)</th>
           </tr>
         </thead>
         <tbody>
@@ -890,6 +1012,7 @@ export class InvoicesService extends BaseService {
     }
   }
 }
+
 
 
 

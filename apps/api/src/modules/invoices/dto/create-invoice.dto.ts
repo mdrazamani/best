@@ -1,15 +1,16 @@
 import { Type } from 'class-transformer';
-import { IsDefined, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsDefined, IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateInvoiceDto {
   @IsOptional()
   @IsString()
   title?: string;
 
-  @IsDefined({ message: 'انتخاب سفارش الزامی است.' })
-  @IsString({ message: 'شناسه سفارش معتبر نیست.' })
-  @IsNotEmpty({ message: 'انتخاب سفارش الزامی است.' })
-  orderId!: string;
+  @IsDefined({ message: 'حداقل یک سفارش باید انتخاب شود.' })
+  @IsArray({ message: 'لیست سفارش‌ها نامعتبر است.' })
+  @ArrayNotEmpty({ message: 'حداقل یک سفارش باید انتخاب شود.' })
+  @IsString({ each: true, message: 'شناسه سفارش معتبر نیست.' })
+  orderIds!: string[];
 
   @IsOptional()
   @Type(() => Number)
@@ -24,14 +25,9 @@ export class CreateInvoiceDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({}, { message: 'مبلغ افزوده باید عدد باشد.' })
-  @Min(0, { message: 'مبلغ افزوده نمی‌تواند منفی باشد.' })
-  extraAmount?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({}, { message: 'مبلغ پرداختی باید عدد باشد.' })
-  paidAmount?: number;
+  @IsNumber({}, { message: 'پرداخت اولیه باید عدد باشد.' })
+  @Min(0, { message: 'پرداخت اولیه نمی‌تواند منفی باشد.' })
+  initialPaidAmount?: number;
 
   @IsOptional()
   @IsIn(['UNPAID', 'PARTIAL', 'PAID'], { message: 'وضعیت فاکتور نامعتبر است.' })

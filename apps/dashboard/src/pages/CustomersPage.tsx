@@ -1,34 +1,26 @@
-import { FormEvent, useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { ArrowRight, ClipboardList, Eye, FileText, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
 import { fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { Input } from '../components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Textarea } from '../components/ui/textarea';
 import { EmptyState } from '../components/shared/empty-state';
 import { Pagination } from '../components/shared/pagination';
 import { SearchableSelect } from '../components/ui/searchable-select';
 import { Badge } from '../components/ui/badge';
+import { CreateCustomerDialog } from '../components/modals/CreateCustomerDialog';
 
 const PAGE_SIZE = 10;
 const ORDER_STAGE_OPTIONS = [
   { value: 'RECEIVED', label: 'دریافت شده' },
-  { value: 'STARTED', label: 'شروع شده' },
   { value: 'IN_PROGRESS', label: 'در حال انجام' },
   { value: 'READY_IN_WAREHOUSE', label: 'آماده در انبار' },
   { value: 'DELIVERED', label: 'تحویل داده شده' },
   { value: 'CANCELLED', label: 'لغو شده' }
 ] as const;
-const INVOICE_STATUS_OPTIONS = [
-  { value: 'UNPAID', label: 'پرداخت نشده' },
-  { value: 'PARTIAL', label: 'ناقص' },
-  { value: 'PAID', label: 'پرداخت شده' }
-] as const;
-
 export function CustomersPage() {
   const {
     customers,
@@ -41,7 +33,6 @@ export function CustomersPage() {
     openCollaboratorDetail,
     openOrderDetail,
     updateOrder,
-    updateInvoice,
     navigateToTab
   } = useBestContext();
 
@@ -49,11 +40,7 @@ export function CustomersPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [referralFilter, setReferralFilter] = useState<'all' | 'with_referrer' | 'without_referrer'>('all');
-  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', address: '', description: '', referredByCollaboratorId: '' });
-  const [orderStageDrafts, setOrderStageDrafts] = useState<Record<string, string>>({});
-  const [invoiceStatusDrafts, setInvoiceStatusDrafts] = useState<Record<string, string>>({});
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
-  const [savingInvoiceId, setSavingInvoiceId] = useState<string | null>(null);
 
   const collaboratorOptions = useMemo(
     () => [{ value: '', label: 'بدون معرف' }, ...collaborators.map((item) => ({ value: item.id, label: fullName(item) }))],
@@ -80,13 +67,6 @@ export function CustomersPage() {
     return filteredItems.slice(start, start + PAGE_SIZE);
   }, [filteredItems, page, totalPages]);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    await createCustomer({ ...form, referredByCollaboratorId: form.referredByCollaboratorId || undefined });
-    setForm({ firstName: '', lastName: '', phone: '', address: '', description: '', referredByCollaboratorId: '' });
-    setCreateOpen(false);
-  };
-
   const showDetail = async (id: string) => {
     await openCustomerDetail(id);
   };
@@ -94,27 +74,14 @@ export function CustomersPage() {
   const detail = customerDetail;
   const detailId = detail?.id as string | undefined;
 
-  const saveOrderStage = async (orderId: string, fallbackStage: string) => {
+  const saveOrderStage = async (orderId: string, nextStage: string) => {
     if (!detailId) return;
-    const nextStage = orderStageDrafts[orderId] ?? fallbackStage;
     setSavingOrderId(orderId);
     try {
       await updateOrder(orderId, { stage: nextStage });
       await openCustomerDetail(detailId);
     } finally {
       setSavingOrderId(null);
-    }
-  };
-
-  const saveInvoiceStatus = async (invoiceId: string, fallbackStatus: string) => {
-    if (!detailId) return;
-    const nextStatus = invoiceStatusDrafts[invoiceId] ?? fallbackStatus;
-    setSavingInvoiceId(invoiceId);
-    try {
-      await updateInvoice(invoiceId, { status: nextStatus });
-      await openCustomerDetail(detailId);
-    } finally {
-      setSavingInvoiceId(null);
     }
   };
 
@@ -133,7 +100,7 @@ export function CustomersPage() {
                 جزئیات مشتری
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">{fullName(detail)} - تاریخ ثبت: {shamsiDate(detail.createdAt)}</p>
-              <p className="text-[11px] text-muted-foreground sm:text-xs">تمام مبالغ در این صفحه به ریال هستند.</p>
+              <p className="text-[11px] text-muted-foreground sm:text-xs">تمام مبالغ در این صفحه به تومان هستند.</p>
             </div>
             <Button variant="outline" onClick={closeCustomerDetail}>
               <ArrowRight className="h-4 w-4" />
@@ -233,21 +200,16 @@ export function CustomersPage() {
                         {order.id ? (
                           <div className="flex w-full min-w-[170px] items-center gap-2 sm:min-w-[240px]">
                             <SearchableSelect
-                              value={orderStageDrafts[order.id] ?? order.stage}
-                              onChange={(value) => setOrderStageDrafts((prev) => ({ ...prev, [order.id]: value }))}
+                              value={order.stage}
+                              onChange={(value) => {
+                                void saveOrderStage(order.id, value);
+                              }}
                               options={ORDER_STAGE_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
                               placeholder="انتخاب مرحله"
                               isSearchable={false}
                               className="flex-1"
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
                               disabled={savingOrderId === order.id}
-                              onClick={() => void saveOrderStage(order.id, order.stage)}
-                            >
-                              ذخیره
-                            </Button>
+                            />
                           </div>
                         ) : '-'}
                       </TableCell>
@@ -278,7 +240,7 @@ export function CustomersPage() {
                     <TableHead>وضعیت</TableHead>
                     <TableHead>پرداختی / کل</TableHead>
                     <TableHead>سررسید</TableHead>
-                    <TableHead>بروزرسانی وضعیت</TableHead>
+                    <TableHead>مانده</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -286,7 +248,9 @@ export function CustomersPage() {
                     <TableRow key={invoice.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
                       <TableCell>{invoice.invoiceNumber ?? '-'}</TableCell>
                       <TableCell>
-                        {invoice.order?.id ? (
+                        {Array.isArray(invoice.orders) && invoice.orders.length > 1 ? (
+                          invoice.orders.map((item: any) => item?.orderNumber).filter(Boolean).join('، ')
+                        ) : invoice.order?.id ? (
                           <button
                             type="button"
                             className="font-semibold text-primary hover:underline"
@@ -297,35 +261,16 @@ export function CustomersPage() {
                           >
                             {invoice.order?.orderNumber ?? '-'}
                           </button>
-                        ) : (invoice.order?.orderNumber ?? '-')}
+                        ) : ((Array.isArray(invoice.orders) && invoice.orders.length
+                          ? invoice.orders.map((item: any) => item?.orderNumber).filter(Boolean).join('، ')
+                          : invoice.order?.orderNumber) ?? '-')}
                       </TableCell>
                       <TableCell>
                         <Badge variant={invoiceStatusBadgeVariant(invoice.status)}>{invoiceStatusLabel(invoice.status)}</Badge>
                       </TableCell>
                       <TableCell>{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
-                      <TableCell>
-                        {invoice.id ? (
-                          <div className="flex w-full min-w-[170px] items-center gap-2 sm:min-w-[230px]">
-                            <SearchableSelect
-                              value={invoiceStatusDrafts[invoice.id] ?? invoice.status}
-                              onChange={(value) => setInvoiceStatusDrafts((prev) => ({ ...prev, [invoice.id]: value }))}
-                              options={INVOICE_STATUS_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
-                              placeholder="انتخاب وضعیت"
-                              isSearchable={false}
-                              className="flex-1"
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={savingInvoiceId === invoice.id}
-                              onClick={() => void saveInvoiceStatus(invoice.id, invoice.status)}
-                            >
-                              ذخیره
-                            </Button>
-                          </div>
-                        ) : '-'}
-                      </TableCell>
+                      <TableCell>{money(Math.max(Number(invoice.amount ?? 0) - Number(invoice.paidAmount ?? 0), 0))}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -386,34 +331,10 @@ export function CustomersPage() {
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-2xl font-extrabold">مشتریان</CardTitle>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4" />
-                ثبت مشتری
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>ثبت مشتری جدید</DialogTitle>
-                <DialogDescription>اطلاعات مشتری را کامل کنید.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={submit} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Input placeholder="نام" value={form.firstName} onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))} />
-                  <Input placeholder="نام خانوادگی" value={form.lastName} onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))} />
-                  <Input placeholder="شماره تماس" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} />
-                  <Textarea placeholder="آدرس" value={form.address} onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))} className="md:col-span-2 min-h-[92px]" />
-                  <SearchableSelect className="md:col-span-2" options={collaboratorOptions} value={form.referredByCollaboratorId} onChange={(value) => setForm((prev) => ({ ...prev, referredByCollaboratorId: value }))} placeholder="انتخاب معرف (اختیاری)" />
-                </div>
-                <Textarea placeholder="توضیحات" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
-                <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>انصراف</Button>
-                  <Button type="submit">ثبت</Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            ثبت مشتری
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
@@ -489,7 +410,17 @@ export function CustomersPage() {
           )}
         </CardContent>
       </Card>
+
+      <CreateCustomerDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        referrerOptions={collaboratorOptions.filter((item) => item.value)}
+        onSubmit={async (payload) => {
+          await createCustomer(payload as Record<string, unknown>);
+        }}
+      />
     </section>
   );
 }
+
 

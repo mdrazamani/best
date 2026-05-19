@@ -20,6 +20,10 @@ class OrderLineItemDto {
   @Type(() => Number)
   @IsNumber()
   unitPrice!: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
 }
 
 export class UpdateOrderDto {
@@ -71,12 +75,6 @@ export class UpdateOrderDto {
   discountAmount?: number;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  extraAmount?: number;
-
-  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => OrderLineItemDto)
@@ -87,8 +85,8 @@ export class UpdateOrderDto {
   description?: string;
 
   @IsOptional()
-  @IsIn(['RECEIVED', 'STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE', 'DELIVERED', 'CANCELLED'])
-  stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+  @IsIn(['RECEIVED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE', 'DELIVERED', 'CANCELLED'])
+  stage?: 'RECEIVED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
 
   @IsOptional()
   @IsString()

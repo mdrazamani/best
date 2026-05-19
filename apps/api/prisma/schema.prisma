@@ -19,7 +19,6 @@ enum WorkType {
 
 enum OrderStage {
   RECEIVED
-  STARTED
   IN_PROGRESS
   READY_IN_WAREHOUSE
   DELIVERED
@@ -56,6 +55,7 @@ model User {
   createdMeshTypes      MeshType[]     @relation("MeshTypeCreator")
   createdOrders         Order[]        @relation("OrderCreator")
   createdInvoices       Invoice[]      @relation("InvoiceCreator")
+  createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreator")
   operationLogs         OperationLog[] @relation("OperationActor")
 
   @@index([firstName])
@@ -211,6 +211,8 @@ model MeshType {
   title       String   @unique
   description String?
   isActive    Boolean  @default(true)
+  unitPrice   Decimal  @default(0) @db.Decimal(18, 2)
+  isDefault   Boolean  @default(false)
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -220,6 +222,7 @@ model MeshType {
   lineItems OrderLineItem[]
 
   @@index([isActive])
+  @@index([isDefault])
   @@index([deletedAt])
 }
 
@@ -238,7 +241,6 @@ model Order {
   unitPrice       Decimal?   @db.Decimal(18, 2)
   totalPrice      Decimal    @default(0) @db.Decimal(18, 2)
   discountAmount  Decimal    @default(0) @db.Decimal(18, 2)
-  extraAmount     Decimal    @default(0) @db.Decimal(18, 2)
   description     String?
   stage           OrderStage @default(RECEIVED)
   stageNote       String?
@@ -251,7 +253,7 @@ model Order {
   customer     Customer?     @relation(fields: [customerId], references: [id])
   createdBy    User          @relation("OrderCreator", fields: [createdById], references: [id])
   lineItems    OrderLineItem[]
-  invoices     Invoice[]
+  invoiceLinks InvoiceOrder[]
   operationLogs OperationLog[]
 
   @@index([orderDateJalali])
@@ -271,6 +273,7 @@ model OrderLineItem {
   quantity  Decimal  @db.Decimal(18, 2)
   unitPrice Decimal  @db.Decimal(18, 2)
   lineTotal Decimal  @db.Decimal(18, 2)
+  description String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -283,13 +286,11 @@ model OrderLineItem {
 
 model Invoice {
   id            String        @id @default(uuid())
-  orderId        String
   invoiceNumber  String        @unique
   title          String?
   createdById    String
   amount         Decimal       @db.Decimal(18, 2)
   discountAmount Decimal       @default(0) @db.Decimal(18, 2)
-  extraAmount    Decimal       @default(0) @db.Decimal(18, 2)
   paidAmount     Decimal       @default(0) @db.Decimal(18, 2)
   status         InvoiceStatus @default(UNPAID)
   payerType      InvoicePayerType @default(CUSTOMER)
@@ -301,14 +302,46 @@ model Invoice {
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
 
-  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   createdBy User  @relation("InvoiceCreator", fields: [createdById], references: [id])
+  orders    InvoiceOrder[]
+  payments  InvoicePayment[]
 
-  @@index([orderId])
   @@index([status])
   @@index([dueDate])
   @@index([payerType, payerId])
   @@index([deletedAt])
+}
+
+model InvoiceOrder {
+  id        String   @id @default(uuid())
+  invoiceId String
+  orderId   String
+  createdAt DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId])
+  @@unique([invoiceId, orderId])
+  @@index([invoiceId])
+  @@index([orderId])
+}
+
+model InvoicePayment {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  amount      Decimal  @db.Decimal(18, 2)
+  paidAt      DateTime
+  note        String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("InvoicePaymentCreator", fields: [createdById], references: [id])
+
+  @@index([invoiceId])
+  @@index([paidAt])
+  @@index([createdById])
 }
 
 model OperationLog {

@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { InvoicesService } from '../../invoices/services/invoices.service';
 import { OrdersService } from '../services/orders.service';
 
@@ -12,24 +13,34 @@ describe('Accounting integration (orders + invoices)', () => {
     title: 'Test order',
     totalPrice: 1000,
     discountAmount: 0,
-    extraAmount: 0,
     customerId: 'customer-1',
-    collaboratorId: null
+    collaboratorId: null,
+    stage: 'IN_PROGRESS',
+    createdAt: new Date('2026-01-01T00:00:00.000Z')
   };
 
   let orderState: any;
   let invoicesState: any[];
+  let paymentsState: any[];
 
   const ordersRepository = {
     list: jest.fn(async () => []),
     findById: jest.fn(async (id: string) => {
       if (id !== orderState.id) return null;
+      const activeInvoices = invoicesState.filter((item) => !item.deletedAt && item.orderIds.includes(orderState.id));
       return {
         ...orderState,
-        invoices: invoicesState.filter((item) => !item.deletedAt).map((item) => ({ amount: item.amount, paidAmount: item.paidAmount }))
+        invoiceLinks: activeInvoices.map((invoice) => ({
+          invoice: {
+            id: invoice.id,
+            amount: invoice.amount,
+            paidAmount: invoice.paidAmount,
+            status: invoice.status
+          }
+        }))
       };
     }),
-    create: jest.fn(),
+    createWithInitialInvoice: jest.fn(),
     update: jest.fn(),
     softDelete: jest.fn()
   };
@@ -41,28 +52,53 @@ describe('Accounting integration (orders + invoices)', () => {
       if (!invoice) return null;
       return {
         ...invoice,
-        order: {
-          ...orderState,
-          customer: { id: 'customer-1', firstName: 'A', lastName: 'B' },
-          collaborator: null,
-          lineItems: [],
-          invoices: invoicesState
-            .filter((item) => !item.deletedAt)
-            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-            .map((item) => ({ id: item.id, amount: item.amount, createdAt: item.createdAt }))
-        }
+        orders: invoice.orderIds.map((orderId: string) => ({
+          orderId,
+          order: {
+            ...orderState,
+            id: orderId,
+            lineItems: []
+          }
+        })),
+        payments: paymentsState
+          .filter((payment) => payment.invoiceId === id)
+          .map((payment) => ({
+            ...payment,
+            createdBy: { id: payment.createdById, firstName: 'A', lastName: 'B', username: 'ab' }
+          }))
       };
     }),
-    findOrderForPayer: jest.fn(async (orderId: string) => {
-      if (orderId !== orderState.id) return null;
+    findForUpdate: jest.fn(async (id: string) => {
+      const invoice = invoicesState.find((item) => item.id === id && !item.deletedAt);
+      if (!invoice) return null;
       return {
-        id: orderState.id,
-        customerId: orderState.customerId,
-        collaboratorId: orderState.collaboratorId,
-        totalPrice: orderState.totalPrice
+        ...invoice,
+        orders: invoice.orderIds.map((orderId: string) => ({
+          orderId,
+          order: {
+            id: orderId,
+            orderNumber: orderState.orderNumber,
+            collaboratorId: orderState.collaboratorId,
+            customerId: orderState.customerId,
+            stage: orderState.stage,
+            deletedAt: null
+          }
+        }))
       };
     }),
-    create: jest.fn(async (data: any) => {
+    findOrdersForInvoice: jest.fn(async (orderIds: string[]) => {
+      if (!orderIds.includes(orderState.id)) return [];
+      const linked = invoicesState
+        .filter((invoice) => !invoice.deletedAt && invoice.orderIds.includes(orderState.id))
+        .map((invoice) => ({ invoice: { id: invoice.id, invoiceNumber: invoice.invoiceNumber } }));
+      return [
+        {
+          ...orderState,
+          invoiceLinks: linked
+        }
+      ];
+    }),
+    createWithOrders: jest.fn(async (data: any) => {
       const invoice = {
         id: `inv-${invoicesState.length + 1}`,
         createdAt: new Date(2026, 0, invoicesState.length + 1),
@@ -70,20 +106,38 @@ describe('Accounting integration (orders + invoices)', () => {
         ...data
       };
       invoicesState.push(invoice);
+      if (data.initialPayment) {
+        paymentsState.push({
+          id: `pay-${paymentsState.length + 1}`,
+          invoiceId: invoice.id,
+          amount: data.initialPayment.amount,
+          paidAt: data.initialPayment.paidAt,
+          note: data.initialPayment.note,
+          createdById: data.initialPayment.createdById
+        });
+      }
       return invoice;
     }),
-    update: jest.fn(async (id: string, data: any) => {
-      const idx = invoicesState.findIndex((item) => item.id === id && !item.deletedAt);
-      if (idx >= 0) {
-        const sanitizedUpdate = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
-        invoicesState[idx] = { ...invoicesState[idx], ...sanitizedUpdate };
-      }
-      return invoicesState[idx];
+    update: jest.fn(),
+    addPayment: jest.fn(async (data: any) => {
+      paymentsState.push({
+        id: `pay-${paymentsState.length + 1}`,
+        invoiceId: data.invoiceId,
+        amount: data.amount,
+        paidAt: data.paidAt,
+        note: data.note,
+        createdById: data.createdById
+      });
+      const idx = invoicesState.findIndex((item) => item.id === data.invoiceId);
+      invoicesState[idx] = {
+        ...invoicesState[idx],
+        paidAmount: data.nextPaidAmount,
+        status: data.nextStatus,
+        paidAt: data.invoicePaidAt
+      };
+      return { id: `pay-${paymentsState.length}` };
     }),
-    softDelete: jest.fn(async (id: string) => {
-      const idx = invoicesState.findIndex((item) => item.id === id && !item.deletedAt);
-      if (idx >= 0) invoicesState[idx].deletedAt = new Date();
-    })
+    softDelete: jest.fn()
   };
 
   const invoicesService = new InvoicesService(invoicesRepository as any, operationLogsService as any);
@@ -93,29 +147,17 @@ describe('Accounting integration (orders + invoices)', () => {
     jest.clearAllMocks();
     orderState = { ...baseOrder };
     invoicesState = [];
+    paymentsState = [];
   });
 
-  it('keeps debt/remaining amount accurate after multiple invoice operations', async () => {
-    await invoicesService.create('actor-1', {
-      orderId: orderState.id,
-      amount: 600,
-      paidAmount: 600,
-      status: 'PAID'
+  it('enforces one invoice per order and keeps payment summary accurate after payments', async () => {
+    const createdInvoice = await invoicesService.create('actor-1', {
+      orderIds: [orderState.id],
+      amount: 1000,
+      initialPaidAmount: 600
     } as any);
 
-    const secondInvoice = await invoicesService.create('actor-1', {
-      orderId: orderState.id,
-      amount: 400,
-      status: 'UNPAID'
-    } as any);
-    expect(secondInvoice?.id).toBeTruthy();
-    expect(invoicesRepository.create).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        amount: 400,
-        paidAmount: 0,
-        status: 'UNPAID'
-      })
-    );
+    expect(createdInvoice?.id).toBeTruthy();
 
     const partialSummary = await ordersService.detail(orderState.id);
     expect(partialSummary.paymentSummary.total).toBe(1000);
@@ -123,23 +165,22 @@ describe('Accounting integration (orders + invoices)', () => {
     expect(partialSummary.paymentSummary.remainingAmount).toBe(400);
     expect(partialSummary.paymentSummary.status).toBe('partial');
 
-    await invoicesService.update('actor-1', secondInvoice!.id, { status: 'PAID' } as any);
-    expect(invoicesRepository.update).toHaveBeenLastCalledWith(
-      secondInvoice!.id,
-      expect.objectContaining({
-        paidAmount: 400,
-        status: 'PAID'
-      })
-    );
-    expect(invoicesState.map((item) => ({ amount: item.amount, paidAmount: item.paidAmount }))).toEqual([
-      { amount: 600, paidAmount: 600 },
-      { amount: 400, paidAmount: 400 }
-    ]);
+    await expect(
+      invoicesService.create('actor-1', {
+        orderIds: [orderState.id],
+        amount: 100
+      } as any)
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await invoicesService.addPayment('actor-1', createdInvoice.id, { amount: 400 } as any);
 
     const paidSummary = await ordersService.detail(orderState.id);
     expect(paidSummary.paymentSummary.total).toBe(1000);
     expect(paidSummary.paymentSummary.paidAmount).toBe(1000);
     expect(paidSummary.paymentSummary.remainingAmount).toBe(0);
     expect(paidSummary.paymentSummary.status).toBe('paid');
+
+    await expect(invoicesService.addPayment('actor-1', createdInvoice.id, { amount: 1 } as any)).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+

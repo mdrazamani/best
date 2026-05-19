@@ -2,6 +2,11 @@
 import { BaseService } from '../../../common/services/base.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { PassThrough } from 'stream';
+import archiver from 'archiver';
+import puppeteer from 'puppeteer';
 import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, derivePaymentStatus, maxMoney, minMoney, multiplyMoney, percentOf, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
 import { OrdersRepository } from '../orders.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
@@ -62,14 +67,12 @@ export class OrdersService extends BaseService {
     }
 
     const lineItemsTotal = addMoney(...lineItems.map((item) => item.lineTotal));
-    const fallbackTotal = this.calculateLineTotal(dto.quantity ?? 0, dto.unitPrice ?? 0);
+    const fallbackTotal = this.calculateLineTotal(dto.width ?? 0, dto.height ?? 0, dto.quantity ?? 0, dto.unitPrice ?? 0);
     const discountAmount = clampMoneyNonNegative(dto.discountAmount ?? 0);
     const calculatedBaseTotal = lineItems.length ? lineItemsTotal : fallbackTotal;
-    const defaultVatAmount = multiplyMoney(calculatedBaseTotal, 0.1);
-    const extraAmount = dto.extraAmount === undefined ? defaultVatAmount : clampMoneyNonNegative(dto.extraAmount);
     const totalPrice =
       dto.totalPrice === undefined
-        ? maxMoney(addMoney(calculatedBaseTotal, extraAmount), discountAmount).sub(discountAmount)
+        ? maxMoney(calculatedBaseTotal, discountAmount).sub(discountAmount)
         : clampMoneyNonNegative(dto.totalPrice);
     const firstLine = lineItems[0];
 
@@ -92,7 +95,6 @@ export class OrdersService extends BaseService {
           unitPrice: firstLine?.unitPrice ?? dto.unitPrice,
           totalPrice: toMoneyNumber(totalPrice),
           discountAmount: toMoneyNumber(discountAmount),
-          extraAmount: toMoneyNumber(extraAmount),
           lineItems,
           description: dto.description?.trim(),
           stage: dto.stage,
@@ -103,7 +105,6 @@ export class OrdersService extends BaseService {
                 invoiceNumber: this.generateInvoiceNumber(orderDateJalali),
                 amount: toMoneyNumber(totalPrice),
                 discountAmount: toMoneyNumber(discountAmount),
-                extraAmount: toMoneyNumber(extraAmount),
                 paidAmount: 0,
                 status: 'UNPAID',
                 payerType: collaboratorId ? 'COLLABORATOR' : 'CUSTOMER',
@@ -156,9 +157,7 @@ export class OrdersService extends BaseService {
     }
 
     const currentDiscountAmount = clampMoneyNonNegative(existing.discountAmount ?? 0);
-    const currentExtraAmount = clampMoneyNonNegative(existing.extraAmount ?? 0);
     const nextDiscountAmount = dto.discountAmount === undefined ? currentDiscountAmount : clampMoneyNonNegative(dto.discountAmount);
-    const nextExtraAmount = dto.extraAmount === undefined ? currentExtraAmount : clampMoneyNonNegative(dto.extraAmount);
 
     const lineItemsTotal = lineItems ? addMoney(...lineItems.map((item) => item.lineTotal)) : undefined;
     const recalculatedBaseTotal =
@@ -166,18 +165,20 @@ export class OrdersService extends BaseService {
         ? lineItemsTotal
         : dto.unitPrice !== undefined || dto.quantity !== undefined || dto.width !== undefined || dto.height !== undefined
         ? this.calculateLineTotal(
+            Number(dto.width ?? existing.width ?? 0),
+            Number(dto.height ?? existing.height ?? 0),
             Number(dto.quantity ?? existing.quantity ?? 0),
             Number(dto.unitPrice ?? existing.unitPrice ?? 0)
           )
-        : dto.discountAmount !== undefined || dto.extraAmount !== undefined
-        ? subtractMoney(addMoney(existing.totalPrice ?? 0, currentDiscountAmount), currentExtraAmount)
+        : dto.discountAmount !== undefined
+        ? addMoney(existing.totalPrice ?? 0, currentDiscountAmount)
         : undefined;
 
     const totalPrice =
       dto.totalPrice !== undefined
         ? clampMoneyNonNegative(dto.totalPrice)
         : recalculatedBaseTotal !== undefined
-        ? maxMoney(addMoney(recalculatedBaseTotal, nextExtraAmount), nextDiscountAmount).sub(nextDiscountAmount)
+        ? maxMoney(recalculatedBaseTotal, nextDiscountAmount).sub(nextDiscountAmount)
         : undefined;
 
     const firstLine = lineItems?.[0];
@@ -193,7 +194,6 @@ export class OrdersService extends BaseService {
       unitPrice: firstLine ? firstLine.unitPrice : dto.unitPrice,
       totalPrice: totalPrice === undefined ? undefined : toMoneyNumber(totalPrice),
       discountAmount: dto.discountAmount === undefined ? undefined : toMoneyNumber(nextDiscountAmount),
-      extraAmount: dto.extraAmount === undefined ? undefined : toMoneyNumber(nextExtraAmount),
       lineItems,
       description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
       stage: dto.stage,
@@ -231,13 +231,62 @@ export class OrdersService extends BaseService {
     return { success: true };
   }
 
-  private withPaymentSummary<T extends { invoices: Array<{ paidAmount: unknown; amount: unknown }>; stage?: string }>(order: T) {
-    const normalizedInvoices = Array.isArray(order.invoices)
-      ? order.invoices.map((invoice) => ({
+  async lineItemLabelPdf(orderId: string, lineItemId: string) {
+    const order = await this.ordersRepository.findById(orderId);
+    if (!order) {
+      throw new NotFoundException('سفارش پیدا نشد.');
+    }
+
+    const lineItems = Array.isArray(order.lineItems) ? order.lineItems : [];
+    const lineItemIndex = lineItems.findIndex((item) => item.id === lineItemId);
+    if (lineItemIndex < 0) {
+      throw new NotFoundException('آیتم سفارش پیدا نشد.');
+    }
+
+    const lineItem = lineItems[lineItemIndex];
+    const buffer = await this.renderLabelPdf(order, lineItem, lineItemIndex);
+    return {
+      fileName: this.buildLabelFileName(order.orderNumber, lineItemIndex),
+      buffer
+    };
+  }
+
+  async allLineItemsLabelsZip(orderId: string) {
+    const order = await this.ordersRepository.findById(orderId);
+    if (!order) {
+      throw new NotFoundException('سفارش پیدا نشد.');
+    }
+
+    const lineItems = Array.isArray(order.lineItems) ? order.lineItems : [];
+    if (!lineItems.length) {
+      throw new BadRequestException('برای این سفارش آیتمی ثبت نشده است.');
+    }
+
+    const labels = await Promise.all(
+      lineItems.map(async (item, index) => ({
+        fileName: this.buildLabelFileName(order.orderNumber, index),
+        buffer: await this.renderLabelPdf(order, item, index)
+      }))
+    );
+
+    const zipBuffer = await this.createZipBuffer(labels);
+    return {
+      fileName: `labels-${order.orderNumber}.zip`,
+      buffer: zipBuffer
+    };
+  }
+
+  private withPaymentSummary<T extends { invoiceLinks?: Array<{ invoice?: { paidAmount: unknown; amount: unknown; status?: string } }>; invoices?: Array<{ paidAmount: unknown; amount: unknown; status?: string }>; stage?: string }>(order: T) {
+    const linkedInvoices = Array.isArray(order.invoiceLinks)
+      ? order.invoiceLinks.map((item) => item?.invoice).filter(Boolean)
+      : Array.isArray(order.invoices)
+        ? order.invoices
+        : [];
+
+    const normalizedInvoices = linkedInvoices.map((invoice: any) => ({
           ...invoice,
           status: deriveInvoiceStatus(invoice.amount, invoice.paidAmount)
-        }))
-      : [];
+        }));
     if (order.stage === 'CANCELLED') {
       return {
         ...order,
@@ -298,7 +347,7 @@ export class OrdersService extends BaseService {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
   }
 
-  private normalizeLineItems(items?: Array<{ meshTypeId: string; width: number; height: number; quantity: number; unitPrice: number }>) {
+  private normalizeLineItems(items?: Array<{ meshTypeId: string; width: number; height: number; quantity: number; unitPrice: number; description?: string }>) {
     if (!items?.length) return [];
 
     return items
@@ -307,7 +356,8 @@ export class OrdersService extends BaseService {
         width: Number(item.width ?? 0),
         height: Number(item.height ?? 0),
         quantity: Number(item.quantity ?? 0),
-        unitPrice: Number(item.unitPrice ?? 0)
+        unitPrice: Number(item.unitPrice ?? 0),
+        description: item.description?.trim()
       }))
       .filter((item) => Boolean(item.meshTypeId) && item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0)
       .map((item) => ({
@@ -316,11 +366,18 @@ export class OrdersService extends BaseService {
         height: toMoneyNumber(item.height),
         quantity: toMoneyNumber(item.quantity),
         unitPrice: toMoneyNumber(item.unitPrice),
-        lineTotal: toMoneyNumber(this.calculateLineTotal(item.quantity, item.unitPrice))
+        lineTotal: toMoneyNumber(this.calculateLineTotal(item.width, item.height, item.quantity, item.unitPrice)),
+        description: item.description || null
       }));
   }
 
-  private calculateLineTotal(quantity: unknown, unitPrice: unknown) {
+  private calculateLineTotal(width: unknown, height: unknown, quantity: unknown, unitPrice: unknown) {
+    const widthNumber = Number(width ?? 0);
+    const heightNumber = Number(height ?? 0);
+    const areaMeters = (widthNumber * heightNumber) / 10000;
+    if (areaMeters > 1) {
+      return multiplyMoney(quantity, unitPrice, areaMeters);
+    }
     return multiplyMoney(quantity, unitPrice);
   }
 
@@ -328,6 +385,144 @@ export class OrdersService extends BaseService {
     if (typeof value !== 'string') return undefined;
     const trimmed = value.trim();
     return trimmed || undefined;
+  }
+
+  private buildLabelFileName(orderNumber: string, index: number) {
+    return `${orderNumber}-item-${index + 1}.pdf`;
+  }
+
+  private mmToPx(mm: number) {
+    return Math.max(Math.round(mm * 3.7795275591), 1);
+  }
+
+  private getVazirmatnFontFaceCss() {
+    const candidates = [
+      path.resolve(process.cwd(), '../dashboard/public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
+      path.resolve(process.cwd(), 'public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2')
+    ];
+
+    for (const fontPath of candidates) {
+      if (!fs.existsSync(fontPath)) continue;
+      const encoded = fs.readFileSync(fontPath).toString('base64');
+      return `@font-face{font-family:'Vazirmatn';src:url(data:font/woff2;base64,${encoded}) format('woff2');font-weight:100 900;font-style:normal;font-display:swap;}`;
+    }
+
+    return '';
+  }
+
+  private escapeHtml(value: unknown) {
+    const text = String(value ?? '');
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  private renderLabelHtml(order: any, lineItem: any) {
+    const widthCm = Number(lineItem.width ?? 0);
+    const heightCm = Number(lineItem.height ?? 0);
+    const customerName = [order.customer?.firstName, order.customer?.lastName].filter(Boolean).join(' ') || '-';
+    const collaboratorName = [order.collaborator?.firstName, order.collaborator?.lastName].filter(Boolean).join(' ') || '-';
+    const collaboratorPhone = order.collaborator?.phone || '-';
+    const dimensions = `${widthCm}*${heightCm}`;
+    const fontFace = this.getVazirmatnFontFaceCss();
+
+    return `<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<style>
+${fontFace}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  padding:2mm;
+  width:100%;
+  height:100%;
+  font-family:'Vazirmatn',Tahoma,sans-serif;
+  direction:rtl;
+  color:#0f172a;
+}
+.label{
+  width:100%;
+  border:1px solid #cbd5e1;
+  border-radius:1.5mm;
+  padding:1.5mm 1mm;
+  display:flex;
+  flex-direction:column;
+  gap:1.1mm;
+  justify-content:center;
+  min-height:100%;
+}
+.line{
+  text-align:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.line-1{font-size:9px;font-weight:800}
+.line-2,.line-3,.line-4{font-size:7px;font-weight:600}
+</style>
+</head>
+<body>
+  <div class="label">
+    <div class="line line-1">${this.escapeHtml(dimensions)} cm</div>
+    <div class="line line-2">مشتری: ${this.escapeHtml(customerName)}</div>
+    <div class="line line-3">همکار: ${this.escapeHtml(collaboratorName)}</div>
+    <div class="line line-4">شماره همکار: ${this.escapeHtml(collaboratorPhone)}</div>
+  </div>
+</body>
+</html>`;
+  }
+
+  private async renderLabelPdf(order: any, lineItem: any, index: number) {
+    const widthMm = 25;
+    const heightMm = 40;
+    const widthPx = this.mmToPx(widthMm);
+    const heightPx = this.mmToPx(heightMm);
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: widthPx, height: heightPx });
+      await page.setContent(this.renderLabelHtml(order, lineItem), { waitUntil: 'domcontentloaded' });
+      const pdf = await page.pdf({
+        printBackground: true,
+        width: `${widthMm}mm`,
+        height: `${heightMm}mm`,
+        margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
+        preferCSSPageSize: true
+      });
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
+  }
+
+  private createZipBuffer(files: Array<{ fileName: string; buffer: Buffer }>) {
+    return new Promise<Buffer>((resolve, reject) => {
+      const output = new PassThrough();
+      const chunks: Buffer[] = [];
+      output.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      output.on('error', reject);
+      output.on('end', () => resolve(Buffer.concat(chunks)));
+
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      archive.on('error', reject);
+      archive.pipe(output);
+
+      for (const file of files) {
+        archive.append(file.buffer, { name: file.fileName });
+      }
+
+      void archive.finalize();
+    });
   }
 }
 

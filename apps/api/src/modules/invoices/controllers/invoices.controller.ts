@@ -9,6 +9,7 @@ import { InvoicesService } from '../services/invoices.service';
 import { CreateInvoiceDto } from '../dto/create-invoice.dto';
 import { UpdateInvoiceDto } from '../dto/update-invoice.dto';
 import { ListInvoicesQueryDto } from '../dto/list-invoices-query.dto';
+import { AddInvoicePaymentDto } from '../dto/add-invoice-payment.dto';
 
 @Resource('invoices')
 @Controller('invoices')
@@ -28,10 +29,22 @@ export class InvoicesController {
     return this.invoicesService.create(user.userId, dto);
   }
 
+  @Get(':id')
+  @Permission('invoices.all')
+  detail(@Param('id') id: string) {
+    return this.invoicesService.detail(id);
+  }
+
   @Patch(':id')
   @Permission('invoices.all')
   update(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: UpdateInvoiceDto) {
     return this.invoicesService.update(user.userId, id, dto);
+  }
+
+  @Post(':id/payments')
+  @Permission('invoices.all')
+  addPayment(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: AddInvoicePaymentDto) {
+    return this.invoicesService.addPayment(user.userId, id, dto);
   }
 
   @Delete(':id')

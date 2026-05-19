@@ -66,7 +66,7 @@ const parseRouteFromPath = (): RouteSnapshot => {
 const pathForTab = (tab: AppTab, detailId?: string) => {
   const base = `/${TAB_PATH[tab]}`;
   if (!detailId) return base;
-  if (tab === 'orders' || tab === 'collaborators' || tab === 'customers') {
+  if (tab === 'orders' || tab === 'collaborators' || tab === 'customers' || tab === 'invoices') {
     return `${base}/${encodeURIComponent(detailId)}`;
   }
   return base;
@@ -116,6 +116,8 @@ export function App() {
     const detailId =
       tab === 'orders'
         ? app.orderDetail?.id
+        : tab === 'invoices'
+          ? app.invoiceDetail?.id
         : tab === 'collaborators'
           ? app.collaboratorDetail?.id
           : tab === 'customers'
@@ -128,7 +130,7 @@ export function App() {
       return;
     }
     window.history.replaceState({}, '', targetPath);
-  }, [tab, app.orderDetail?.id, app.collaboratorDetail?.id, app.customerDetail?.id]);
+  }, [tab, app.orderDetail?.id, app.invoiceDetail?.id, app.collaboratorDetail?.id, app.customerDetail?.id]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -139,13 +141,23 @@ export function App() {
       setMobileSidebarOpen(false);
 
       if (pathTab === 'orders') {
+        app.closeInvoiceDetail();
         app.closeCollaboratorDetail();
         app.closeCustomerDetail();
         if (route.detailId) void app.openOrderDetail(route.detailId);
         else app.closeOrderDetail();
         return;
       }
+      if (pathTab === 'invoices') {
+        app.closeOrderDetail();
+        app.closeCollaboratorDetail();
+        app.closeCustomerDetail();
+        if (route.detailId) void app.openInvoiceDetail(route.detailId);
+        else app.closeInvoiceDetail();
+        return;
+      }
       if (pathTab === 'collaborators') {
+        app.closeInvoiceDetail();
         app.closeOrderDetail();
         app.closeCustomerDetail();
         if (route.detailId) void app.openCollaboratorDetail(route.detailId);
@@ -153,6 +165,7 @@ export function App() {
         return;
       }
       if (pathTab === 'customers') {
+        app.closeInvoiceDetail();
         app.closeOrderDetail();
         app.closeCollaboratorDetail();
         if (route.detailId) void app.openCustomerDetail(route.detailId);
@@ -160,6 +173,7 @@ export function App() {
         return;
       }
 
+      app.closeInvoiceDetail();
       app.closeOrderDetail();
       app.closeCollaboratorDetail();
       app.closeCustomerDetail();
@@ -180,13 +194,23 @@ export function App() {
     }
 
     if (nextTab === 'orders') {
+      app.closeInvoiceDetail();
       app.closeCollaboratorDetail();
       app.closeCustomerDetail();
       if (route.detailId) void app.openOrderDetail(route.detailId);
       else app.closeOrderDetail();
       return;
     }
+    if (nextTab === 'invoices') {
+      app.closeOrderDetail();
+      app.closeCollaboratorDetail();
+      app.closeCustomerDetail();
+      if (route.detailId) void app.openInvoiceDetail(route.detailId);
+      else app.closeInvoiceDetail();
+      return;
+    }
     if (nextTab === 'collaborators') {
+      app.closeInvoiceDetail();
       app.closeOrderDetail();
       app.closeCustomerDetail();
       if (route.detailId) void app.openCollaboratorDetail(route.detailId);
@@ -194,6 +218,7 @@ export function App() {
       return;
     }
     if (nextTab === 'customers') {
+      app.closeInvoiceDetail();
       app.closeOrderDetail();
       app.closeCollaboratorDetail();
       if (route.detailId) void app.openCustomerDetail(route.detailId);
@@ -201,6 +226,7 @@ export function App() {
       return;
     }
 
+    app.closeInvoiceDetail();
     app.closeOrderDetail();
     app.closeCollaboratorDetail();
     app.closeCustomerDetail();
@@ -269,6 +295,10 @@ export function App() {
       app.closeOrderDetail();
       return;
     }
+    if (targetTab === 'invoices') {
+      app.closeInvoiceDetail();
+      return;
+    }
     if (targetTab === 'collaborators') {
       app.closeCollaboratorDetail();
       return;
@@ -322,6 +352,18 @@ export function App() {
     }
   };
 
+  const openInvoiceDetailWithRoute = async (id: string) => {
+    if (tab !== 'invoices') {
+      setTabHistory((history) => [...history, tab]);
+      setTab('invoices');
+    }
+    await app.openInvoiceDetail(id);
+    const targetPath = pathForTab('invoices', id);
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
   const openCollaboratorDetailWithRoute = async (id: string) => {
     if (tab !== 'collaborators') {
       setTabHistory((history) => [...history, tab]);
@@ -354,6 +396,14 @@ export function App() {
     }
   };
 
+  const closeInvoiceDetailWithRoute = () => {
+    app.closeInvoiceDetail();
+    const targetPath = pathForTab('invoices');
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
   const closeCollaboratorDetailWithRoute = () => {
     app.closeCollaboratorDetail();
     const targetPath = pathForTab('collaborators');
@@ -370,7 +420,11 @@ export function App() {
     }
   };
 
-  const openNotificationTarget = (item: { type: 'INVOICE_DUE' | 'ORDER_DUE'; orderId?: string }) => {
+  const openNotificationTarget = (item: { type: 'INVOICE_DUE' | 'ORDER_DUE'; orderId?: string; invoiceId?: string }) => {
+    if (item.type === 'INVOICE_DUE' && item.invoiceId) {
+      void openInvoiceDetailWithRoute(item.invoiceId);
+      return;
+    }
     if (item.orderId) {
       void openOrderDetailWithRoute(item.orderId);
       return;
@@ -386,9 +440,11 @@ export function App() {
   const contextValue = {
     ...app,
     openOrderDetail: openOrderDetailWithRoute,
+    openInvoiceDetail: openInvoiceDetailWithRoute,
     openCollaboratorDetail: openCollaboratorDetailWithRoute,
     openCustomerDetail: openCustomerDetailWithRoute,
     closeOrderDetail: closeOrderDetailWithRoute,
+    closeInvoiceDetail: closeInvoiceDetailWithRoute,
     closeCollaboratorDetail: closeCollaboratorDetailWithRoute,
     closeCustomerDetail: closeCustomerDetailWithRoute,
     currentTab: tab,

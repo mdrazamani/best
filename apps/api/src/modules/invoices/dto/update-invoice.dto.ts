@@ -18,17 +18,6 @@ export class UpdateInvoiceDto {
   discountAmount?: number;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  extraAmount?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  paidAmount?: number;
-
-  @IsOptional()
   @IsIn(['UNPAID', 'PARTIAL', 'PAID'])
   status?: 'UNPAID' | 'PARTIAL' | 'PAID';
 

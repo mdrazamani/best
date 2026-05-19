@@ -29,7 +29,7 @@ export function DashboardPage() {
   }
 
   const statItems = [
-    { label: 'کل سفارشات', value: dashboard.totalOrders, icon: ShoppingBag },
+    { label: 'کل تعداد توری‌ها', value: Number(dashboard.totalMeshes ?? 0), icon: ShoppingBag },
     { label: 'سفارشات امروز', value: dashboard.ordersToday, icon: Activity },
     { label: 'در حال انجام', value: dashboard.processingOrders, icon: Timer },
     { label: 'کل فروش', value: money(dashboard.totalSales), icon: CircleDollarSign },
@@ -41,7 +41,7 @@ export function DashboardPage() {
   const orderBadgeVariant = (stage?: string): 'secondary' | 'warning' | 'success' | 'destructive' => {
     if (stage === 'CANCELLED') return 'destructive';
     if (stage === 'DELIVERED') return 'success';
-    if (stage === 'IN_PROGRESS' || stage === 'STARTED') return 'warning';
+    if (stage === 'IN_PROGRESS') return 'warning';
     return 'secondary';
   };
 
@@ -104,7 +104,9 @@ export function DashboardPage() {
                       <p className="font-semibold text-primary">{order.orderNumber}</p>
                       <Badge variant={orderBadgeVariant(order.stage)}>{orderStageLabel(order.stage)}</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">{fullName(order.customer)} • {shamsiDate(order.createdAt)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {fullName(order.customer)} • {shamsiDate(order.createdAt)}
+                    </p>
                     <p className="text-sm font-semibold">
                       {money(Number(order.paymentSummary?.paidAmount ?? 0))} / {money(Number(order.paymentSummary?.total ?? 0))}
                     </p>
@@ -133,16 +135,25 @@ export function DashboardPage() {
                     type="button"
                     className="flex w-full flex-col gap-2 p-3 text-right transition-colors hover:bg-primary/5"
                     onClick={() => {
-                      void openOrderDetail(invoice.order.id);
-                      navigateToTab('orders');
+                      const firstOrderId = invoice.order?.id ?? invoice.orders?.[0]?.id;
+                      if (firstOrderId) {
+                        void openOrderDetail(firstOrderId);
+                        navigateToTab('orders');
+                      } else {
+                        navigateToTab('invoices');
+                      }
                     }}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-semibold text-primary">{invoice.invoiceNumber}</p>
                       <Badge variant={invoiceBadgeVariant(invoice.status)}>{invoiceStatusLabel(invoice.status)}</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">سفارش {invoice.order.orderNumber} • {shamsiDate(invoice.createdAt)}</p>
-                    <p className="text-sm font-semibold">{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</p>
+                    <p className="text-xs text-muted-foreground">
+                      سفارش {(invoice.order?.orderNumber ?? invoice.orders?.[0]?.orderNumber ?? '-')} • {shamsiDate(invoice.createdAt)}
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -153,3 +164,4 @@ export function DashboardPage() {
     </section>
   );
 }
+

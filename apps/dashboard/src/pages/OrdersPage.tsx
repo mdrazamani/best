@@ -1,6 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, ClipboardList, Download, Eye, FileText, History, List, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
-import { toast } from 'react-toastify';
 import { useBestContext } from '../contexts/best-context';
 import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
 import { Button } from '../components/ui/button';
@@ -8,49 +7,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { SearchableSelect } from '../components/ui/searchable-select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { EmptyState } from '../components/shared/empty-state';
 import { Pagination } from '../components/shared/pagination';
 import { PersianDatePicker } from '../components/ui/persian-date-picker';
+import { CreateOrderDialog } from '../components/modals/CreateOrderDialog';
 
 const PAGE_SIZE = 10;
-const DEFAULT_VAT_RATE = 10;
 const INVOICE_STATUS_OPTIONS = [
   { value: 'UNPAID', label: 'پرداخت نشده' },
   { value: 'PARTIAL', label: 'ناقص' },
   { value: 'PAID', label: 'پرداخت شده' }
 ] as const;
 
-type LineItemForm = {
-  id: string;
-  meshTypeId: string;
-  width: string;
-  height: string;
-  quantity: string;
-  unitPrice: string;
-};
-
-const createLineItem = (): LineItemForm => ({
-  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-  meshTypeId: '',
-  width: '',
-  height: '',
-  quantity: '',
-  unitPrice: ''
-});
-
 const toNumber = (value: string) => {
   const normalized = value.trim();
   if (!normalized) return 0;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const calculateLineTotal = (quantity: number, unitPrice: number) => {
-  return quantity * unitPrice;
 };
 
 const payerTypeLabel = (value?: string) => {
@@ -71,14 +48,15 @@ export function OrdersPage() {
     orders,
     orderDetail,
     createOrder,
+    createCustomer,
     updateOrder,
     removeOrder,
     openOrderDetail,
+    openInvoiceDetail,
     closeOrderDetail,
     openCustomerDetail,
     openCollaboratorDetail,
     createInvoice,
-    updateInvoice,
     navigateToTab,
     downloadProtected
   } = useBestContext();
@@ -91,41 +69,31 @@ export function OrdersPage() {
   const [stageFilter, setStageFilter] = useState<'all' | string>('all');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
 
-  const [form, setForm] = useState({
-    title: '',
-    customerId: '',
-    collaboratorId: '',
-    workType: 'NEW_CONSTRUCTION',
-    expectedCompletionDate: '',
-    description: ''
-  });
-  const [lineItems, setLineItems] = useState<LineItemForm[]>([createLineItem()]);
-  const [finalPrice, setFinalPrice] = useState('');
-  const [finalPriceOverridden, setFinalPriceOverridden] = useState(false);
-  const [discountAmount, setDiscountAmount] = useState('');
-  const [vatEnabled, setVatEnabled] = useState(true);
-  const [vatRate, setVatRate] = useState(String(DEFAULT_VAT_RATE));
-  const [createInitialInvoice, setCreateInitialInvoice] = useState(true);
-
   const [selectedStage, setSelectedStage] = useState('RECEIVED');
   const [detailStageDraft, setDetailStageDraft] = useState('RECEIVED');
-  const [invoiceStatusDrafts, setInvoiceStatusDrafts] = useState<Record<string, string>>({});
-  const [savingInvoiceId, setSavingInvoiceId] = useState<string | null>(null);
+  const [detailStageSaving, setDetailStageSaving] = useState(false);
   const [detailInvoiceOpen, setDetailInvoiceOpen] = useState(false);
   const [detailInvoiceSubmitting, setDetailInvoiceSubmitting] = useState(false);
   const [detailInvoiceForm, setDetailInvoiceForm] = useState({
     title: '',
     amount: '',
     discountAmount: '',
-    extraAmount: '',
-    paidAmount: '0',
+    initialPaidAmount: '',
     status: 'UNPAID',
     payerType: 'CUSTOMER',
     dueDate: '',
     description: ''
   });
 
-  const customerOptions = useMemo(() => customers.map((item) => ({ value: item.id, label: fullName(item) })), [customers]);
+  const customerOptions = useMemo(
+    () =>
+      customers.map((item) => ({
+        value: item.id,
+        label: fullName(item),
+        referredByCollaboratorId: item.referredByCollaborator?.id ?? null
+      })),
+    [customers]
+  );
   const collaboratorOptions = useMemo(
     () => [{ value: '', label: 'بدون همکار' }, ...collaborators.map((item) => ({ value: item.id, label: fullName(item) }))],
     [collaborators]
@@ -175,38 +143,6 @@ export function OrdersPage() {
     return filteredOrders.slice(start, start + PAGE_SIZE);
   }, [filteredOrders, page, totalPages]);
 
-  const calculatedTotal = useMemo(() => {
-    return lineItems.reduce((sum, item) => {
-      const quantity = toNumber(item.quantity);
-      const unitPrice = toNumber(item.unitPrice);
-      return sum + calculateLineTotal(quantity, unitPrice);
-    }, 0);
-  }, [lineItems]);
-
-  const discountValue = useMemo(() => toNumber(discountAmount), [discountAmount]);
-  const vatRateValue = useMemo(() => Math.max(toNumber(vatRate), 0), [vatRate]);
-  const extraValue = useMemo(() => (vatEnabled ? (calculatedTotal * vatRateValue) / 100 : 0), [calculatedTotal, vatEnabled, vatRateValue]);
-  const adjustedTotal = useMemo(() => Math.max(calculatedTotal + extraValue - discountValue, 0), [calculatedTotal, extraValue, discountValue]);
-
-  useEffect(() => {
-    if (!createOpen) {
-      setForm({ title: '', customerId: '', collaboratorId: '', workType: 'NEW_CONSTRUCTION', expectedCompletionDate: '', description: '' });
-      setLineItems([createLineItem()]);
-      setFinalPrice('');
-      setFinalPriceOverridden(false);
-      setDiscountAmount('');
-      setVatEnabled(true);
-      setVatRate(String(DEFAULT_VAT_RATE));
-      setCreateInitialInvoice(true);
-    }
-  }, [createOpen]);
-
-  useEffect(() => {
-    if (!finalPriceOverridden) {
-      setFinalPrice(adjustedTotal ? String(adjustedTotal) : '');
-    }
-  }, [adjustedTotal, finalPriceOverridden]);
-
   useEffect(() => {
     if (orderDetail?.stage) {
       setDetailStageDraft(orderDetail.stage);
@@ -220,65 +156,13 @@ export function OrdersPage() {
       title: '',
       amount: remainingAmount > 0 ? String(remainingAmount) : '',
       discountAmount: '',
-      extraAmount: '',
-      paidAmount: '0',
+      initialPaidAmount: '',
       status: 'UNPAID',
       payerType: orderDetail.collaborator?.id ? 'COLLABORATOR' : 'CUSTOMER',
       dueDate: orderDetail.expectedCompletionDate ?? '',
       description: ''
     });
   }, [orderDetail?.id, orderDetail?.paymentSummary?.remainingAmount, orderDetail?.paymentSummary?.total, orderDetail?.totalPrice, orderDetail?.collaborator?.id, orderDetail?.expectedCompletionDate]);
-
-  const updateLineItem = (id: string, key: keyof Omit<LineItemForm, 'id'>, value: string) => {
-    setLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
-  };
-
-  const addLineItem = () => setLineItems((prev) => [...prev, createLineItem()]);
-
-  const removeLineItem = (id: string) => {
-    setLineItems((prev) => (prev.length === 1 ? prev : prev.filter((item) => item.id !== id)));
-  };
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!form.customerId.trim() && !form.collaboratorId.trim()) {
-      toast.error('برای ثبت سفارش، حداقل یکی از مشتری یا همکار را انتخاب کنید.');
-      return;
-    }
-
-    const normalizedLineItems = lineItems
-      .map((item) => ({
-        meshTypeId: item.meshTypeId,
-        width: toNumber(item.width),
-        height: toNumber(item.height),
-        quantity: toNumber(item.quantity),
-        unitPrice: toNumber(item.unitPrice)
-      }))
-      .filter((item) => item.meshTypeId && item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0);
-
-    const firstLine = normalizedLineItems[0];
-    const payloadTotal = finalPrice.trim() ? Number(finalPrice) : adjustedTotal;
-
-    await createOrder({
-      title: form.title || undefined,
-      customerId: form.customerId || undefined,
-      collaboratorId: form.collaboratorId || null,
-      workType: form.workType,
-      expectedCompletionDate: form.expectedCompletionDate || undefined,
-      width: firstLine?.width,
-      height: firstLine?.height,
-      quantity: firstLine?.quantity,
-      unitPrice: firstLine?.unitPrice,
-      lineItems: normalizedLineItems,
-      totalPrice: Number.isFinite(payloadTotal) ? payloadTotal : 0,
-      discountAmount: discountValue,
-      extraAmount: extraValue,
-      createInitialInvoice,
-      description: form.description || undefined
-    });
-
-    setCreateOpen(false);
-  };
 
   const openStageDialog = (orderId: string, currentStage: string) => {
     setStageOrderId(orderId);
@@ -297,21 +181,14 @@ export function OrdersPage() {
     await openOrderDetail(orderId);
   };
 
-  const saveDetailStage = async () => {
+  const saveDetailStage = async (nextStage: string) => {
     if (!orderDetail?.id) return;
-    await updateOrder(orderDetail.id, { stage: detailStageDraft });
-    await openOrderDetail(orderDetail.id);
-  };
-
-  const saveInvoiceStatus = async (invoiceId: string, fallbackStatus: string) => {
-    if (!orderDetail?.id) return;
-    const nextStatus = invoiceStatusDrafts[invoiceId] ?? fallbackStatus;
-    setSavingInvoiceId(invoiceId);
+    setDetailStageSaving(true);
     try {
-      await updateInvoice(invoiceId, { status: nextStatus });
+      await updateOrder(orderDetail.id, { stage: nextStage });
       await openOrderDetail(orderDetail.id);
     } finally {
-      setSavingInvoiceId(null);
+      setDetailStageSaving(false);
     }
   };
 
@@ -321,18 +198,16 @@ export function OrdersPage() {
 
     const amount = toNumber(detailInvoiceForm.amount);
     const discountAmount = toNumber(detailInvoiceForm.discountAmount);
-    const extraAmount = toNumber(detailInvoiceForm.extraAmount);
-    const paidAmount = toNumber(detailInvoiceForm.paidAmount);
+    const initialPaidAmount = toNumber(detailInvoiceForm.initialPaidAmount);
 
     setDetailInvoiceSubmitting(true);
     try {
       await createInvoice({
         title: detailInvoiceForm.title || undefined,
-        orderId: orderDetail.id,
+        orderIds: [orderDetail.id],
         amount,
         discountAmount,
-        extraAmount,
-        paidAmount,
+        initialPaidAmount,
         status: detailInvoiceForm.status,
         payerType: detailInvoiceForm.payerType,
         payerId: detailInvoiceForm.payerType === 'COLLABORATOR' ? orderDetail.collaborator?.id : orderDetail.customer?.id,
@@ -356,8 +231,7 @@ export function OrdersPage() {
     const detailPaidAmount = Number(orderDetail.paymentSummary?.paidAmount ?? 0);
     const detailRemainingAmount = Number(orderDetail.paymentSummary?.remainingAmount ?? 0);
     const detailDiscount = detailInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice?.discountAmount ?? 0), 0);
-    const detailExtra = detailInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice?.extraAmount ?? 0), 0);
-    const detailBase = Math.max(detailTotal - detailExtra + detailDiscount, 0);
+    const detailBase = Math.max(detailTotal + detailDiscount, 0);
     const detailMoneyLabel = (value: number) => (hasInvoices ? money(value) : '-');
 
     return (
@@ -400,14 +274,16 @@ export function OrdersPage() {
             <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_auto]">
               <SearchableSelect
                 value={detailStageDraft || orderDetail.stage}
-                onChange={setDetailStageDraft}
+                onChange={(value) => {
+                  setDetailStageDraft(value);
+                  void saveDetailStage(value);
+                }}
                 options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
                 placeholder="تغییر مرحله سفارش"
                 isSearchable={false}
+                disabled={detailStageSaving}
               />
-              <Button variant="outline" onClick={() => void saveDetailStage()}>
-                ذخیره مرحله
-              </Button>
+              <div className="flex items-center px-2 text-xs text-muted-foreground">{detailStageSaving ? 'در حال ذخیره...' : 'تغییر خودکار'}</div>
             </div>
             {!hasInvoices ? (
               <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2 text-sm text-amber-900">
@@ -421,10 +297,6 @@ export function OrdersPage() {
                 <p className="text-xs text-muted-foreground">مبلغ کل سفارش</p>
                 <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailTotal)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">پایه: {hasInvoices ? money(detailBase) : '-'}</p>
-              </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">مبلغ مالیات ارزش افزوده</p>
-                <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailExtra)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">تخفیف</p>
@@ -518,6 +390,7 @@ export function OrdersPage() {
                     <TableHead>تعداد</TableHead>
                     <TableHead>قیمت واحد</TableHead>
                     <TableHead>جمع ردیف</TableHead>
+                    <TableHead>توضیحات</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -529,6 +402,7 @@ export function OrdersPage() {
                       <TableCell>{Number(item.quantity ?? 0)}</TableCell>
                       <TableCell>{money(Number(item.unitPrice ?? 0))}</TableCell>
                       <TableCell className="font-semibold">{money(Number(item.lineTotal ?? 0))}</TableCell>
+                      <TableCell>{item.description || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -543,7 +417,7 @@ export function OrdersPage() {
               <FileText className="h-5 w-5 text-muted-foreground" />
               فاکتورهای سفارش و وضعیت پرداخت
             </CardTitle>
-            <Button onClick={() => setDetailInvoiceOpen(true)}>
+            <Button onClick={() => setDetailInvoiceOpen(true)} disabled={detailInvoices.length > 0}>
               <Plus className="h-4 w-4" />
               افزودن فاکتور
             </Button>
@@ -563,7 +437,7 @@ export function OrdersPage() {
                     <TableHead>سررسید</TableHead>
                     <TableHead>تاریخ ثبت</TableHead>
                     <TableHead>دانلود</TableHead>
-                    <TableHead>بروزرسانی وضعیت</TableHead>
+                    <TableHead>مشاهده جزئیات</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -579,9 +453,7 @@ export function OrdersPage() {
                       </TableCell>
                       <TableCell>
                         <div>{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</div>
-                        <div className="text-xs text-muted-foreground">
-                          افزوده: {money(Number(invoice.extraAmount ?? 0))} | تخفیف: {money(Number(invoice.discountAmount ?? 0))}
-                        </div>
+                        <div className="text-xs text-muted-foreground">تخفیف: {money(Number(invoice.discountAmount ?? 0))}</div>
                       </TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
                       <TableCell>{shamsiDate(invoice.createdAt)}</TableCell>
@@ -599,24 +471,16 @@ export function OrdersPage() {
                       </TableCell>
                       <TableCell>
                         {invoice.id ? (
-                          <div className="flex w-full min-w-[170px] items-center gap-2 sm:min-w-[230px]">
-                            <SearchableSelect
-                              value={invoiceStatusDrafts[invoice.id] ?? invoice.status}
-                              onChange={(value) => setInvoiceStatusDrafts((prev) => ({ ...prev, [invoice.id]: value }))}
-                              options={INVOICE_STATUS_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
-                              placeholder="انتخاب وضعیت"
-                              isSearchable={false}
-                              className="flex-1"
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={savingInvoiceId === invoice.id}
-                              onClick={() => void saveInvoiceStatus(invoice.id, invoice.status)}
-                            >
-                              ذخیره
-                            </Button>
-                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              void openInvoiceDetail(invoice.id);
+                              navigateToTab('invoices');
+                            }}
+                          >
+                            جزئیات
+                          </Button>
                         ) : '-'}
                       </TableCell>
                     </TableRow>
@@ -653,14 +517,6 @@ export function OrdersPage() {
                   type="number"
                   min="0"
                   step="0.01"
-                  value={detailInvoiceForm.extraAmount}
-                  placeholder="مبلغ  مالیات ارزش افزوده"
-                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, extraAmount: e.target.value }))}
-                />
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
                   value={detailInvoiceForm.discountAmount}
                   placeholder="تخفیف"
                   onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, discountAmount: e.target.value }))}
@@ -669,9 +525,9 @@ export function OrdersPage() {
                   type="number"
                   min="0"
                   step="0.01"
-                  value={detailInvoiceForm.paidAmount}
-                  placeholder="مبلغ پرداختی"
-                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, paidAmount: e.target.value }))}
+                  value={detailInvoiceForm.initialPaidAmount}
+                  placeholder="پرداخت اولیه"
+                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, initialPaidAmount: e.target.value }))}
                 />
                 <SearchableSelect
                   value={detailInvoiceForm.status}
@@ -758,154 +614,10 @@ export function OrdersPage() {
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-2xl font-extrabold">مدیریت سفارشات</CardTitle>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4" />
-                ثبت سفارش
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-5xl lg:max-w-6xl">
-              <DialogHeader>
-                <DialogTitle className="text-xl font-bold">ثبت سفارش جدید</DialogTitle>
-                <DialogDescription>اطلاعات سفارش را کامل کنید.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={submit} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Input value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} placeholder="عنوان سفارش (اختیاری)" className="md:col-span-2" />
-                  <SearchableSelect options={customerOptions} value={form.customerId} onChange={(value) => setForm((prev) => ({ ...prev, customerId: value }))} placeholder="انتخاب مشتری" />
-                  <SearchableSelect options={collaboratorOptions} value={form.collaboratorId} onChange={(value) => setForm((prev) => ({ ...prev, collaboratorId: value }))} placeholder="انتخاب همکار" />
-                  <SearchableSelect options={WORK_TYPES.map((item) => ({ value: item.value, label: item.label }))} value={form.workType} onChange={(value) => setForm((prev) => ({ ...prev, workType: value }))} placeholder="نوع کار" />
-                  <div className="md:col-span-2">
-                    <PersianDatePicker value={form.expectedCompletionDate} onChange={(value) => setForm((prev) => ({ ...prev, expectedCompletionDate: value ?? '' }))} placeholder="تاریخ تکمیل تقریبی" />
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-slate-300/70 bg-muted/20 p-3 dark:border-slate-700/80">
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold">ردیف‌های سفارش</p>
-                    <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
-                      <Plus className="h-4 w-4" />
-                      افزودن ردیف
-                    </Button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {lineItems.map((item, index) => {
-                      const lineTotal = calculateLineTotal(toNumber(item.quantity), toNumber(item.unitPrice));
-                      return (
-                        <div key={item.id} className="rounded-lg border border-slate-300/70 bg-card p-3 dark:border-slate-700/80">
-                          <div className="mb-2 flex items-center justify-between">
-                            <p className="text-xs font-semibold text-muted-foreground">ردیف {index + 1}</p>
-                            <Button type="button" variant="ghost" size="icon" disabled={lineItems.length === 1} onClick={() => removeLineItem(item.id)} aria-label="حذف ردیف">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="grid gap-3 md:grid-cols-6">
-                            <SearchableSelect options={meshOptions} value={item.meshTypeId} onChange={(value) => updateLineItem(item.id, 'meshTypeId', value)} placeholder="نوع توری" />
-                            <Input type="number" min="0" step="0.01" value={item.width} placeholder="عرض" onChange={(e) => updateLineItem(item.id, 'width', e.target.value)} />
-                            <Input type="number" min="0" step="0.01" value={item.height} placeholder="ارتفاع" onChange={(e) => updateLineItem(item.id, 'height', e.target.value)} />
-                            <Input type="number" min="0" step="0.01" value={item.quantity} placeholder="تعداد" onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)} />
-                            <Input type="number" min="0" step="0.01" value={item.unitPrice} placeholder="قیمت واحد" onChange={(e) => updateLineItem(item.id, 'unitPrice', e.target.value)} />
-                            <div className="flex h-10 items-center rounded-md border border-input bg-background px-3 text-sm font-semibold text-primary">{money(lineTotal)}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="space-y-3 rounded-lg border border-slate-300/70 bg-muted/10 p-3 dark:border-slate-700/80">
-                  <p className="text-sm font-semibold">جمع‌بندی مالی</p>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div>
-                      <p className="mb-1 text-xs text-muted-foreground">جمع محاسباتی</p>
-                      <div className="flex h-10 items-center rounded-md border border-input bg-background px-3 text-sm font-semibold text-primary">{money(calculatedTotal)}</div>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-xs text-muted-foreground">تخفیف</p>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={discountAmount}
-                        placeholder="مبلغ تخفیف"
-                        onChange={(e) => {
-                          setDiscountAmount(e.target.value);
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 rounded-md border border-dashed border-slate-300/80 p-3 dark:border-slate-700/80 md:grid-cols-[auto_1fr_auto] md:items-end">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-primary"
-                        checked={vatEnabled}
-                        onChange={(e) => {
-                          setVatEnabled(e.target.checked);
-                          if (e.target.checked && !vatRate.trim()) {
-                            setVatRate(String(DEFAULT_VAT_RATE));
-                          }
-                        }}
-                      />
-                      اعمال مالیات ارزش افزوده
-                    </label>
-                    <div>
-                      <p className="mb-1 text-xs text-muted-foreground">درصد مالیات</p>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={vatRate}
-                        disabled={!vatEnabled}
-                        placeholder="درصد (پیش‌فرض 10)"
-                        onChange={(e) => setVatRate(e.target.value)}
-                      />
-                    </div>
-                    <div className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-primary">
-                      {money(extraValue)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-1 text-xs text-muted-foreground">مبلغ نهایی (قابل تغییر)</p>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={finalPrice}
-                      placeholder="مبلغ نهایی"
-                      onChange={(e) => {
-                        setFinalPrice(e.target.value);
-                        setFinalPriceOverridden(true);
-                      }}
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      محاسبه خودکار: {money(adjustedTotal)} = {money(calculatedTotal)} + {money(extraValue)} - {money(discountValue)}
-                    </p>
-                  </div>
-                </div>
-
-                <label className="flex items-center gap-2 rounded-md border border-dashed border-slate-300/80 bg-muted/15 px-3 py-2 text-sm dark:border-slate-700/80">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 accent-primary"
-                    checked={createInitialInvoice}
-                    onChange={(e) => setCreateInitialInvoice(e.target.checked)}
-                  />
-                  <span>بعد از ثبت سفارش، فاکتور اولیه به‌صورت خودکار ساخته شود.</span>
-                </label>
-
-                <Textarea placeholder="توضیحات" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
-                <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>انصراف</Button>
-                  <Button type="submit">ذخیره سفارش</Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            ثبت سفارش
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="mb-4 grid gap-3 md:grid-cols-4">
@@ -1035,6 +747,25 @@ export function OrdersPage() {
           )}
         </CardContent>
       </Card>
+      <CreateOrderDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        customerOptions={customerOptions}
+        collaboratorOptions={collaboratorOptions.filter((item) => item.value)}
+        meshOptions={meshOptions}
+        onQuickCreateCustomer={async (payload) => {
+          const created = await createCustomer(payload as Record<string, unknown>);
+          if (!created) return null;
+          const id = (created as any).id as string | undefined;
+          const firstName = (created as any).firstName as string | undefined;
+          const lastName = (created as any).lastName as string | undefined;
+          if (!id) return null;
+          return { id, label: [firstName, lastName].filter(Boolean).join(' ').trim() || 'مشتری جدید' };
+        }}
+        onSubmit={async (payload) => {
+          await createOrder(payload as Record<string, unknown>);
+        }}
+      />
 
       <Dialog open={stageOpen} onOpenChange={setStageOpen}>
         <DialogContent>

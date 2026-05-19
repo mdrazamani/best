@@ -12,12 +12,21 @@ export class ReportsService extends BaseService {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [totalOrders, ordersToday, processingOrders, totalSalesAgg, receivedAmountAgg, unpaidInvoices] = await Promise.all([
+    const [totalOrders, totalMeshesAgg, ordersToday, processingOrders, totalSalesAgg, receivedAmountAgg, unpaidInvoices] = await Promise.all([
       this.prisma.order.count({
         where: {
           deletedAt: null,
           stage: { not: 'CANCELLED' }
         }
+      }),
+      this.prisma.orderLineItem.aggregate({
+        where: {
+          order: {
+            deletedAt: null,
+            stage: { not: 'CANCELLED' }
+          }
+        },
+        _sum: { quantity: true }
       }),
       this.prisma.order.count({
         where: {
@@ -29,15 +38,19 @@ export class ReportsService extends BaseService {
       this.prisma.order.count({
         where: {
           deletedAt: null,
-          stage: { in: ['STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE'] }
+          stage: { in: ['IN_PROGRESS', 'READY_IN_WAREHOUSE'] }
         }
       }),
       this.prisma.invoice.aggregate({
         where: {
           deletedAt: null,
-          order: {
-            deletedAt: null,
-            stage: { not: 'CANCELLED' }
+          orders: {
+            some: {
+              order: {
+                deletedAt: null,
+                stage: { not: 'CANCELLED' }
+              }
+            }
           }
         },
         _sum: { amount: true }
@@ -45,9 +58,13 @@ export class ReportsService extends BaseService {
       this.prisma.invoice.aggregate({
         where: {
           deletedAt: null,
-          order: {
-            deletedAt: null,
-            stage: { not: 'CANCELLED' }
+          orders: {
+            some: {
+              order: {
+                deletedAt: null,
+                stage: { not: 'CANCELLED' }
+              }
+            }
           }
         },
         _sum: { paidAmount: true }
@@ -55,9 +72,13 @@ export class ReportsService extends BaseService {
       this.prisma.invoice.count({
         where: {
           deletedAt: null,
-          order: {
-            deletedAt: null,
-            stage: { not: 'CANCELLED' }
+          orders: {
+            some: {
+              order: {
+                deletedAt: null,
+                stage: { not: 'CANCELLED' }
+              }
+            }
           },
           status: { not: 'PAID' }
         }
@@ -65,11 +86,13 @@ export class ReportsService extends BaseService {
     ]);
 
     const totalSales = Number(totalSalesAgg._sum.amount ?? 0);
+    const totalMeshes = Number(totalMeshesAgg._sum.quantity ?? 0);
     const receivedAmount = Number(receivedAmountAgg._sum.paidAmount ?? 0);
     const remainingAmount = Math.max(totalSales - receivedAmount, 0);
 
     return {
       totalOrders,
+      totalMeshes,
       ordersToday,
       processingOrders,
       totalSales,

@@ -5,10 +5,9 @@ export type OrderEntity = {
   customerId: string;
   collaboratorId?: string | null;
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
-  stage: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+  stage: 'RECEIVED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
   totalPrice: string;
   discountAmount: string;
-  extraAmount: string;
   expectedCompletionDate?: Date | null;
   lineItems?: Array<{
     id: string;
@@ -22,5 +21,6 @@ export type OrderEntity = {
     quantity: string;
     unitPrice: string;
     lineTotal: string;
+    description?: string | null;
   }>;
 };

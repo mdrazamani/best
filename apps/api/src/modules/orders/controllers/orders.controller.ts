@@ -1,4 +1,5 @@
-﻿import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { FastifyReply } from 'fastify';
 import { Resource } from '../../../common/decorators/resource.decorator';
 import { Permission } from '../../../common/decorators/permission.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../../common/decorators/current-user.decorator';
@@ -27,6 +28,26 @@ export class OrdersController {
     return this.ordersService.detail(id);
   }
 
+  @Get(':id/line-items/:lineItemId/label')
+  @Permission('orders.all')
+  async lineItemLabel(@Param('id') id: string, @Param('lineItemId') lineItemId: string, @Res() reply: FastifyReply) {
+    const file = await this.ordersService.lineItemLabelPdf(id, lineItemId);
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename=${file.fileName}`)
+      .send(file.buffer);
+  }
+
+  @Get(':id/line-items/labels.zip')
+  @Permission('orders.all')
+  async allLineItemsLabels(@Param('id') id: string, @Res() reply: FastifyReply) {
+    const file = await this.ordersService.allLineItemsLabelsZip(id);
+    reply
+      .header('Content-Type', 'application/zip')
+      .header('Content-Disposition', `attachment; filename=${file.fileName}`)
+      .send(file.buffer);
+  }
+
   @Post()
   @Permission('orders.all')
   create(@CurrentUser() user: CurrentUserPayload, @Body() dto: CreateOrderDto) {
@@ -45,3 +66,4 @@ export class OrdersController {
     return this.ordersService.remove(user.userId, id);
   }
 }
+

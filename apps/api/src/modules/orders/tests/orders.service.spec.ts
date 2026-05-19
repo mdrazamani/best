@@ -105,7 +105,7 @@ describe('OrdersService', () => {
     expect(result.paymentSummary.status).toBe('unpaid');
   });
 
-  it('applies discount and extra amounts to auto invoice when creating order', async () => {
+  it('applies discount when creating order', async () => {
     ordersRepository.createWithInitialInvoice.mockResolvedValue({
       id: 'order-1',
       collaboratorId: null,
@@ -113,7 +113,7 @@ describe('OrdersService', () => {
     });
     ordersRepository.findById.mockResolvedValue({
       id: 'order-1',
-      totalPrice: 70,
+      totalPrice: 50,
       invoices: []
     });
 
@@ -121,25 +121,22 @@ describe('OrdersService', () => {
       customerId: 'customer-1',
       workType: 'NEW_CONSTRUCTION',
       lineItems: [{ meshTypeId: 'mesh-1', width: 200, height: 300, quantity: 1, unitPrice: 100 }],
-      discountAmount: 50,
-      extraAmount: 20
+      discountAmount: 50
     } as any);
 
     expect(ordersRepository.createWithInitialInvoice).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalPrice: 70,
+        totalPrice: 50,
         discountAmount: 50,
-        extraAmount: 20,
         initialInvoice: expect.objectContaining({
-          amount: 70,
-          discountAmount: 50,
-          extraAmount: 20
+          amount: 50,
+          discountAmount: 50
         })
       })
     );
   });
 
-  it('uses 10 percent vat by default when extra amount is not provided', async () => {
+  it('does not send extra amount fields in create payload', async () => {
     ordersRepository.createWithInitialInvoice.mockResolvedValue({
       id: 'order-2',
       collaboratorId: null,
@@ -147,7 +144,7 @@ describe('OrdersService', () => {
     });
     ordersRepository.findById.mockResolvedValue({
       id: 'order-2',
-      totalPrice: 110,
+      totalPrice: 100,
       invoices: []
     });
 
@@ -159,14 +156,15 @@ describe('OrdersService', () => {
 
     expect(ordersRepository.createWithInitialInvoice).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalPrice: 110,
-        extraAmount: 10,
+        totalPrice: 100,
         initialInvoice: expect.objectContaining({
-          amount: 110,
-          extraAmount: 10
+          amount: 100
         })
       })
     );
+    const payload = ordersRepository.createWithInitialInvoice.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('extraAmount');
+    expect(payload.initialInvoice).not.toHaveProperty('extraAmount');
   });
 
   it('rejects create when both customer and collaborator are missing', async () => {

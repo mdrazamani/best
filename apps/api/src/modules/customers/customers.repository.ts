@@ -48,9 +48,14 @@ export class CustomersRepository extends BaseRepository {
           },
           include: {
             collaborator: true,
-            invoices: {
+            invoiceLinks: {
               where: {
-                deletedAt: null
+                invoice: {
+                  deletedAt: null
+                }
+              },
+              include: {
+                invoice: true
               }
             },
             lineItems: {

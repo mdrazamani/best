@@ -1,5 +1,5 @@
-import { FormEvent, useMemo, useState } from 'react';
-import { Download, MoreHorizontal, Plus, Search } from 'lucide-react';
+﻿import { FormEvent, useMemo, useState } from 'react';
+import { ArrowRight, Download, Eye, MoreHorizontal, Plus, Search, Wallet } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useBestContext } from '../contexts/best-context';
 import { INVOICE_STATUS, fullName, invoiceStatusBadgeVariant, money, shamsiDate, textFa } from '../lib/format';
@@ -8,23 +8,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { SearchableSelect } from '../components/ui/searchable-select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { EmptyState } from '../components/shared/empty-state';
 import { Pagination } from '../components/shared/pagination';
 import { PersianDatePicker } from '../components/ui/persian-date-picker';
+import { CreateInvoiceDialog } from '../components/modals/CreateInvoiceDialog';
 
 const PAGE_SIZE = 10;
 
 const emptyInvoiceForm = {
   title: '',
-  orderId: '',
   amount: '',
   discountAmount: '',
-  extraAmount: '',
-  paidAmount: '',
   status: 'UNPAID',
   payerType: 'CUSTOMER',
   payerId: '',
@@ -34,11 +32,8 @@ const emptyInvoiceForm = {
 
 type InvoiceFormState = {
   title: string;
-  orderId: string;
   amount: string;
   discountAmount: string;
-  extraAmount: string;
-  paidAmount: string;
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
   payerType: 'CUSTOMER' | 'COLLABORATOR';
   payerId: string;
@@ -46,29 +41,45 @@ type InvoiceFormState = {
   description: string;
 };
 
+const emptyPaymentForm = {
+  amount: '',
+  paidAt: '',
+  note: ''
+};
+
 export function InvoicesPage() {
-  const { orders, invoices, createInvoice, updateInvoice, removeInvoice, downloadProtected } = useBestContext();
+  const {
+    orders,
+    invoices,
+    invoiceDetail,
+    createInvoice,
+    updateInvoice,
+    removeInvoice,
+    addInvoicePayment,
+    openInvoiceDetail,
+    closeInvoiceDetail,
+    downloadProtected
+  } = useBestContext();
+
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'UNPAID' | 'PARTIAL' | 'PAID'>('all');
   const [payerFilter, setPayerFilter] = useState<'all' | 'CUSTOMER' | 'COLLABORATOR'>('all');
-  const [form, setForm] = useState<InvoiceFormState>({ ...emptyInvoiceForm });
   const [editForm, setEditForm] = useState<InvoiceFormState>({ ...emptyInvoiceForm });
-
-  const selectedCreateOrder = useMemo(() => orders.find((item) => item.id === form.orderId), [orders, form.orderId]);
-  const selectedEditOrder = useMemo(() => orders.find((item) => item.id === editForm.orderId), [orders, editForm.orderId]);
+  const [paymentForm, setPaymentForm] = useState({ ...emptyPaymentForm });
 
   const orderOptions = useMemo(
-    () => orders.map((item) => ({ value: item.id, label: `${item.orderNumber} - ${item.customer ? `${item.customer.firstName ?? ''} ${item.customer.lastName ?? ''}` : ''}` })),
+    () =>
+      orders
+        .filter((item) => item.stage !== 'CANCELLED' && !(Array.isArray(item.invoices) && item.invoices.length > 0))
+        .map((item) => ({ value: item.id, label: `${item.orderNumber} - ${fullName(item.customer)}${item.collaborator ? ` / ${fullName(item.collaborator)}` : ''}` })),
     [orders]
   );
-  const editingOrderOptions = useMemo(
-    () => (selectedEditOrder ? [{ value: selectedEditOrder.id, label: `${selectedEditOrder.orderNumber} - ${fullName(selectedEditOrder.customer)}` }] : []),
-    [selectedEditOrder]
-  );
+
   const statusFilterOptions = useMemo(() => [{ value: 'all', label: 'همه وضعیت‌ها' }, ...INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))], []);
   const payerFilterOptions = useMemo(
     () => [
@@ -79,34 +90,35 @@ export function InvoicesPage() {
     []
   );
 
-  const buildPayerOptions = (selectedOrder?: (typeof orders)[number]) => {
-    if (!selectedOrder) return [];
-    const options = [] as Array<{ value: string; label: string }>;
+  const buildPayerOptions = (orderIds: string[]) => {
+    const selectedOrders = orders.filter((item) => orderIds.includes(item.id));
+    const map = new Map<string, { value: string; label: string }>();
 
-    if (selectedOrder.customer) {
-      options.push({
-        value: selectedOrder.customer.id,
-        label: `مشتری: ${selectedOrder.customer.firstName ?? ''} ${selectedOrder.customer.lastName ?? ''}`
-      });
+    for (const order of selectedOrders) {
+      if (order.customer?.id) {
+        map.set(`CUSTOMER:${order.customer.id}`, {
+          value: order.customer.id,
+          label: `مشتری: ${fullName(order.customer)}`
+        });
+      }
+      if (order.collaborator?.id) {
+        map.set(`COLLABORATOR:${order.collaborator.id}`, {
+          value: order.collaborator.id,
+          label: `همکار: ${fullName(order.collaborator)}`
+        });
+      }
     }
 
-    if (selectedOrder.collaborator) {
-      options.push({
-        value: selectedOrder.collaborator.id,
-        label: `همکار: ${selectedOrder.collaborator.firstName ?? ''} ${selectedOrder.collaborator.lastName ?? ''}`
-      });
-    }
-
-    return options;
+    return Array.from(map.values());
   };
 
-  const createPayerOptions = useMemo(() => buildPayerOptions(selectedCreateOrder), [selectedCreateOrder]);
-  const editPayerOptions = useMemo(() => buildPayerOptions(selectedEditOrder), [selectedEditOrder]);
-
-  const getPayerInfo = (invoice: (typeof invoices)[number]) => {
+  const getPayerInfo = (invoice: any) => {
     const payerType = invoice.payerType === 'COLLABORATOR' ? 'COLLABORATOR' : 'CUSTOMER';
     const typeLabel = payerType === 'COLLABORATOR' ? 'همکار' : 'مشتری';
-    const payerRecord = payerType === 'COLLABORATOR' ? invoice.order?.collaborator : invoice.order?.customer;
+    const relatedOrders = Array.isArray(invoice.orders) && invoice.orders.length ? invoice.orders : invoice.order ? [invoice.order] : [];
+    const payerRecord = payerType === 'COLLABORATOR'
+      ? relatedOrders.find((item: any) => item.collaborator?.id === invoice.payerId)?.collaborator ?? relatedOrders[0]?.collaborator
+      : relatedOrders.find((item: any) => item.customer?.id === invoice.payerId)?.customer ?? relatedOrders[0]?.customer;
     const name = fullName(payerRecord || undefined);
     const phone = payerRecord?.phone || '';
     return {
@@ -121,23 +133,17 @@ export function InvoicesPage() {
     const q = search.trim().toLowerCase();
     return invoices.filter((item) => {
       const invoiceNo = item.invoiceNumber.toLowerCase();
-      const orderNo = item.order.orderNumber.toLowerCase();
       const invoiceTitle = (item.title ?? '').toLowerCase();
-      const orderTitle = (item.order?.title ?? '').toLowerCase();
-      const customerPhone = (item.order?.customer?.phone ?? '').toLowerCase();
-      const collaboratorPhone = (item.order?.collaborator?.phone ?? '').toLowerCase();
+      const orderNumbers = (item.orders ?? []).map((order) => order.orderNumber.toLowerCase()).join(' ');
       const payerInfo = getPayerInfo(item);
       const matchesSearch =
         !q ||
         invoiceNo.includes(q) ||
-        orderNo.includes(q) ||
         invoiceTitle.includes(q) ||
-        orderTitle.includes(q) ||
+        orderNumbers.includes(q) ||
         payerInfo.typeLabel.toLowerCase().includes(q) ||
         (payerInfo.name || '').toLowerCase().includes(q) ||
-        payerInfo.phone.toLowerCase().includes(q) ||
-        customerPhone.includes(q) ||
-        collaboratorPhone.includes(q);
+        payerInfo.phone.toLowerCase().includes(q);
       const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
       const effectivePayer = item.payerType ?? 'CUSTOMER';
       const matchesPayer = payerFilter === 'all' || effectivePayer === payerFilter;
@@ -152,43 +158,15 @@ export function InvoicesPage() {
     return filteredInvoices.slice(start, start + PAGE_SIZE);
   }, [filteredInvoices, page, totalPages]);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!form.orderId.trim()) {
-      toast.error('برای ثبت فاکتور، انتخاب سفارش الزامی است.');
-      return;
-    }
-    await createInvoice({
-      title: form.title || undefined,
-      orderId: form.orderId,
-      amount: Number(form.amount || 0),
-      discountAmount: Number(form.discountAmount || 0),
-      extraAmount: Number(form.extraAmount || 0),
-      paidAmount: Number(form.paidAmount || 0),
-      status: form.status,
-      payerType: form.payerType,
-      payerId: form.payerId || undefined,
-      dueDate: form.dueDate || undefined,
-      description: form.description || undefined
-    });
-
-    setForm({ ...emptyInvoiceForm });
-    setCreateOpen(false);
-  };
-
-  const openEdit = (invoice: (typeof invoices)[number]) => {
-    const payerId = invoice.payerId ?? (invoice.payerType === 'COLLABORATOR' ? invoice.order?.collaborator?.id : invoice.order?.customer?.id) ?? '';
+  const openEdit = (invoice: any) => {
     setEditingInvoiceId(invoice.id);
     setEditForm({
       title: invoice.title ?? '',
-      orderId: invoice.order.id,
       amount: String(Number(invoice.amount ?? 0)),
       discountAmount: String(Number(invoice.discountAmount ?? 0)),
-      extraAmount: String(Number(invoice.extraAmount ?? 0)),
-      paidAmount: String(Number(invoice.paidAmount ?? 0)),
       status: invoice.status,
       payerType: invoice.payerType ?? 'CUSTOMER',
-      payerId,
+      payerId: invoice.payerId ?? '',
       dueDate: invoice.dueDate ?? '',
       description: invoice.description ?? ''
     });
@@ -198,17 +176,11 @@ export function InvoicesPage() {
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
     if (!editingInvoiceId) return;
-    if (!editForm.orderId.trim()) {
-      toast.error('انتخاب سفارش الزامی است.');
-      return;
-    }
 
     await updateInvoice(editingInvoiceId, {
       title: editForm.title || undefined,
       amount: Number(editForm.amount || 0),
       discountAmount: Number(editForm.discountAmount || 0),
-      extraAmount: Number(editForm.extraAmount || 0),
-      paidAmount: Number(editForm.paidAmount || 0),
       status: editForm.status,
       payerType: editForm.payerType,
       payerId: editForm.payerId || undefined,
@@ -221,82 +193,170 @@ export function InvoicesPage() {
     setEditForm({ ...emptyInvoiceForm });
   };
 
+  const submitPayment = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!invoiceDetail?.id) return;
+
+    await addInvoicePayment(invoiceDetail.id, {
+      amount: Number(paymentForm.amount || 0),
+      paidAt: paymentForm.paidAt || undefined,
+      note: paymentForm.note || undefined
+    });
+
+    await openInvoiceDetail(invoiceDetail.id);
+    setPaymentOpen(false);
+    setPaymentForm({ ...emptyPaymentForm });
+  };
+
+  if (invoiceDetail) {
+    const detailOrders = Array.isArray(invoiceDetail.orders) ? invoiceDetail.orders : [];
+    const paymentHistory = Array.isArray(invoiceDetail.paymentHistory) ? invoiceDetail.paymentHistory : [];
+    const remaining = Math.max(Number(invoiceDetail.amount ?? 0) - Number(invoiceDetail.paidAmount ?? 0), 0);
+
+    return (
+      <section className="space-y-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-2xl font-extrabold">جزئیات فاکتور {invoiceDetail.invoiceNumber}</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">تاریخ ثبت: {shamsiDate(invoiceDetail.createdAt)}</p>
+            </div>
+            <Button variant="outline" onClick={closeInvoiceDetail}>
+              <ArrowRight className="h-4 w-4" />
+              بازگشت به لیست
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">وضعیت</p>
+                <Badge className="mt-1" variant={invoiceStatusBadgeVariant(invoiceDetail.status)}>{INVOICE_STATUS.find((item) => item.value === invoiceDetail.status)?.label || invoiceDetail.status}</Badge>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مبلغ کل</p>
+                <p className="mt-1 text-lg font-bold">{money(Number(invoiceDetail.amount ?? 0))}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مبلغ پرداختی</p>
+                <p className="mt-1 text-lg font-bold">{money(Number(invoiceDetail.paidAmount ?? 0))}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">مانده</p>
+                <p className={`mt-1 text-lg font-bold ${remaining > 0 ? 'text-destructive' : ''}`}>{money(remaining)}</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-3 text-sm">
+              <p><span className="font-semibold">عنوان:</span> {textFa(invoiceDetail.title)}</p>
+              <p><span className="font-semibold">توضیحات:</span> {textFa(invoiceDetail.description)}</p>
+              <p><span className="font-semibold">سررسید:</span> {shamsiDate(invoiceDetail.dueDate)}</p>
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-semibold">سفارش‌های این فاکتور</p>
+              {detailOrders.length === 0 ? (
+                <EmptyState title="سفارشی برای این فاکتور ثبت نشده است" />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>شماره سفارش</TableHead>
+                      <TableHead>مشتری</TableHead>
+                      <TableHead>همکار</TableHead>
+                      <TableHead>مبلغ سفارش</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detailOrders.map((order: any, idx: number) => (
+                      <TableRow key={order.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
+                        <TableCell>{order.orderNumber}</TableCell>
+                        <TableCell>{fullName(order.customer)}</TableCell>
+                        <TableCell>{fullName(order.collaborator)}</TableCell>
+                        <TableCell>{money(Number(order.totalPrice ?? 0))}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold">تاریخچه پرداخت‌ها</p>
+                <Button onClick={() => setPaymentOpen(true)} disabled={invoiceDetail.status === 'PAID'}>
+                  <Plus className="h-4 w-4" />
+                  ثبت پرداخت جدید
+                </Button>
+              </div>
+              {paymentHistory.length === 0 ? (
+                <EmptyState title="تاکنون پرداختی برای این فاکتور ثبت نشده است" />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>تاریخ پرداخت</TableHead>
+                      <TableHead>مبلغ</TableHead>
+                      <TableHead>ثبت‌کننده</TableHead>
+                      <TableHead>توضیح</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentHistory.map((item: any, idx: number) => (
+                      <TableRow key={item.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
+                        <TableCell>{shamsiDate(item.paidAt)}</TableCell>
+                        <TableCell className="font-semibold">{money(Number(item.amount ?? 0))}</TableCell>
+                        <TableCell>{fullName(item.createdBy)}</TableCell>
+                        <TableCell>{item.note || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Wallet className="h-5 w-5" />ثبت پرداخت جدید</DialogTitle>
+              <DialogDescription>بعد از تسویه کامل، ثبت پرداخت جدید برای این فاکتور بسته می‌شود.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={submitPayment} className="space-y-4">
+              <div className="grid gap-3">
+                <div>
+                  <label className="text-sm font-medium">مبلغ پرداخت (تومان)</label>
+                  <Input type="number" min="0.01" step="0.01" value={paymentForm.amount} onChange={(e) => setPaymentForm((prev) => ({ ...prev, amount: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">تاریخ پرداخت</label>
+                  <PersianDatePicker value={paymentForm.paidAt} onChange={(value) => setPaymentForm((prev) => ({ ...prev, paidAt: value ?? '' }))} placeholder="تاریخ پرداخت" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">توضیح (اختیاری)</label>
+                  <Textarea value={paymentForm.note} onChange={(e) => setPaymentForm((prev) => ({ ...prev, note: e.target.value }))} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setPaymentOpen(false)}>انصراف</Button>
+                <Button type="submit">ثبت پرداخت</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </section>
+    );
+  }
+
   return (
     <section>
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-2xl font-extrabold">مدیریت فاکتورها</CardTitle>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4" />
-                ثبت فاکتور
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl lg:max-w-5xl">
-              <DialogHeader>
-                <DialogTitle>ثبت فاکتور جدید</DialogTitle>
-                <DialogDescription>اطلاعات فاکتور را کامل کنید.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={submit} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">عنوان فاکتور</label>
-                    <Input placeholder="عنوان فاکتور (اختیاری)" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">سفارش</label>
-                    <SearchableSelect options={orderOptions} value={form.orderId} onChange={(value) => setForm((prev) => ({ ...prev, orderId: value }))} placeholder="انتخاب سفارش" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">وضعیت فاکتور</label>
-                    <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value as InvoiceFormState['status'] }))} placeholder="وضعیت فاکتور" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">تخفیف (ریال)</label>
-                    <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={form.discountAmount} onChange={(e) => setForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">مبلغ کل فاکتور (ریال)</label>
-                    <Input type="number" min="0" step="0.01" placeholder="مثال: 2100000" value={form.amount} onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">مالیات ارزش افزوده (ریال)</label>
-                    <Input type="number" min="0" step="0.01" placeholder="مثال: 200000" value={form.extraAmount} onChange={(e) => setForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">مبلغ پرداختی (ریال)</label>
-                    <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={form.paidAmount} onChange={(e) => setForm((prev) => ({ ...prev, paidAmount: e.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">نوع فاکتور</label>
-                    <SearchableSelect
-                      options={[
-                        { value: 'CUSTOMER', label: 'نوع فاکتور: مشتری' },
-                        { value: 'COLLABORATOR', label: 'نوع فاکتور: همکار' }
-                      ]}
-                      value={form.payerType}
-                      onChange={(value) => setForm((prev) => ({ ...prev, payerType: value as InvoiceFormState['payerType'], payerId: '' }))}
-                      placeholder="نوع فاکتور"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">پرداخت‌کننده</label>
-                    <SearchableSelect options={createPayerOptions} value={form.payerId} onChange={(value) => setForm((prev) => ({ ...prev, payerId: value }))} placeholder="انتخاب شخص پرداخت‌کننده" />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">تاریخ سررسید پرداخت</label>
-                    <PersianDatePicker value={form.dueDate} onChange={(value) => setForm((prev) => ({ ...prev, dueDate: value ?? '' }))} placeholder="تاریخ سررسید پرداخت" />
-                  </div>
-                </div>
-                <Textarea placeholder="توضیحات" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
-                <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>انصراف</Button>
-                  <Button type="submit">ذخیره فاکتور</Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            ثبت فاکتور
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="mb-4 grid gap-3 md:grid-cols-4">
@@ -304,7 +364,7 @@ export function InvoicesPage() {
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pr-9"
-                placeholder="جستجو: شماره فاکتور/سفارش، نام یا شماره تلفن مشتری/همکار"
+                placeholder="جستجو: شماره فاکتور، سفارش، نام یا موبایل"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -343,7 +403,7 @@ export function InvoicesPage() {
                   <TableRow>
                     <TableHead>شماره فاکتور</TableHead>
                     <TableHead>عنوان</TableHead>
-                    <TableHead>شماره سفارش</TableHead>
+                    <TableHead>سفارش‌ها</TableHead>
                     <TableHead>مبلغ</TableHead>
                     <TableHead>پرداخت‌کننده</TableHead>
                     <TableHead>سررسید</TableHead>
@@ -357,12 +417,10 @@ export function InvoicesPage() {
                     <TableRow key={invoice.id} className={idx % 2 ? 'bg-muted/10' : ''}>
                       <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
                       <TableCell>{textFa(invoice.title)}</TableCell>
-                      <TableCell>{invoice.order.orderNumber}</TableCell>
+                      <TableCell>{(invoice.orders ?? []).map((order) => order.orderNumber).join('، ') || '-'}</TableCell>
                       <TableCell>
                         <div>{money(invoice.paidAmount)} / {money(invoice.amount)}</div>
-                        <div className="text-xs text-muted-foreground">
-                          افزوده: {money(invoice.extraAmount)} | تخفیف: {money(invoice.discountAmount)}
-                        </div>
+                        <div className="text-xs text-muted-foreground">تخفیف: {money(invoice.discountAmount)}</div>
                       </TableCell>
                       <TableCell>
                         {(() => {
@@ -391,6 +449,10 @@ export function InvoicesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => void openInvoiceDetail(invoice.id)}>
+                              <Eye className="h-4 w-4" />
+                              جزئیات
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEdit(invoice)}>ویرایش</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber}.pdf`)}>
                               <Download className="h-4 w-4" />
@@ -412,11 +474,25 @@ export function InvoicesPage() {
         </CardContent>
       </Card>
 
+      <CreateInvoiceDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        orderOptions={orderOptions}
+        getPayerOptions={buildPayerOptions}
+        onSubmit={async (payload) => {
+          if (!payload.orderIds?.length) {
+            toast.error('برای ثبت فاکتور، انتخاب حداقل یک سفارش الزامی است.');
+            return;
+          }
+          await createInvoice(payload as Record<string, unknown>);
+        }}
+      />
+
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl lg:max-w-5xl">
           <DialogHeader>
             <DialogTitle>ویرایش فاکتور</DialogTitle>
-            <DialogDescription>اطلاعات فاکتور را به‌روز کنید.</DialogDescription>
+            <DialogDescription>اطلاعات فاکتور را به‌روزرسانی کنید.</DialogDescription>
           </DialogHeader>
           <form onSubmit={submitEdit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -425,48 +501,20 @@ export function InvoicesPage() {
                 <Input placeholder="عنوان فاکتور (اختیاری)" value={editForm.title} onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">سفارش</label>
-                <SearchableSelect options={editingOrderOptions} value={editForm.orderId} onChange={(value) => setEditForm((prev) => ({ ...prev, orderId: value }))} placeholder="سفارش" disabled />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">وضعیت فاکتور</label>
-                <SearchableSelect options={INVOICE_STATUS.map((item) => ({ value: item.value, label: item.label }))} value={editForm.status} onChange={(value) => setEditForm((prev) => ({ ...prev, status: value as InvoiceFormState['status'] }))} placeholder="وضعیت فاکتور" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">تخفیف (ریال)</label>
+                <label className="text-sm font-medium">تخفیف (تومان)</label>
                 <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={editForm.discountAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, discountAmount: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">مبلغ کل فاکتور (ریال)</label>
+                <label className="text-sm font-medium">مبلغ کل فاکتور (تومان)</label>
                 <Input type="number" min="0" step="0.01" placeholder="مثال: 2100000" value={editForm.amount} onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">مالیات ارزش افزوده (ریال)</label>
-                <Input type="number" min="0" step="0.01" placeholder="مثال: 200000" value={editForm.extraAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, extraAmount: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">مبلغ پرداختی (ریال)</label>
-                <Input type="number" min="0" step="0.01" placeholder="مثال: 100000" value={editForm.paidAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, paidAmount: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">نوع فاکتور</label>
-                <SearchableSelect
-                  options={[
-                    { value: 'CUSTOMER', label: 'نوع فاکتور: مشتری' },
-                    { value: 'COLLABORATOR', label: 'نوع فاکتور: همکار' }
-                  ]}
-                  value={editForm.payerType}
-                  onChange={(value) => setEditForm((prev) => ({ ...prev, payerType: value as InvoiceFormState['payerType'], payerId: '' }))}
-                  placeholder="نوع فاکتور"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">پرداخت‌کننده</label>
-                <SearchableSelect options={editPayerOptions} value={editForm.payerId} onChange={(value) => setEditForm((prev) => ({ ...prev, payerId: value }))} placeholder="انتخاب شخص پرداخت‌کننده" />
-              </div>
-              <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium">تاریخ سررسید پرداخت</label>
                 <PersianDatePicker value={editForm.dueDate} onChange={(value) => setEditForm((prev) => ({ ...prev, dueDate: value ?? '' }))} placeholder="تاریخ سررسید پرداخت" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">وضعیت فعلی</label>
+                <Input value={INVOICE_STATUS.find((item) => item.value === editForm.status)?.label || editForm.status} disabled />
               </div>
             </div>
             <Textarea placeholder="توضیحات" value={editForm.description} onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))} />

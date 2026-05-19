@@ -20,6 +20,10 @@ class OrderLineItemDto {
   @Type(() => Number)
   @IsNumber({}, { message: 'قیمت واحد باید عدد باشد.' })
   unitPrice!: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
 }
 
 export class CreateOrderDto {
@@ -71,12 +75,6 @@ export class CreateOrderDto {
   discountAmount?: number;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber({}, { message: 'مبلغ افزوده باید عدد باشد.' })
-  @Min(0, { message: 'مبلغ افزوده نمی‌تواند منفی باشد.' })
-  extraAmount?: number;
-
-  @IsOptional()
   @IsArray({ message: 'ردیف‌های سفارش باید آرایه باشند.' })
   @ValidateNested({ each: true })
   @Type(() => OrderLineItemDto)
@@ -87,10 +85,10 @@ export class CreateOrderDto {
   description?: string;
 
   @IsOptional()
-  @IsIn(['RECEIVED', 'STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE', 'DELIVERED', 'CANCELLED'], {
+  @IsIn(['RECEIVED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE', 'DELIVERED', 'CANCELLED'], {
     message: 'مرحله سفارش نامعتبر است.'
   })
-  stage?: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+  stage?: 'RECEIVED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
 
   @IsOptional()
   @IsString()

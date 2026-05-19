@@ -25,12 +25,28 @@ export class CustomersService extends BaseService {
     }
 
     const activeOrders = customer.orders.filter((order) => order.stage !== 'CANCELLED');
-    const allInvoices = activeOrders.flatMap((order) => order.invoices.map((invoice) => ({ ...invoice, order })));
-    const customerInvoices = allInvoices.filter((invoice) => invoice.payerType === 'CUSTOMER' || !invoice.payerType);
+    const invoiceMap = new Map<string, any>();
+    for (const order of activeOrders) {
+      for (const link of order.invoiceLinks ?? []) {
+        const invoice = link.invoice;
+        if (!invoice) continue;
+        const current = invoiceMap.get(invoice.id);
+        if (!current) {
+          invoiceMap.set(invoice.id, {
+            ...invoice,
+            order,
+            orders: [order]
+          });
+          continue;
+        }
+        current.orders = Array.isArray(current.orders) ? [...current.orders, order] : [order];
+      }
+    }
+    const customerInvoices = Array.from(invoiceMap.values()).filter((invoice) => invoice.payerType === 'CUSTOMER' || !invoice.payerType);
     const totalInvoiced = customerInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
     const totalPaid = customerInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount), 0);
     const completedOrders = activeOrders.filter((order) => order.stage === 'DELIVERED').length;
-    const inProgressOrders = activeOrders.filter((order) => ['STARTED', 'IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
+    const inProgressOrders = activeOrders.filter((order) => ['IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
 
     const collaborators = Array.from(
       new Map(

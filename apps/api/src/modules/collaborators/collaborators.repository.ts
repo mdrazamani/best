@@ -42,9 +42,14 @@ export class CollaboratorsRepository extends BaseRepository {
           },
           include: {
             customer: true,
-            invoices: {
+            invoiceLinks: {
               where: {
-                deletedAt: null
+                invoice: {
+                  deletedAt: null
+                }
+              },
+              include: {
+                invoice: true
               }
             },
             lineItems: {

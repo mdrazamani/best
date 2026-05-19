@@ -4,6 +4,7 @@ import { MeshTypesRepository } from '../mesh-types.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { CreateMeshTypeDto } from '../dto/create-mesh-type.dto';
 import { UpdateMeshTypeDto } from '../dto/update-mesh-type.dto';
+import { clampMoneyNonNegative, toMoneyNumber } from '../../../common/utils/accounting.util';
 
 @Injectable()
 export class MeshTypesService extends BaseService {
@@ -19,10 +20,18 @@ export class MeshTypesService extends BaseService {
   }
 
   async create(actorId: string, dto: CreateMeshTypeDto) {
+    const hasDefault = await this.meshTypesRepository.findDefaultActive();
+    const shouldDefault = dto.isDefault === true || !hasDefault;
+    if (shouldDefault) {
+      await this.meshTypesRepository.clearDefault();
+    }
+
     const created = await this.meshTypesRepository.create({
       title: dto.title.trim(),
       description: dto.description?.trim(),
       isActive: dto.isActive,
+      unitPrice: toMoneyNumber(clampMoneyNonNegative(dto.unitPrice ?? 0)),
+      isDefault: shouldDefault,
       createdById: actorId
     });
 
@@ -43,11 +52,28 @@ export class MeshTypesService extends BaseService {
       throw new NotFoundException('نوع توري پيدا نشد.');
     }
 
+    if (dto.isDefault === true) {
+      await this.meshTypesRepository.clearDefault(id);
+    }
+
     const updated = await this.meshTypesRepository.update(id, {
       title: dto.title?.trim(),
       description: dto.description === undefined ? undefined : dto.description?.trim() ?? null,
-      isActive: dto.isActive
+      isActive: dto.isActive,
+      unitPrice: dto.unitPrice === undefined ? undefined : toMoneyNumber(clampMoneyNonNegative(dto.unitPrice)),
+      isDefault: dto.isDefault
     });
+
+    if (updated.isDefault === false || updated.isActive === false) {
+      const hasDefault = await this.meshTypesRepository.findDefaultActive();
+      if (!hasDefault) {
+        const fallback = await this.meshTypesRepository.findFirstActive();
+        if (fallback) {
+          await this.meshTypesRepository.clearDefault(fallback.id);
+          await this.meshTypesRepository.update(fallback.id, { isDefault: true });
+        }
+      }
+    }
 
     await this.operationLogsService.log({
       actorId,
@@ -66,7 +92,16 @@ export class MeshTypesService extends BaseService {
       throw new NotFoundException('نوع توری پیدا نشد.');
     }
 
+    const removedWasDefault = existing.isDefault;
     await this.meshTypesRepository.softDelete(id);
+
+    if (removedWasDefault) {
+      const fallback = await this.meshTypesRepository.findFirstActive(id);
+      if (fallback) {
+        await this.meshTypesRepository.clearDefault(fallback.id);
+        await this.meshTypesRepository.update(fallback.id, { isDefault: true });
+      }
+    }
 
     await this.operationLogsService.log({
       actorId,

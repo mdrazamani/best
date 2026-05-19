@@ -1,4 +1,4 @@
-﻿export const money = (value: number) => `${new Intl.NumberFormat('fa-IR').format(value || 0)} ریال`;
+﻿export const money = (value: number) => `${new Intl.NumberFormat('fa-IR').format(value || 0)} تومان`;
 export const shamsiDate = (value?: string) => (value ? new Date(value).toLocaleString('fa-IR-u-ca-persian') : '-');
 export const fullName = (input?: { firstName?: string; lastName?: string }) => {
   const firstName = textFa(input?.firstName ?? '', '');
@@ -8,7 +8,6 @@ export const fullName = (input?: { firstName?: string; lastName?: string }) => {
 
 export const ORDER_STAGES: Array<{ value: string; label: string }> = [
   { value: 'RECEIVED', label: 'دریافت شده' },
-  { value: 'STARTED', label: 'شروع شده' },
   { value: 'IN_PROGRESS', label: 'در حال انجام' },
   { value: 'READY_IN_WAREHOUSE', label: 'آماده در انبار' },
   { value: 'DELIVERED', label: 'تحویل داده شده' },
@@ -34,7 +33,7 @@ export const orderStageBadgeVariant = (value?: string): 'success' | 'warning' | 
   if (value === 'DELIVERED') return 'success';
   if (value === 'CANCELLED') return 'outline';
   if (value === 'READY_IN_WAREHOUSE') return 'warning';
-  if (value === 'IN_PROGRESS' || value === 'STARTED') return 'secondary';
+  if (value === 'IN_PROGRESS') return 'secondary';
   return 'outline';
 };
 export const paymentStatusBadgeVariant = (value?: string): 'success' | 'warning' | 'outline' =>
@@ -188,3 +187,4 @@ export const PERMISSION_LABELS: Record<string, string> = {
 };
 
 export const permissionLabel = (key: string) => PERMISSION_LABELS[key] ?? key;
+

@@ -34,7 +34,15 @@ export type User = {
   userRoles?: Array<{ role?: Role }>;
 };
 
-export type MeshType = { id: string; title: string; description?: string; isActive: boolean; createdAt?: string };
+export type MeshType = {
+  id: string;
+  title: string;
+  description?: string;
+  isActive: boolean;
+  unitPrice?: number;
+  isDefault?: boolean;
+  createdAt?: string;
+};
 export type Person = {
   id: string;
   firstName?: string;
@@ -59,10 +67,9 @@ export type Order = {
   customerId?: string | null;
   collaboratorId?: string | null;
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
-  stage: 'RECEIVED' | 'STARTED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
+  stage: 'RECEIVED' | 'IN_PROGRESS' | 'READY_IN_WAREHOUSE' | 'DELIVERED' | 'CANCELLED';
   totalPrice: number;
   discountAmount: number;
-  extraAmount: number;
   expectedCompletionDate?: string | null;
   createdAt: string;
   customer?: Person;
@@ -76,6 +83,7 @@ export type Order = {
     quantity: number;
     unitPrice: number;
     lineTotal: number;
+    description?: string | null;
   }>;
   paymentSummary: {
     total: number;
@@ -84,6 +92,7 @@ export type Order = {
     percent: number;
     status: 'paid' | 'partial' | 'unpaid';
   };
+  invoices?: Array<{ id: string }>;
 };
 
 export type Invoice = {
@@ -92,7 +101,6 @@ export type Invoice = {
   title?: string | null;
   amount: number;
   discountAmount: number;
-  extraAmount: number;
   paidAmount: number;
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
   payerType?: 'CUSTOMER' | 'COLLABORATOR';
@@ -100,11 +108,20 @@ export type Invoice = {
   dueDate?: string;
   description?: string;
   createdAt: string;
-  order: Order;
+  order?: Order | null;
+  orders?: Order[];
+  paymentHistory?: Array<{
+    id: string;
+    amount: number;
+    paidAt: string;
+    note?: string | null;
+    createdBy?: UserRef;
+  }>;
 };
 
 export type DashboardStats = {
   totalOrders: number;
+  totalMeshes?: number;
   ordersToday: number;
   processingOrders: number;
   totalSales: number;
