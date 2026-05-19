@@ -36,9 +36,9 @@ docker compose up -d --build
 
 Endpoints:
 
-- Dashboard: `http://localhost:3002`
-- API: `http://localhost:3000/v1`
-- Swagger: `http://localhost:3000/docs`
+- Dashboard: `http://localhost`
+- API: `http://localhost/v1`
+- Swagger: `http://localhost/docs`
 
 Default manager account (seeded automatically in development):
 
@@ -49,6 +49,9 @@ Production note:
 
 - Set `SEED_SUPER_ADMIN_PASSWORD` explicitly in environment.
 - Set `AUTH_JWT_SECRET` explicitly in environment.
+- Database data is stored in named Docker volume `best_postgres_data`.
+- Never run `docker compose down -v` in production, because `-v` removes database volume data.
+- For updates, use `docker compose pull && docker compose up -d --build` to keep data intact.
 
 ## Run API
 
