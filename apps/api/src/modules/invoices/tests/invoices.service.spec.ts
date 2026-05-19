@@ -145,4 +145,53 @@ describe('InvoicesService', () => {
       } as any)
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('uses exact selected orders totals by default when amount/discount are not provided', async () => {
+    invoicesRepository.findOrdersForInvoice.mockResolvedValue([
+      {
+        id: 'order-10',
+        orderNumber: 'OR-10',
+        customerId: 'customer-1',
+        collaboratorId: 'col-1',
+        totalPrice: 1200,
+        discountAmount: 100,
+        stage: 'IN_PROGRESS',
+        invoiceLinks: []
+      },
+      {
+        id: 'order-11',
+        orderNumber: 'OR-11',
+        customerId: 'customer-2',
+        collaboratorId: 'col-1',
+        totalPrice: 800,
+        discountAmount: 50,
+        stage: 'IN_PROGRESS',
+        invoiceLinks: []
+      }
+    ]);
+    invoicesRepository.createWithOrders.mockResolvedValue({ id: 'inv-10' });
+    invoicesRepository.findById.mockResolvedValue({
+      id: 'inv-10',
+      invoiceNumber: 'IN-10',
+      amount: 2000,
+      discountAmount: 150,
+      paidAmount: 0,
+      status: 'UNPAID',
+      createdAt: new Date(),
+      orders: [],
+      payments: []
+    });
+
+    await service.create('actor-1', {
+      orderIds: ['order-10', 'order-11']
+    } as any);
+
+    expect(invoicesRepository.createWithOrders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 2000,
+        discountAmount: 150,
+        orderIds: ['order-10', 'order-11']
+      })
+    );
+  });
 });

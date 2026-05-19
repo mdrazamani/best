@@ -66,16 +66,20 @@ export class InvoicesService extends BaseService {
       throw new BadRequestException(`سفارش(های) لغوشده (${orderNumbers}) قابل فاکتورکردن نیستند.`);
     }
 
-    const discountAmount = clampMoneyNonNegative(dto.discountAmount ?? 0);
-    const amount = dto.amount !== undefined && dto.amount !== null
-      ? clampMoneyNonNegative(dto.amount)
-      : maxMoney(
-          subtractMoney(
-            addMoney(...orderRefs.map((order) => clampMoneyNonNegative(order.totalPrice ?? 0))),
-            discountAmount
-          ),
-          0
-        );
+    const ordersTotalAmount = addMoney(...orderRefs.map((order) => clampMoneyNonNegative(order.totalPrice ?? 0)));
+    const ordersDiscountAmount = addMoney(...orderRefs.map((order: any) => clampMoneyNonNegative(order.discountAmount ?? 0)));
+
+    const discountAmount =
+      dto.discountAmount === undefined || dto.discountAmount === null
+        ? ordersDiscountAmount
+        : clampMoneyNonNegative(dto.discountAmount);
+
+    const amount =
+      dto.amount !== undefined && dto.amount !== null
+        ? clampMoneyNonNegative(dto.amount)
+        : dto.discountAmount === undefined || dto.discountAmount === null
+          ? ordersTotalAmount
+          : maxMoney(subtractMoney(ordersTotalAmount, discountAmount), 0);
 
     const paidAmount = clampMoneyNonNegative(dto.initialPaidAmount ?? 0);
     if (paidAmount.greaterThan(amount)) {
