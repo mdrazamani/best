@@ -245,7 +245,6 @@ export function CollaboratorsPage() {
                 جزئیات همکار
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">{fullName(detail)} - تاریخ ثبت: {shamsiDate(detail.createdAt)}</p>
-              <p className="text-[11px] text-muted-foreground sm:text-xs">تمام مبالغ در این صفحه به تومان هستند.</p>
             </div>
             <Button variant="outline" onClick={closeCollaboratorDetail}>
               <ArrowRight className="h-4 w-4" />
