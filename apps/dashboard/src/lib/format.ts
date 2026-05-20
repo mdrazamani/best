@@ -85,6 +85,8 @@ const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   LOGIN: 'ورود',
   LOGOUT: 'خروج',
   REVOKE: 'ابطال',
+  INCREASE: 'افزایش',
+  DECREASE: 'کاهش',
   ASSIGN_ROLE: 'اختصاص نقش'
 };
 
@@ -94,6 +96,7 @@ const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
   CUSTOMER: 'مشتری',
   COLLABORATOR: 'همکار',
   MESHTYPE: 'نوع توری',
+  INVENTORYITEM: 'آیتم انبار',
   USER: 'کاربر',
   USERROLE: 'نقش کاربر',
   ROLE: 'نقش',
@@ -121,6 +124,9 @@ const ACTIVITY_DESCRIPTION_LABELS: Record<string, string> = {
   'mesh type created': 'نوع توری ایجاد شد',
   'mesh type updated': 'نوع توری ویرایش شد',
   'soft delete mesh type': 'نوع توری حذف شد',
+  'inventory item created': 'آیتم انبار ایجاد شد',
+  'inventory item updated': 'آیتم انبار ویرایش شد',
+  'inventory item deleted': 'آیتم انبار حذف شد',
   'soft delete user': 'کاربر حذف شد',
   'session revoked': 'نشست باطل شد'
 };
@@ -131,6 +137,7 @@ const EN_ENTITY_MAP: Record<string, string> = {
   customer: 'مشتری',
   collaborator: 'همکار',
   'mesh type': 'نوع توری',
+  'inventory item': 'آیتم انبار',
   user: 'کاربر',
   session: 'نشست',
   role: 'نقش',
@@ -179,6 +186,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'collaborators.all': 'مدیریت همکاران',
   'customers.all': 'مدیریت مشتریان',
   'mesh_types.all': 'مدیریت انواع توری',
+  'inventory.all': 'مدیریت انبارداری',
   'orders.all': 'مدیریت سفارشات',
   'invoices.all': 'مدیریت فاکتورها',
   'backups.all': 'مدیریت بکاپ‌ها',

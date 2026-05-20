@@ -43,6 +43,28 @@ export type MeshType = {
   isDefault?: boolean;
   createdAt?: string;
 };
+
+export type InventoryLog = {
+  id: string;
+  itemId: string;
+  type: 'INCREASE' | 'DECREASE';
+  amount: number;
+  beforeQty: number;
+  afterQty: number;
+  note?: string | null;
+  createdAt: string;
+  actor?: UserRef;
+};
+
+export type InventoryItem = {
+  id: string;
+  name: string;
+  quantity: number;
+  createdAt: string;
+  updatedAt?: string;
+  createdBy?: UserRef;
+  logs?: InventoryLog[];
+};
 export type Person = {
   id: string;
   firstName?: string;

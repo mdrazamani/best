@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { ActivityLog, BackupLog, DashboardStats, Invoice, MeshType, NotificationItem, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
+import { ActivityLog, BackupLog, DashboardStats, InventoryItem, Invoice, MeshType, NotificationItem, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
 import type { AppTab } from '../components/layout/AppTabs';
 
 export type BestState = {
@@ -9,6 +9,7 @@ export type BestState = {
   error: string;
   dashboard: DashboardStats | null;
   meshTypes: MeshType[];
+  inventoryItems: InventoryItem[];
   collaborators: Person[];
   customers: Person[];
   orders: Order[];
@@ -39,6 +40,9 @@ export type BestActions = {
   createMeshType: (payload: Record<string, unknown>) => Promise<any>;
   updateMeshType: (meshTypeId: string, payload: Record<string, unknown>) => Promise<any>;
   removeMeshType: (meshTypeId: string) => Promise<any>;
+  createInventoryItem: (payload: Record<string, unknown>) => Promise<any>;
+  adjustInventoryItem: (itemId: string, payload: Record<string, unknown>) => Promise<any>;
+  removeInventoryItem: (itemId: string) => Promise<any>;
   createCollaborator: (payload: Record<string, unknown>) => Promise<any>;
   removeCollaborator: (collaboratorId: string) => Promise<any>;
   createCustomer: (payload: Record<string, unknown>) => Promise<any>;

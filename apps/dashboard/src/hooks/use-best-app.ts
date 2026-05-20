@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { ApiError, apiBasePath, apiCall, configureApiAuth } from '../lib/api';
-import { ActivityLog, BackupLog, DashboardStats, Invoice, MeshType, NotificationItem, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
+import { ActivityLog, BackupLog, DashboardStats, InventoryItem, Invoice, MeshType, NotificationItem, Order, Permission, Person, Role, SessionUser, User } from '../types/models';
 
 const ACCESS_TOKEN_KEY = 'best_admin_token';
 const REFRESH_TOKEN_KEY = 'best_admin_refresh_token';
@@ -36,6 +36,7 @@ export function useBestApp() {
   const [error, setError] = useState('');
   const [dashboard, setDashboard] = useState<DashboardStats | null>(null);
   const [meshTypes, setMeshTypes] = useState<MeshType[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [collaborators, setCollaborators] = useState<Person[]>([]);
   const [customers, setCustomers] = useState<Person[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -125,9 +126,10 @@ export function useBestApp() {
     try {
       const me = await apiCall<SessionUser>('/auth/me', accessToken);
 
-      const [dashboardData, meshData, collaboratorData, customerData, orderData, invoiceData] = await Promise.all([
+      const [dashboardData, meshData, inventoryData, collaboratorData, customerData, orderData, invoiceData] = await Promise.all([
         apiCall<DashboardStats>('/reports/dashboard', accessToken),
         apiCall<MeshType[]>('/mesh-types', accessToken),
+        apiCall<InventoryItem[]>('/inventory', accessToken),
         apiCall<Person[]>('/collaborators', accessToken),
         apiCall<Person[]>('/customers', accessToken),
         apiCall<Order[]>('/orders', accessToken),
@@ -149,6 +151,7 @@ export function useBestApp() {
       setSession(me);
       setDashboard(dashboardData);
       setMeshTypes(meshData);
+      setInventoryItems(inventoryData);
       setCollaborators(collaboratorData);
       setCustomers(customerData);
       setOrders(orderData);
@@ -438,6 +441,7 @@ export function useBestApp() {
     error,
     dashboard,
     meshTypes,
+    inventoryItems,
     collaborators,
     customers,
     orders,
@@ -466,6 +470,10 @@ export function useBestApp() {
     updateMeshType: (meshTypeId: string, payload: Record<string, unknown>) =>
       postAndReload(`/mesh-types/${meshTypeId}`, payload, 'PATCH', 'نوع توری با موفقیت بروزرسانی شد.'),
     removeMeshType: (meshTypeId: string) => deleteAndReload(`/mesh-types/${meshTypeId}`, 'نوع توری با موفقیت حذف شد.'),
+    createInventoryItem: (payload: Record<string, unknown>) => postAndReload('/inventory', payload, 'POST', 'آیتم انبار با موفقیت ثبت شد.'),
+    adjustInventoryItem: (itemId: string, payload: Record<string, unknown>) =>
+      postAndReload(`/inventory/${itemId}/adjust`, payload, 'PATCH', 'موجودی با موفقیت بروزرسانی شد.'),
+    removeInventoryItem: (itemId: string) => deleteAndReload(`/inventory/${itemId}`, 'آیتم انبار با موفقیت حذف شد.'),
     createCollaborator: (payload: Record<string, unknown>) => postAndReload('/collaborators', payload, 'POST', 'همکار با موفقیت ایجاد شد.'),
     removeCollaborator: (collaboratorId: string) => deleteAndReload(`/collaborators/${collaboratorId}`, 'همکار با موفقیت حذف شد.'),
     createCustomer: (payload: Record<string, unknown>) => postAndReload('/customers', payload, 'POST', 'مشتری با موفقیت ایجاد شد.'),

@@ -36,6 +36,11 @@ enum InvoicePayerType {
   COLLABORATOR
 }
 
+enum InventoryLogType {
+  INCREASE
+  DECREASE
+}
+
 model User {
   id           String     @id @default(uuid())
   firstName    String
@@ -56,6 +61,8 @@ model User {
   createdOrders         Order[]        @relation("OrderCreator")
   createdInvoices       Invoice[]      @relation("InvoiceCreator")
   createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreator")
+  createdInventoryItems InventoryItem[] @relation("InventoryItemCreator")
+  inventoryLogs         InventoryLog[]  @relation("InventoryLogActor")
   operationLogs         OperationLog[] @relation("OperationActor")
 
   @@index([firstName])
@@ -342,6 +349,42 @@ model InvoicePayment {
   @@index([invoiceId])
   @@index([paidAt])
   @@index([createdById])
+}
+
+model InventoryItem {
+  id          String   @id @default(uuid())
+  name        String
+  quantity    Int      @default(0)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  createdBy User           @relation("InventoryItemCreator", fields: [createdById], references: [id])
+  logs      InventoryLog[]
+
+  @@index([name])
+  @@index([deletedAt])
+}
+
+model InventoryLog {
+  id        String           @id @default(uuid())
+  itemId    String
+  actorId   String
+  type      InventoryLogType
+  amount    Int
+  beforeQty Int
+  afterQty  Int
+  note      String?
+  createdAt DateTime         @default(now())
+
+  item  InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  actor User          @relation("InventoryLogActor", fields: [actorId], references: [id])
+
+  @@index([itemId])
+  @@index([actorId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 model OperationLog {

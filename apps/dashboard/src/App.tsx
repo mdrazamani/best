@@ -13,6 +13,7 @@ import { InvoicesPage } from './pages/InvoicesPage';
 import { CollaboratorsPage } from './pages/CollaboratorsPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { MeshTypesPage } from './pages/MeshTypesPage';
+import { InventoryPage } from './pages/InventoryPage';
 import { UsersPage } from './pages/UsersPage';
 import { BackupsPage } from './pages/BackupsPage';
 import { ActivityPage } from './pages/ActivityPage';
@@ -24,8 +25,8 @@ const THEME_KEY = 'best_theme';
 const SIDEBAR_KEY = 'best_sidebar_collapsed';
 const ACTIVE_TAB_KEY = 'best_active_tab';
 const PROJECT_VERSION = '0.1.1';
-const APP_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'users', 'backups', 'notifications', 'activity'];
-const ASSISTANT_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'notifications'];
+const APP_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'warehouse', 'users', 'backups', 'notifications', 'activity'];
+const ASSISTANT_TABS: AppTab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'warehouse', 'notifications'];
 const TAB_PATH: Record<AppTab, string> = {
   dashboard: 'dashboard',
   orders: 'orders',
@@ -33,6 +34,7 @@ const TAB_PATH: Record<AppTab, string> = {
   collaborators: 'collaborators',
   customers: 'customers',
   mesh: 'mesh',
+  warehouse: 'warehouse',
   users: 'users',
   backups: 'backups',
   notifications: 'notifications',
@@ -277,6 +279,8 @@ export function App() {
         return <CustomersPage />;
       case 'mesh':
         return <MeshTypesPage />;
+      case 'warehouse':
+        return <InventoryPage />;
       case 'users':
         return <UsersPage />;
       case 'backups':

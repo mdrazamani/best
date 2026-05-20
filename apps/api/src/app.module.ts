@@ -11,6 +11,7 @@ import { CustomersModule } from './modules/customers/customers.module';
 import { MeshTypesModule } from './modules/mesh-types/mesh-types.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { OperationLogsModule } from './modules/operation-logs/operation-logs.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -32,6 +33,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     MeshTypesModule,
     OrdersModule,
     InvoicesModule,
+    InventoryModule,
     BackupsModule,
     OperationLogsModule,
     ReportsModule

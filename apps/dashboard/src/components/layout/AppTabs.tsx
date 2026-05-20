@@ -22,6 +22,7 @@ const TABS = [
   { key: 'collaborators', label: 'همکاران', icon: Users2 },
   { key: 'customers', label: 'مشتریان', icon: UserRound },
   { key: 'mesh', label: 'نوع توری', icon: Grid2X2 },
+  { key: 'warehouse', label: 'انبارداری', icon: Warehouse },
   { key: 'users', label: 'کاربران', icon: ShieldCheck },
   { key: 'backups', label: 'بکاپ', icon: HardDriveDownload },
   { key: 'notifications', label: 'اعلان‌ها', icon: Bell },
@@ -30,7 +31,6 @@ const TABS = [
 
 const DISABLED_TABS = [
   { key: 'production', label: 'تولید', icon: Factory },
-  { key: 'warehouse', label: 'انبارداری', icon: Warehouse },
   { key: 'settings', label: 'تنظیمات', icon: Settings }
 ] as const;
 

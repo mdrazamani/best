@@ -61,6 +61,7 @@ export class PermissionsService extends BaseService {
       { key: 'mesh_types.all', resource: 'mesh_types', apiName: 'MeshTypes', method: 'ANY', path: '/mesh-types' },
       { key: 'orders.all', resource: 'orders', apiName: 'Orders', method: 'ANY', path: '/orders' },
       { key: 'invoices.all', resource: 'invoices', apiName: 'Invoices', method: 'ANY', path: '/invoices' },
+      { key: 'inventory.all', resource: 'inventory', apiName: 'Inventory', method: 'ANY', path: '/inventory' },
       { key: 'backups.all', resource: 'backups', apiName: 'Backups', method: 'ANY', path: '/backups' },
       { key: 'reports.all', resource: 'reports', apiName: 'Reports', method: 'ANY', path: '/reports' },
       { key: 'logs.list', resource: 'operation_logs', apiName: 'Logs', method: 'GET', path: '/operation-logs' }
@@ -86,6 +87,7 @@ export class PermissionsService extends BaseService {
         'mesh_types.all',
         'orders.all',
         'invoices.all',
+        'inventory.all',
         'reports.all'
       ];
 
