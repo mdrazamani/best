@@ -439,7 +439,7 @@ ${fontFace}
 *{box-sizing:border-box}
 body{
   margin:0;
-  padding:1mm;
+  padding:0.9mm;
   width:100%;
   height:100%;
   font-family:'Vazirmatn',Tahoma,sans-serif;
@@ -451,20 +451,22 @@ body{
   height:100%;
   border:1px solid #cbd5e1;
   border-radius:1.5mm;
-  padding:1.2mm 0.8mm;
+  padding:1.8mm 0.9mm;
   display:flex;
   flex-direction:column;
-  gap:0.7mm;
+  gap:1.15mm;
   justify-content:center;
 }
 .line{
   text-align:center;
+  line-height:1.25;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.line-1{font-size:8.4px;font-weight:800}
-.line-2,.line-3,.line-4{font-size:6.7px;font-weight:600}
+.line-1{font-size:9.6px;font-weight:900}
+.line-2{font-size:7.7px;font-weight:700}
+.line-3,.line-4{font-size:7.1px;font-weight:600}
 </style>
 </head>
 <body>
@@ -480,7 +482,7 @@ body{
 
   private async renderLabelPdf(order: any, lineItem: any, index: number) {
     const widthMm = 25;
-    const heightMm = 25;
+    const heightMm = 35;
     const widthPx = this.mmToPx(widthMm);
     const heightPx = this.mmToPx(heightMm);
     const { default: puppeteer } = await import('puppeteer');
