@@ -6,6 +6,14 @@
       {
         "include": "integrations/email/templates/**/*",
         "watchAssets": true
+      },
+      {
+        "include": "common/assets/**/*",
+        "watchAssets": true
+      },
+      {
+        "include": "modules/**/assets/**/*",
+        "watchAssets": true
       }
     ]
   }

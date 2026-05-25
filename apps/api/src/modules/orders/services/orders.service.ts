@@ -409,6 +409,9 @@ export class OrdersService extends BaseService {
 
   private getVazirmatnFontFaceCss() {
     const candidates = [
+      path.resolve(__dirname, '../../../common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
+      path.resolve(process.cwd(), 'src/common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
+      path.resolve(process.cwd(), 'dist/common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
       path.resolve(process.cwd(), '../dashboard/public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
       path.resolve(process.cwd(), 'public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2')
     ];
