@@ -487,7 +487,7 @@ body{
   background:#fff;
 }
 .rotated-content{
-  transform:rotate(-90deg);
+  transform:rotate(-90deg) translateY(-8mm);
   transform-origin:center;
   display:flex;
   flex-direction:column;
@@ -505,8 +505,12 @@ body{
 .line-1{
   font-weight:900;
 }
-.line-2{font-weight:700}
+.line-2{
+  transform:translateY(2mm);
+  font-weight:700
+}
 .line-3{
+  transform:translateY(5mm);
   font-weight:600;
   letter-spacing:0.32mm;
   direction:ltr;
