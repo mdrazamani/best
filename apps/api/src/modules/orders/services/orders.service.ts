@@ -13,8 +13,8 @@ import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderDto } from '../dto/update-order.dto';
 import { ListOrdersQueryDto } from '../dto/list-orders-query.dto';
 
-const LABEL_WIDTH_MM = 25;
-const LABEL_HEIGHT_MM = 35;
+const LABEL_WIDTH_MM = 34;
+const LABEL_HEIGHT_MM = 24;
 
 @Injectable()
 export class OrdersService extends BaseService {
@@ -442,9 +442,11 @@ export class OrdersService extends BaseService {
     const collaboratorPhone = order.collaborator?.phone || '-';
     const dimensions = `${widthCm}×${heightCm}`;
     const fontFace = this.getVazirmatnFontFaceCss();
-    const dimensionFontSize = this.pickLabelFontSize(dimensions, 15.2, 10);
-    const customerFontSize = this.pickLabelFontSize(customerName, 10.4, 7.4);
-    const phoneFontSize = this.pickLabelFontSize(collaboratorPhone, 9.2, 7);
+    const dimensionFontSize = this.pickLabelFontSize(dimensions, 19.2, 13.2);
+    const customerFontSize = this.pickLabelFontSize(customerName, 12.6, 8.8);
+    const phoneFontSize = this.pickLabelFontSize(collaboratorPhone, 10.8, 7.8);
+    const labelInnerWidthMm = Math.max(LABEL_WIDTH_MM - 1, 1);
+    const labelInnerHeightMm = Math.max(LABEL_HEIGHT_MM - 1, 1);
 
     return `<!doctype html>
 <html lang="fa" dir="rtl">
@@ -460,45 +462,66 @@ ${fontFace}
 html,body{
   margin:0;
   padding:0;
-  width:100%;
-  height:100%;
+  width:${LABEL_WIDTH_MM}mm;
+  height:${LABEL_HEIGHT_MM}mm;
 }
 body{
   font-family:'Vazirmatn',Tahoma,sans-serif;
   direction:rtl;
   color:#0f172a;
   background:#fff;
-  padding:0.9mm;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  overflow:hidden;
 }
 .label{
-  width:100%;
-  min-height:18mm;
+  width:${labelInnerWidthMm}mm;
+  height:${labelInnerHeightMm}mm;
   border:1px solid #cbd5e1;
   border-radius:1.5mm;
-  padding:1.2mm 0.9mm;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  box-sizing:border-box;
+  background:#fff;
+}
+.rotated-content{
+  transform:rotate(-90deg);
+  transform-origin:center;
   display:flex;
   flex-direction:column;
-  gap:1mm;
   justify-content:center;
-  background:#fff;
+  align-items:center;
+  gap:0.7mm;
 }
 .line{
   text-align:center;
-  line-height:1.25;
+  line-height:1.12;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.line-1{font-weight:900}
+.line-1{
+  font-weight:900;
+}
 .line-2{font-weight:700}
-.line-3{font-weight:600}
+.line-3{
+  font-weight:600;
+  letter-spacing:0.32mm;
+  direction:ltr;
+  unicode-bidi:plaintext;
+  font-variant-numeric:tabular-nums;
+}
 </style>
 </head>
 <body>
   <div class="label">
-    <div class="line line-1" style="font-size:${dimensionFontSize}px">${this.escapeHtml(dimensions)}</div>
-    <div class="line line-2" style="font-size:${customerFontSize}px">${this.escapeHtml(customerName)}</div>
-    <div class="line line-3" style="font-size:${phoneFontSize}px">${this.escapeHtml(collaboratorPhone)}</div>
+    <div class="rotated-content">
+      <div class="line line-1" style="font-size:${dimensionFontSize}px">${this.escapeHtml(dimensions)}</div>
+      <div class="line line-2" style="font-size:${customerFontSize}px">${this.escapeHtml(customerName)}</div>
+      <div class="line line-3" style="font-size:${phoneFontSize}px">${this.escapeHtml(collaboratorPhone)}</div>
+    </div>
   </div>
 </body>
 </html>`;
@@ -534,7 +557,7 @@ body{
           printBackground: true,
           width: `${widthMm}mm`,
           height: `${heightMm}mm`,
-          landscape: false,
+          landscape: true,
           scale: 1,
           margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
           preferCSSPageSize: true
