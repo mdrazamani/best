@@ -29,7 +29,8 @@ async function bootstrap() {
 
   await app.register(cors, {
     origin: corsOriginOption,
-    credentials: true
+    credentials: true,
+    exposedHeaders: ['Content-Disposition', 'Content-Type']
   });
 
   const fastify = app.getHttpAdapter().getInstance();

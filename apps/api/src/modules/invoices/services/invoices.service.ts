@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import puppeteer from 'puppeteer';
 import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, maxMoney, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
+import { buildPuppeteerLaunchOptions } from '../../../common/utils/puppeteer.util';
 import { InvoicesRepository } from '../invoices.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { CreateInvoiceDto } from '../dto/create-invoice.dto';
@@ -290,9 +291,25 @@ export class InvoicesService extends BaseService {
     const buffer = await this.renderPdfFromHtml(html);
 
     return {
-      fileName: `${invoice.invoiceNumber}.pdf`,
+      fileName: this.buildInvoicePdfFileName(invoice),
       buffer
     };
+  }
+
+  private buildInvoicePdfFileName(invoice: any) {
+    const invoiceNumber = this.normalizeFileNameSegment(invoice?.invoiceNumber) || 'بدون-شماره';
+    const orders = Array.isArray(invoice?.orders) ? invoice.orders : [];
+
+    const collaboratorName = this.buildPartyFileNameSegment(
+      orders.map((order: any) => this.buildFullName(order?.collaborator)),
+      'همکار-نامشخص'
+    );
+    const customerName = this.buildPartyFileNameSegment(
+      orders.map((order: any) => this.buildFullName(order?.customer)),
+      'مشتری-نامشخص'
+    );
+
+    return `${collaboratorName} (${customerName}) ${invoiceNumber}.pdf`;
   }
 
   private jalaliDateCode(date: Date) {
@@ -1007,26 +1024,58 @@ export class InvoicesService extends BaseService {
 </html>`;
   }
   private async renderPdfFromHtml(html: string): Promise<Buffer> {
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-
     try {
-      const page = await browser.newPage();
-      await page.setContent(html, {
-        waitUntil: 'domcontentloaded'
-      });
+      const browser = await puppeteer.launch(buildPuppeteerLaunchOptions());
+      try {
+        const page = await browser.newPage();
+        await page.setContent(html, {
+          waitUntil: 'domcontentloaded'
+        });
 
-      const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' }
-      });
-      return Buffer.from(pdf);
-    } finally {
-      await browser.close();
+        const pdf = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' }
+        });
+        return Buffer.from(pdf);
+      } finally {
+        await browser.close();
+      }
+    } catch (error) {
+      throw new BadRequestException('تولید فایل فاکتور در سرور انجام نشد. لطفا دوباره تلاش کنید.');
     }
+  }
+
+  private buildFullName(person: any) {
+    const firstName = String(person?.firstName ?? '').trim();
+    const lastName = String(person?.lastName ?? '').trim();
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    return fullName || null;
+  }
+
+  private buildPartyFileNameSegment(values: Array<string | null | undefined>, fallback: string) {
+    const normalizedValues = values
+      .map((value) => this.normalizeFileNameSegment(value))
+      .filter((value): value is string => Boolean(value));
+    const uniqueValues = Array.from(new Set(normalizedValues));
+
+    if (!uniqueValues.length) {
+      return fallback;
+    }
+    if (uniqueValues.length === 1) {
+      return uniqueValues[0];
+    }
+
+    return uniqueValues.join('،-');
+  }
+
+  private normalizeFileNameSegment(value: unknown) {
+    return String(value ?? '')
+      .replace(/[\\/:*?"<>|\r\n]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\s/g, '-')
+      .slice(0, 60);
   }
 }
 

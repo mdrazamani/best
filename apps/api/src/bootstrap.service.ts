@@ -28,7 +28,7 @@ export class BootstrapService implements OnModuleInit {
     const lastName = (this.configService.get<string>('SEED_SUPER_ADMIN_LASTNAME') ?? '\u0627\u0635\u0644\u06cc').trim();
 
     if (!password) {
-      throw new Error('SEED_SUPER_ADMIN_PASSWORD must be set in production.');
+      throw new Error('در محیط تولید، تنظیم SEED_SUPER_ADMIN_PASSWORD الزامی است.');
     }
 
     await this.usersService.createSystemManager({

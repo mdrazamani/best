@@ -6,11 +6,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PassThrough } from 'stream';
 import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, derivePaymentStatus, maxMoney, minMoney, multiplyMoney, percentOf, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
+import { buildPuppeteerLaunchOptions } from '../../../common/utils/puppeteer.util';
 import { OrdersRepository } from '../orders.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderDto } from '../dto/update-order.dto';
 import { ListOrdersQueryDto } from '../dto/list-orders-query.dto';
+
+const LABEL_WIDTH_MM = 25;
+const LABEL_HEIGHT_MM = 35;
 
 @Injectable()
 export class OrdersService extends BaseService {
@@ -263,18 +267,25 @@ export class OrdersService extends BaseService {
       throw new BadRequestException('برای این سفارش آیتمی ثبت نشده است.');
     }
 
-    const labels = await Promise.all(
-      lineItems.map(async (item, index) => ({
-        fileName: this.buildLabelFileName(order.orderNumber, index),
-        buffer: await this.renderLabelPdf(order, item, index)
-      }))
-    );
+    try {
+      const labels = await Promise.all(
+        lineItems.map(async (item, index) => ({
+          fileName: this.buildLabelFileName(order.orderNumber, index),
+          buffer: await this.renderLabelPdf(order, item, index)
+        }))
+      );
 
-    const zipBuffer = await this.createZipBuffer(labels);
-    return {
-      fileName: `labels-${order.orderNumber}.zip`,
-      buffer: zipBuffer
-    };
+      const zipBuffer = await this.createZipBuffer(labels);
+      return {
+        fileName: `labels-${order.orderNumber}.zip`,
+        buffer: zipBuffer
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException('ساخت فایل فشرده لیبل‌ها در سرور انجام نشد. لطفا دوباره تلاش کنید.');
+    }
   }
 
   private withPaymentSummary<T extends { invoiceLinks?: Array<{ invoice?: { paidAmount: unknown; amount: unknown; status?: string } }>; invoices?: Array<{ paidAmount: unknown; amount: unknown; status?: string }>; stage?: string }>(order: T) {
@@ -425,10 +436,12 @@ export class OrdersService extends BaseService {
     const widthCm = Number(lineItem.width ?? 0);
     const heightCm = Number(lineItem.height ?? 0);
     const customerName = [order.customer?.firstName, order.customer?.lastName].filter(Boolean).join(' ') || '-';
-    const collaboratorName = [order.collaborator?.firstName, order.collaborator?.lastName].filter(Boolean).join(' ') || '-';
     const collaboratorPhone = order.collaborator?.phone || '-';
     const dimensions = `${widthCm}×${heightCm}`;
     const fontFace = this.getVazirmatnFontFaceCss();
+    const dimensionFontSize = this.pickLabelFontSize(dimensions, 15, 10.2);
+    const customerFontSize = this.pickLabelFontSize(customerName, 10.8, 7.6);
+    const phoneFontSize = this.pickLabelFontSize(collaboratorPhone, 9.2, 7);
 
     return `<!doctype html>
 <html lang="fa" dir="rtl">
@@ -436,26 +449,33 @@ export class OrdersService extends BaseService {
 <meta charset="utf-8" />
 <style>
 ${fontFace}
-*{box-sizing:border-box}
-body{
+@page{
+  size:${LABEL_WIDTH_MM}mm ${LABEL_HEIGHT_MM}mm;
   margin:0;
-  padding:0.9mm;
-  width:100%;
-  height:100%;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0;
+  padding:0;
+  width:${LABEL_WIDTH_MM}mm;
+  height:${LABEL_HEIGHT_MM}mm;
+}
+body{
   font-family:'Vazirmatn',Tahoma,sans-serif;
   direction:rtl;
   color:#0f172a;
+  background:#fff;
 }
 .label{
   width:100%;
   height:100%;
-  border:1px solid #cbd5e1;
-  border-radius:1.5mm;
-  padding:1.8mm 0.9mm;
+  border:0.3mm solid #cbd5e1;
+  border-radius:1.2mm;
+  padding:1.2mm 0.8mm 0.8mm;
   display:flex;
   flex-direction:column;
-  gap:1.15mm;
-  justify-content:center;
+  gap:0.95mm;
+  justify-content:flex-start;
 }
 .line{
   text-align:center;
@@ -464,48 +484,62 @@ body{
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.line-1{font-size:9.6px;font-weight:900}
-.line-2{font-size:7.7px;font-weight:700}
-.line-3,.line-4{font-size:7.1px;font-weight:600}
+.line-1{font-weight:900}
+.line-2{font-weight:700}
+.line-3{font-weight:600}
 </style>
 </head>
 <body>
   <div class="label">
-    <div class="line line-1">${this.escapeHtml(dimensions)}</div>
-    <div class="line line-2">${this.escapeHtml(customerName)}</div>
-    <div class="line line-3">${this.escapeHtml(collaboratorName)}</div>
-    <div class="line line-4">${this.escapeHtml(collaboratorPhone)}</div>
+    <div class="line line-1" style="font-size:${dimensionFontSize}px">${this.escapeHtml(dimensions)}</div>
+    <div class="line line-2" style="font-size:${customerFontSize}px">${this.escapeHtml(customerName)}</div>
+    <div class="line line-3" style="font-size:${phoneFontSize}px">${this.escapeHtml(collaboratorPhone)}</div>
   </div>
 </body>
 </html>`;
   }
 
+  private pickLabelFontSize(value: string, baseSize: number, minSize: number) {
+    const textLength = String(value ?? '').trim().length;
+
+    if (textLength <= 10) return baseSize;
+    if (textLength <= 14) return Math.max(baseSize - 1, minSize);
+    if (textLength <= 18) return Math.max(baseSize - 2, minSize);
+    if (textLength <= 24) return Math.max(baseSize - 3, minSize);
+
+    return minSize;
+  }
+
   private async renderLabelPdf(order: any, lineItem: any, index: number) {
-    const widthMm = 25;
-    const heightMm = 35;
+    const widthMm = LABEL_WIDTH_MM;
+    const heightMm = LABEL_HEIGHT_MM;
     const widthPx = this.mmToPx(widthMm);
     const heightPx = this.mmToPx(heightMm);
     const { default: puppeteer } = await import('puppeteer');
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-
     try {
-      const page = await browser.newPage();
-      await page.setViewport({ width: widthPx, height: heightPx });
-      await page.setContent(this.renderLabelHtml(order, lineItem), { waitUntil: 'domcontentloaded' });
-      const pdf = await page.pdf({
-        printBackground: true,
-        width: `${widthMm}mm`,
-        height: `${heightMm}mm`,
-        margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
-        preferCSSPageSize: true
-      });
-      return Buffer.from(pdf);
-    } finally {
-      await browser.close();
+      const browser = await puppeteer.launch(buildPuppeteerLaunchOptions());
+
+      try {
+        const page = await browser.newPage();
+        await page.setViewport({ width: widthPx, height: heightPx });
+        await page.emulateMediaType('print');
+        await page.setContent(this.renderLabelHtml(order, lineItem), { waitUntil: 'domcontentloaded' });
+        const pdf = await page.pdf({
+          printBackground: true,
+          width: `${widthMm}mm`,
+          height: `${heightMm}mm`,
+          landscape: false,
+          scale: 1,
+          margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
+          preferCSSPageSize: true
+        });
+        return Buffer.from(pdf);
+      } finally {
+        await browser.close();
+      }
+    } catch (error) {
+      throw new BadRequestException('تولید فایل لیبل در سرور انجام نشد. لطفا دوباره تلاش کنید.');
     }
   }
 
@@ -531,4 +565,3 @@ body{
     );
   }
 }
-

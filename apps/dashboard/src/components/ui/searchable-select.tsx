@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import Select from 'react-select';
+import Select, { components } from 'react-select';
 import { cn } from '../../lib/utils';
 
 export type SearchableSelectOption = {
@@ -15,7 +15,11 @@ export function SearchableSelect({
   emptyLabel,
   className,
   disabled,
-  isSearchable = true
+  isSearchable = true,
+  actionLabel,
+  actionTitle,
+  onActionClick,
+  actionDisabled
 }: {
   options: SearchableSelectOption[];
   value?: string;
@@ -26,6 +30,10 @@ export function SearchableSelect({
   className?: string;
   disabled?: boolean;
   isSearchable?: boolean;
+  actionLabel?: string;
+  actionTitle?: string;
+  onActionClick?: () => void;
+  actionDisabled?: boolean;
 }) {
   const selected = options.find((option) => option.value === value) ?? null;
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -58,6 +66,30 @@ export function SearchableSelect({
         menuShouldScrollIntoView={false}
         menuShouldBlockScroll={!insideDialog}
         classNamePrefix="best-select"
+        components={{
+          IndicatorsContainer: (props) => (
+            <components.IndicatorsContainer {...props}>
+              {onActionClick ? (
+                <button
+                  type="button"
+                  className="mx-1 inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-input px-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (disabled || actionDisabled) return;
+                    onActionClick();
+                  }}
+                  disabled={disabled || actionDisabled}
+                  aria-label={actionLabel ?? 'عملیات'}
+                  title={actionTitle ?? actionLabel}
+                >
+                  +
+                </button>
+              ) : null}
+              {props.children}
+            </components.IndicatorsContainer>
+          )
+        }}
         styles={{
           control: (base, state) => ({
             ...base,

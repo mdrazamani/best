@@ -289,7 +289,7 @@ export class AuthService extends BaseService {
   private get jwtSecret() {
     const secret = this.configService.get<string>('AUTH_JWT_SECRET')?.trim();
     if (!secret) {
-      throw new Error('AUTH_JWT_SECRET is not configured.');
+      throw new Error('تنظیم AUTH_JWT_SECRET انجام نشده است.');
     }
     return secret;
   }

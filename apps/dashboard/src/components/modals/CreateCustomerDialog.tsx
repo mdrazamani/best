@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -64,9 +65,15 @@ export function CreateCustomerDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
+    if (!firstName && !lastName) {
+      toast.error('نام یا نام خانوادگی را وارد کنید.');
+      return;
+    }
     await onSubmit({
-      firstName: form.firstName,
-      lastName: form.lastName,
+      firstName,
+      lastName,
       phone: form.phone || undefined,
       address: form.address || undefined,
       description: form.description || undefined,
@@ -86,8 +93,8 @@ export function CreateCustomerDialog({
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <Input required placeholder="نام" value={form.firstName} onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))} />
-            <Input required placeholder="نام خانوادگی" value={form.lastName} onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))} />
+            <Input placeholder="نام" value={form.firstName} onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))} />
+            <Input placeholder="نام خانوادگی" value={form.lastName} onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))} />
             <Input placeholder="شماره تماس" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} />
             {lockedReferrer ? (
               <div className="flex h-10 items-center rounded-md border border-input bg-muted/30 px-3 text-sm md:col-span-1">

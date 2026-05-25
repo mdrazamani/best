@@ -266,7 +266,9 @@ export function useBestApp() {
       const href = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = href;
-      if (fileName) a.download = fileName;
+      const serverFileName = resolveFileNameFromContentDisposition(response.headers.get('content-disposition'));
+      const finalFileName = fileName || serverFileName || inferDownloadFileName(url, response.headers);
+      a.download = finalFileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -299,6 +301,48 @@ export function useBestApp() {
     if (!accessToken) return;
     const data = await apiCall<any>(`/orders/${id}`, accessToken);
     setOrderDetail(data);
+  };
+
+  const resolveFileNameFromContentDisposition = (value: string | null) => {
+    if (!value) return undefined;
+
+    const filenameStarMatch = value.match(/filename\*\s*=\s*([^;]+)/i);
+    if (filenameStarMatch?.[1]) {
+      const raw = filenameStarMatch[1].trim().replace(/^["']|["']$/g, '');
+      const encodedPart = raw.replace(/^UTF-8''/i, '');
+      try {
+        const decoded = decodeURIComponent(encodedPart);
+        if (decoded) return decoded;
+      } catch {
+        // ignore and fallback to filename=
+      }
+    }
+
+    const filenameMatch = value.match(/filename\s*=\s*([^;]+)/i);
+    if (!filenameMatch?.[1]) return undefined;
+
+    const raw = filenameMatch[1].trim().replace(/^["']|["']$/g, '');
+    return raw || undefined;
+  };
+
+  const inferDownloadFileName = (url: string, headers: Headers) => {
+    const cleanUrl = url.split('?')[0] || '';
+    const contentType = (headers.get('content-type') || '').toLowerCase();
+
+    if (cleanUrl.endsWith('/pdf') || contentType.includes('application/pdf')) {
+      return 'invoice.pdf';
+    }
+    if (cleanUrl.endsWith('.zip') || contentType.includes('application/zip')) {
+      return 'download.zip';
+    }
+    if (cleanUrl.endsWith('/sql') || contentType.includes('application/sql')) {
+      return 'download.sql';
+    }
+    if (cleanUrl.endsWith('/excel') || contentType.includes('spreadsheetml.sheet')) {
+      return 'download.xlsx';
+    }
+
+    return 'download';
   };
 
   const loadInvoiceDetail = async (id: string) => {

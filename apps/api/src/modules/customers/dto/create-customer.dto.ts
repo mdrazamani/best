@@ -1,11 +1,13 @@
 import { IsOptional, IsString } from 'class-validator';
 
 export class CreateCustomerDto {
+  @IsOptional()
   @IsString()
-  firstName!: string;
+  firstName?: string;
 
+  @IsOptional()
   @IsString()
-  lastName!: string;
+  lastName?: string;
 
   @IsOptional()
   @IsString()

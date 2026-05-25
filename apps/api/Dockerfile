@@ -2,7 +2,18 @@ FROM node:20-alpine
 
 WORKDIR /workspace
 
-RUN apk add --no-cache postgresql-client tzdata openssl
+RUN apk add --no-cache \
+  postgresql-client \
+  tzdata \
+  openssl \
+  chromium \
+  nss \
+  freetype \
+  harfbuzz \
+  ttf-freefont
+
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 COPY apps/api/package*.json ./apps/api/
 WORKDIR /workspace/apps/api

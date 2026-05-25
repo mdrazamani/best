@@ -515,7 +515,7 @@ export function CollaboratorsPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber ?? 'invoice'}.pdf`)}
+                            onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`)}
                           >
                             <Download className="h-4 w-4" />
                             دانلود
@@ -551,7 +551,7 @@ export function CollaboratorsPage() {
                                 <Plus className="h-4 w-4" />
                                 ثبت پرداخت جدید
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber ?? 'invoice'}.pdf`)}>
+                              <DropdownMenuItem onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`)}>
                                 <Download className="h-4 w-4" />
                                 دانلود PDF
                               </DropdownMenuItem>

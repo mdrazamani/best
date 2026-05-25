@@ -5,6 +5,7 @@ import { Permission } from '../../../common/decorators/permission.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../../common/decorators/current-user.decorator';
 import { AuthGuard } from '../../../common/guards/auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { buildAttachmentContentDisposition } from '../../../common/utils/download.util';
 import { InvoicesService } from '../services/invoices.service';
 import { CreateInvoiceDto } from '../dto/create-invoice.dto';
 import { UpdateInvoiceDto } from '../dto/update-invoice.dto';
@@ -59,7 +60,8 @@ export class InvoicesController {
     const file = await this.invoicesService.pdf(id);
     reply
       .header('Content-Type', 'application/pdf')
-      .header('Content-Disposition', `attachment; filename=${file.fileName}`)
+      .header('Content-Disposition', buildAttachmentContentDisposition(file.fileName))
+      .header('Content-Length', String(file.buffer.length))
       .send(file.buffer);
   }
 }

@@ -63,7 +63,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
 
   async runBackup() {
     if (this.runningBackupPromise) {
-      this.logger.warn('Backup requested while another backup is already running. Returning in-flight result.');
+      this.logger.warn('درخواست بکاپ جدید ثبت شد، اما یک بکاپ دیگر در حال اجرا است. نتیجه همان اجرای فعلی برگردانده می‌شود.');
       return this.runningBackupPromise;
     }
 
@@ -95,7 +95,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
         sqlFilePath: sqlPath,
         excelDirectory: excelDir,
         status: 'SUCCESS',
-        message: 'Nightly backup created'
+        message: 'بکاپ با موفقیت ایجاد شد.'
       });
 
       return {
@@ -124,22 +124,29 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
       throw new NotFoundException('بکاپ پیدا نشد.');
     }
 
-    const zipPath = await this.resolveArchivePath(log.backupDir);
+    try {
+      const zipPath = await this.resolveArchivePath(log.backupDir);
 
-    if (!existsSync(zipPath)) {
-      const excelFiles = existsSync(log.excelDirectory) ? await readdir(log.excelDirectory) : [];
-      const excelPath = excelFiles.find((file) => file.toLowerCase().endsWith('.xlsx'));
-      if (!excelPath || !existsSync(log.sqlFilePath)) {
-        throw new NotFoundException('آرشیو بکاپ قابل دریافت نیست.');
+      if (!existsSync(zipPath)) {
+        const excelFiles = existsSync(log.excelDirectory) ? await readdir(log.excelDirectory) : [];
+        const excelPath = excelFiles.find((file) => file.toLowerCase().endsWith('.xlsx'));
+        if (!excelPath || !existsSync(log.sqlFilePath)) {
+          throw new NotFoundException('آرشیو بکاپ قابل دریافت نیست.');
+        }
+        await this.createArchive(zipPath, log.sqlFilePath, join(log.excelDirectory, excelPath));
       }
-      await this.createArchive(zipPath, log.sqlFilePath, join(log.excelDirectory, excelPath));
-    }
 
-    return {
-      fileName: `backup-${log.id}.zip`,
-      contentType: 'application/zip',
-      buffer: await readFile(zipPath)
-    };
+      return {
+        fileName: `backup-${log.id}.zip`,
+        contentType: 'application/zip',
+        buffer: await readFile(zipPath)
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('دانلود آرشیو بکاپ در سرور انجام نشد. لطفا دوباره تلاش کنید.');
+    }
   }
 
   async readSql(logId: string) {
@@ -148,11 +155,15 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
       throw new NotFoundException('فایل SQL پیدا نشد.');
     }
 
-    return {
-      fileName: 'database.sql',
-      contentType: 'application/sql',
-      buffer: await readFile(log.sqlFilePath)
-    };
+    try {
+      return {
+        fileName: 'database.sql',
+        contentType: 'application/sql',
+        buffer: await readFile(log.sqlFilePath)
+      };
+    } catch {
+      throw new BadRequestException('دانلود فایل SQL در سرور انجام نشد. لطفا دوباره تلاش کنید.');
+    }
   }
 
   async readExcel(logId: string, fileName: string) {
@@ -166,11 +177,15 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
       throw new NotFoundException('فایل اکسل پیدا نشد.');
     }
 
-    return {
-      fileName,
-      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      buffer: await readFile(fullPath)
-    };
+    try {
+      return {
+        fileName,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: await readFile(fullPath)
+      };
+    } catch {
+      throw new BadRequestException('دانلود فایل اکسل در سرور انجام نشد. لطفا دوباره تلاش کنید.');
+    }
   }
 
   private async setupScheduler() {
@@ -190,18 +205,18 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     const timezone = this.configService.get<string>('BACKUP_TIMEZONE') ?? 'Asia/Tehran';
 
     if (!cron.validate(cronExpr)) {
-      throw new Error(`Invalid BACKUP_CRON expression: ${cronExpr}`);
+      throw new Error(`عبارت BACKUP_CRON نامعتبر است: ${cronExpr}`);
     }
 
     this.nightlyTask = cron.schedule(
       cronExpr,
       () => {
-        this.runBackup().catch((error) => this.logger.error(`Nightly backup failed: ${String(error)}`));
+        this.runBackup().catch((error) => this.logger.error(`اجرای زمان‌بندی‌شده بکاپ با خطا مواجه شد: ${String(error)}`));
       },
       { timezone }
     );
 
-    this.logger.log(`Backup scheduler started: cron="${cronExpr}" timezone="${timezone}"`);
+    this.logger.log(`زمان‌بندی بکاپ فعال شد: cron="${cronExpr}" timezone="${timezone}"`);
   }
 
   private async ensureDefaultSettings() {
@@ -218,7 +233,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
       return;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`pg_dump unavailable/failed; using fallback SQL export. reason="${reason}"`);
+      this.logger.warn(`اجرای pg_dump ممکن نبود؛ خروجی SQL با روش جایگزین تولید می‌شود. دلیل: "${reason}"`);
     }
 
     await this.exportSqlFallback(sqlPath);
@@ -227,7 +242,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
   private async exportSqlWithPgDump(sqlPath: string) {
     const dbUrl = this.configService.get<string>('DATABASE_URL');
     if (!dbUrl) {
-      throw new Error('DATABASE_URL is not configured');
+      throw new Error('تنظیم DATABASE_URL انجام نشده است.');
     }
     const pgDumpBinary = this.configService.get<string>('PG_DUMP_PATH')?.trim() || 'pg_dump';
 
@@ -264,7 +279,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
           resolve();
           return;
         }
-        reject(new Error(stderr || `pg_dump failed with code ${code}`));
+        reject(new Error(stderr || `اجرای pg_dump با کد خطا ${code} متوقف شد.`));
       });
     });
   }
@@ -273,7 +288,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     const tables = await this.backupsRepository.listPublicTables();
     const lines: string[] = [];
 
-    lines.push('-- BEST SQL backup (fallback mode without pg_dump)');
+    lines.push('-- خروجی SQL بکاپ (حالت جایگزین بدون pg_dump)');
     lines.push(`-- created_at: ${new Date().toISOString()}`);
     lines.push('-- encoding: UTF8');
     lines.push('BEGIN;');
@@ -283,7 +298,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     for (const tableName of tables) {
       try {
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
-          this.logger.warn(`Skipped table with unsupported name in SQL fallback: ${tableName}`);
+          this.logger.warn(`جدول با نام پشتیبانی‌نشده در خروجی SQL جایگزین نادیده گرفته شد: ${tableName}`);
           continue;
         }
 
@@ -294,14 +309,14 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
 
         const rows = await this.backupsRepository.readRowsByTable(tableName);
         if (!rows.length) {
-          lines.push(`-- Table ${tableName}: empty`);
+          lines.push(`-- جدول ${tableName}: خالی`);
           continue;
         }
 
         const quotedTable = this.quoteIdentifier(tableName);
         const quotedColumns = columns.map((column) => this.quoteIdentifier(column)).join(', ');
 
-        lines.push(`-- Table ${tableName}: ${rows.length} row(s)`);
+        lines.push(`-- جدول ${tableName}: ${rows.length} ردیف`);
         for (const row of rows) {
           const valuesSql = columns
             .map((column) => this.toSqlLiteral((row as Record<string, unknown>)[column]))
@@ -311,8 +326,8 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
         lines.push('');
       } catch (error) {
         const message = this.toSingleLineMessage(error);
-        this.logger.error(`Failed SQL fallback export for table "${tableName}": ${message}`);
-        lines.push(`-- Table ${tableName}: skipped due to export error: ${this.escapeSqlString(message)}`);
+        this.logger.error(`خروجی SQL جایگزین برای جدول "${tableName}" با خطا مواجه شد: ${message}`);
+        lines.push(`-- جدول ${tableName}: به دلیل خطای خروجی‌گیری رد شد: ${this.escapeSqlString(message)}`);
         lines.push('');
       }
     }
@@ -331,7 +346,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     for (const tableName of tables) {
       try {
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
-          this.logger.warn(`Skipped table with unsupported name: ${tableName}`);
+          this.logger.warn(`جدول با نام نامعتبر در خروجی اکسل نادیده گرفته شد: ${tableName}`);
           continue;
         }
 
@@ -344,7 +359,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
         usedSheetNames.add(sheetName);
       } catch (error) {
         const message = this.toSingleLineMessage(error);
-        this.logger.error(`Failed workbook export for table "${tableName}": ${message}`);
+        this.logger.error(`خروجی اکسل برای جدول "${tableName}" با خطا مواجه شد: ${message}`);
         const sheetName = this.uniqueSheetName(this.sanitizeSheetName(`${tableName}_error`), usedSheetNames);
         const errorSheet = XLSX.utils.json_to_sheet([{ table: tableName, error: message }]);
         XLSX.utils.book_append_sheet(workbook, errorSheet, sheetName);
@@ -353,8 +368,8 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     }
 
     if (!usedSheetNames.size) {
-      const metaSheet = XLSX.utils.json_to_sheet([{ info: 'No tables were exported' }]);
-      XLSX.utils.book_append_sheet(workbook, metaSheet, 'backup_meta');
+      const metaSheet = XLSX.utils.json_to_sheet([{ info: 'هیچ جدولی برای خروجی پیدا نشد' }]);
+      XLSX.utils.book_append_sheet(workbook, metaSheet, 'meta');
     }
 
     XLSX.writeFile(workbook, excelPath, { compression: true });
@@ -379,7 +394,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
       archive.on('error', (error: Error) => finalizeOnce(() => reject(error)));
       archive.on('warning', (error: Error & { code?: string }) => {
         if (error?.code === 'ENOENT') {
-          finalizeOnce(() => reject(new Error(`Archive input file missing: ${error.message}`)));
+          finalizeOnce(() => reject(new Error(`فایل ورودی برای ساخت آرشیو پیدا نشد: ${error.message}`)));
           return;
         }
         finalizeOnce(() => reject(error));
@@ -409,14 +424,14 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
     if (typeof zipArchiveCtor === 'function') {
       this.archiverFactory = (format: string, options?: any) => {
         if (format !== 'zip') {
-          throw new Error(`Unsupported archive format: ${format}`);
+          throw new Error(`فرمت آرشیو پشتیبانی نمی‌شود: ${format}`);
         }
         return new zipArchiveCtor(options);
       };
       return this.archiverFactory;
     }
 
-    throw new Error('Archiver module could not be loaded correctly');
+    throw new Error('ماژول Archiver به‌درستی بارگذاری نشد.');
   }
 
   private async resolveArchivePath(backupDir: string) {
@@ -546,7 +561,7 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
       const ms = String(now.getMilliseconds()).padStart(3, '0');
       return `${y}-${m}-${d}T${h}-${min}-${s}-${ms}`;
     } catch (error) {
-      this.logger.warn(`Failed to build timezone-aware backup timestamp. fallback=UTC reason="${this.toSingleLineMessage(error)}"`);
+      this.logger.warn(`ساخت زمان بکاپ با تایم‌زون انجام نشد و زمان UTC جایگزین شد. دلیل: "${this.toSingleLineMessage(error)}"`);
       return defaultTimestamp;
     }
   }

@@ -66,6 +66,14 @@ const toNumber = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const deriveInvoiceStatusFromAmounts = (amountValue: string, initialPaidValue: string): 'UNPAID' | 'PARTIAL' | 'PAID' => {
+  const amount = Math.max(toNumber(amountValue), 0);
+  const initialPaidAmount = Math.max(toNumber(initialPaidValue), 0);
+  if (initialPaidAmount <= 0) return 'UNPAID';
+  if (initialPaidAmount >= amount) return 'PAID';
+  return 'PARTIAL';
+};
+
 const normalizeMoneyString = (value: number) => {
   const rounded = Math.max(Math.round(value * 100) / 100, 0);
   return Number.isFinite(rounded) ? String(rounded) : '0';
@@ -141,6 +149,7 @@ export function CreateInvoiceDialog({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const effectiveOrderIds = (lockedOrderIds?.length ? lockedOrderIds : selectedOrderIds).filter(Boolean);
+    const status = deriveInvoiceStatusFromAmounts(form.amount, form.initialPaidAmount);
     setSubmitting(true);
     try {
       await onSubmit({
@@ -149,7 +158,7 @@ export function CreateInvoiceDialog({
         amount: toNumber(form.amount),
         discountAmount: toNumber(form.discountAmount),
         initialPaidAmount: toNumber(form.initialPaidAmount),
-        status: form.status,
+        status,
         payerType: 'COLLABORATOR',
         payerId: lockedPayer?.id ?? (form.payerId || undefined),
         dueDate: form.dueDate || undefined,
@@ -183,6 +192,11 @@ export function CreateInvoiceDialog({
       discountAmount: discountManual ? prev.discountAmount : (selectedOrders.length ? normalizeMoneyString(selectedOrdersFinancial.totalDiscount) : '')
     }));
   }, [selectedOrders.length, selectedOrdersFinancial.totalAmount, selectedOrdersFinancial.totalDiscount, amountManual, discountManual]);
+
+  useEffect(() => {
+    const computedStatus = deriveInvoiceStatusFromAmounts(form.amount, form.initialPaidAmount);
+    setForm((prev) => (prev.status === computedStatus ? prev : { ...prev, status: computedStatus }));
+  }, [form.amount, form.initialPaidAmount]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

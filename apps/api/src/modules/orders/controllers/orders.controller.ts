@@ -5,6 +5,7 @@ import { Permission } from '../../../common/decorators/permission.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../../common/decorators/current-user.decorator';
 import { AuthGuard } from '../../../common/guards/auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { buildAttachmentContentDisposition } from '../../../common/utils/download.util';
 import { OrdersService } from '../services/orders.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderDto } from '../dto/update-order.dto';
@@ -34,7 +35,8 @@ export class OrdersController {
     const file = await this.ordersService.lineItemLabelPdf(id, lineItemId);
     reply
       .header('Content-Type', 'application/pdf')
-      .header('Content-Disposition', `attachment; filename=${file.fileName}`)
+      .header('Content-Disposition', buildAttachmentContentDisposition(file.fileName))
+      .header('Content-Length', String(file.buffer.length))
       .send(file.buffer);
   }
 
@@ -44,7 +46,8 @@ export class OrdersController {
     const file = await this.ordersService.allLineItemsLabelsZip(id);
     reply
       .header('Content-Type', 'application/zip')
-      .header('Content-Disposition', `attachment; filename=${file.fileName}`)
+      .header('Content-Disposition', buildAttachmentContentDisposition(file.fileName))
+      .header('Content-Length', String(file.buffer.length))
       .send(file.buffer);
   }
 
@@ -66,4 +69,3 @@ export class OrdersController {
     return this.ordersService.remove(user.userId, id);
   }
 }
-

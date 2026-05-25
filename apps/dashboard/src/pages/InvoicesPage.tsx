@@ -199,6 +199,16 @@ export function InvoicesPage() {
     setPaymentForm({ ...emptyPaymentForm });
   };
 
+  const openPaymentDialog = () => {
+    if (!invoiceDetail) return;
+    const remaining = Math.max(Number(invoiceDetail.amount ?? 0) - Number(invoiceDetail.paidAmount ?? 0), 0);
+    setPaymentForm({
+      ...emptyPaymentForm,
+      amount: remaining > 0 ? String(remaining) : ''
+    });
+    setPaymentOpen(true);
+  };
+
   if (invoiceDetail) {
     const detailOrders = Array.isArray(invoiceDetail.orders) ? invoiceDetail.orders : [];
     const paymentHistory = Array.isArray(invoiceDetail.paymentHistory) ? invoiceDetail.paymentHistory : [];
@@ -274,7 +284,7 @@ export function InvoicesPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold">تاریخچه پرداخت‌ها</p>
-                <Button onClick={() => setPaymentOpen(true)} disabled={invoiceDetail.status === 'PAID'}>
+                <Button onClick={openPaymentDialog} disabled={invoiceDetail.status === 'PAID'}>
                   <Plus className="h-4 w-4" />
                   ثبت پرداخت جدید
                 </Button>
@@ -445,7 +455,7 @@ export function InvoicesPage() {
                               جزئیات
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEdit(invoice)}>ویرایش</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber}.pdf`)}>
+                            <DropdownMenuItem onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`)}>
                               <Download className="h-4 w-4" />
                               دانلود PDF
                             </DropdownMenuItem>

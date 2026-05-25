@@ -1,4 +1,4 @@
-﻿import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { BaseService } from '../../../common/services/base.service';
 import { CustomersRepository } from '../customers.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
@@ -81,9 +81,15 @@ export class CustomersService extends BaseService {
   }
 
   async create(actorId: string, dto: CreateCustomerDto) {
+    const firstName = dto.firstName?.trim() ?? '';
+    const lastName = dto.lastName?.trim() ?? '';
+    if (!firstName && !lastName) {
+      throw new BadRequestException('حداقل نام یا نام خانوادگی مشتری الزامی است.');
+    }
+
     const created = await this.customersRepository.create({
-      firstName: dto.firstName.trim(),
-      lastName: dto.lastName.trim(),
+      firstName,
+      lastName,
       phone: dto.phone?.trim(),
       address: dto.address?.trim(),
       description: dto.description?.trim(),
@@ -106,6 +112,12 @@ export class CustomersService extends BaseService {
     const existing = await this.customersRepository.findById(id);
     if (!existing) {
       throw new NotFoundException('مشتری پيدا نشد.');
+    }
+
+    const nextFirstName = dto.firstName === undefined ? existing.firstName : dto.firstName.trim();
+    const nextLastName = dto.lastName === undefined ? existing.lastName : dto.lastName.trim();
+    if (!nextFirstName && !nextLastName) {
+      throw new BadRequestException('حداقل نام یا نام خانوادگی مشتری الزامی است.');
     }
 
     const updated = await this.customersRepository.update(id, {

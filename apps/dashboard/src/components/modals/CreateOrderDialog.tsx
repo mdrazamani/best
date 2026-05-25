@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, UserPlus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { money } from '../../lib/format';
 import { Button } from '../ui/button';
@@ -217,7 +217,8 @@ export function CreateOrderDialog({
       const unitPrice = toNumber(item.unitPrice);
       const calculated = calculateLineTotal(width, height, quantity, unitPrice);
       const override = toNumber(item.lineTotalOverride);
-      const effective = item.lineTotalManual ? Math.max(override, 0) : calculated;
+      const hasManualOverride = item.lineTotalManual && item.lineTotalOverride.trim() !== '';
+      const effective = hasManualOverride ? Math.max(override, 0) : calculated;
       return { calculated, effective, width, height, quantity };
     });
   }, [lineItems]);
@@ -238,9 +239,8 @@ export function CreateOrderDialog({
         if (item.id !== id) return item;
         const next: LineItemForm = { ...item, [key]: value };
         if (key === 'lineTotalOverride') {
-          const manual = value.trim() !== '';
-          next.lineTotalManual = manual;
-          return manual ? next : withAutoLineTotal(next);
+          next.lineTotalManual = true;
+          return next;
         }
         if (key === 'meshTypeId') {
           const mesh = meshOptions.find((m) => m.value === value);
@@ -259,14 +259,24 @@ export function CreateOrderDialog({
     setLineItems((prev) => (prev.length === 1 ? prev : prev.filter((item) => item.id !== id)));
   };
 
+  const commitLineTotalOverride = (id: string) => {
+    setLineItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        if (item.lineTotalOverride.trim() !== '') return item;
+        return withAutoLineTotal({ ...item, lineTotalManual: false });
+      })
+    );
+  };
+
   const submitQuickCustomer = async () => {
     if (!onQuickCreateCustomer) return;
 
     const firstName = quickCustomerForm.firstName.trim();
     const lastName = quickCustomerForm.lastName.trim();
     const phone = quickCustomerForm.phone.trim();
-    if (!firstName || !lastName) {
-      toast.error('نام و نام خانوادگی مشتری الزامی است.');
+    if (!firstName && !lastName) {
+      toast.error('حداقل نام یا نام خانوادگی مشتری را وارد کنید.');
       return;
     }
 
@@ -325,7 +335,8 @@ export function CreateOrderDialog({
         const areaMeters = (width * height) / 10000;
         const factor = areaMeters > 1 ? areaMeters * quantity : quantity;
         const calculatedLineTotal = calculateLineTotal(width, height, quantity, unitPrice);
-        const effectiveLineTotal = item.lineTotalManual ? Math.max(lineTotalOverride, 0) : calculatedLineTotal;
+        const hasManualOverride = item.lineTotalManual && item.lineTotalOverride.trim() !== '';
+        const effectiveLineTotal = hasManualOverride ? Math.max(lineTotalOverride, 0) : calculatedLineTotal;
         const effectiveUnitPrice = factor > 0 ? effectiveLineTotal / factor : unitPrice;
 
         return {
@@ -396,17 +407,14 @@ export function CreateOrderDialog({
                   value={form.customerId}
                   onChange={(value) => setForm((prev) => ({ ...prev, customerId: value }))}
                   placeholder="انتخاب مشتری"
+                  actionLabel="افزودن سریع مشتری"
+                  actionTitle="افزودن سریع مشتری"
+                  onActionClick={onQuickCreateCustomer ? () => setQuickCustomerOpen((prev) => !prev) : undefined}
                 />
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
                     {activeCollaboratorId ? 'ابتدا مشتری‌های مرتبط با همین همکار نمایش داده می‌شوند.' : 'برای سرعت بیشتر، می‌توانید اول همکار را انتخاب کنید.'}
                   </p>
-                  {onQuickCreateCustomer ? (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setQuickCustomerOpen((prev) => !prev)}>
-                      <UserPlus className="h-4 w-4" />
-                      افزودن سریع مشتری
-                    </Button>
-                  ) : null}
                 </div>
                 {quickCustomerOpen ? (
                   <div className="grid gap-2 rounded-md border border-dashed p-2">
@@ -484,7 +492,15 @@ export function CreateOrderDialog({
                     <Input type="number" min="0" step="0.01" value={item.height} placeholder="ارتفاع (cm)" onChange={(e) => updateLineItem(item.id, 'height', e.target.value)} />
                     <Input type="number" min="0" step="0.01" value={item.quantity} placeholder="تعداد" onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)} />
                     <Input type="number" min="0" step="0.01" value={item.unitPrice} placeholder="قیمت واحد نوع توری" onChange={(e) => updateLineItem(item.id, 'unitPrice', e.target.value)} />
-                    <Input type="number" min="0" step="0.01" value={item.lineTotalOverride} placeholder="مبلغ نهایی ردیف (اختیاری)" onChange={(e) => updateLineItem(item.id, 'lineTotalOverride', e.target.value)} />
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.lineTotalOverride}
+                      placeholder="مبلغ نهایی ردیف (اختیاری)"
+                      onChange={(e) => updateLineItem(item.id, 'lineTotalOverride', e.target.value)}
+                      onBlur={() => commitLineTotalOverride(item.id)}
+                    />
                   </div>
                   <Input className="mt-3" value={item.description} placeholder="توضیحات ردیف (اختیاری)" onChange={(e) => updateLineItem(item.id, 'description', e.target.value)} />
                   <p className="mt-2 text-xs text-muted-foreground">جمع محاسباتی ردیف: {money(lineTotals[index]?.calculated ?? 0)}</p>

@@ -4,6 +4,7 @@ import { Resource } from '../../../common/decorators/resource.decorator';
 import { Permission } from '../../../common/decorators/permission.decorator';
 import { AuthGuard } from '../../../common/guards/auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { buildAttachmentContentDisposition } from '../../../common/utils/download.util';
 import { BackupsService } from '../services/backups.service';
 import { UpdateBackupSettingsDto } from '../dto/update-backup-settings.dto';
 
@@ -43,7 +44,8 @@ export class BackupsController {
     const file = await this.backupsService.readSql(id);
     reply
       .header('Content-Type', file.contentType)
-      .header('Content-Disposition', `attachment; filename=${file.fileName}`)
+      .header('Content-Disposition', buildAttachmentContentDisposition(file.fileName))
+      .header('Content-Length', String(file.buffer.length))
       .send(file.buffer);
   }
 
@@ -53,7 +55,8 @@ export class BackupsController {
     const file = await this.backupsService.readArchive(id);
     reply
       .header('Content-Type', file.contentType)
-      .header('Content-Disposition', `attachment; filename=${file.fileName}`)
+      .header('Content-Disposition', buildAttachmentContentDisposition(file.fileName))
+      .header('Content-Length', String(file.buffer.length))
       .send(file.buffer);
   }
 
@@ -63,7 +66,8 @@ export class BackupsController {
     const item = await this.backupsService.readExcel(id, file);
     reply
       .header('Content-Type', item.contentType)
-      .header('Content-Disposition', `attachment; filename=${item.fileName}`)
+      .header('Content-Disposition', buildAttachmentContentDisposition(item.fileName))
+      .header('Content-Length', String(item.buffer.length))
       .send(item.buffer);
   }
 }

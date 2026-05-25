@@ -1,7 +1,7 @@
 ﻿import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ClipboardList, Download, Eye, FileText, History, List, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageBadgeVariant, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
+import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -28,6 +28,14 @@ const toNumber = (value: string) => {
   if (!normalized) return 0;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const deriveInvoiceStatusFromAmounts = (amountValue: string, initialPaidValue: string): 'UNPAID' | 'PARTIAL' | 'PAID' => {
+  const amount = Math.max(toNumber(amountValue), 0);
+  const initialPaidAmount = Math.max(toNumber(initialPaidValue), 0);
+  if (initialPaidAmount <= 0) return 'UNPAID';
+  if (initialPaidAmount >= amount) return 'PAID';
+  return 'PARTIAL';
 };
 
 const payerTypeLabel = (value?: string) => {
@@ -62,16 +70,13 @@ export function OrdersPage() {
   } = useBestContext();
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [stageOpen, setStageOpen] = useState(false);
-  const [stageOrderId, setStageOrderId] = useState<string | null>(null);
-  const [stageSaving, setStageSaving] = useState(false);
+  const [listStageSavingId, setListStageSavingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<'all' | string>('all');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [selectedStage, setSelectedStage] = useState('RECEIVED');
   const [detailStageDraft, setDetailStageDraft] = useState('RECEIVED');
   const [detailStageSaving, setDetailStageSaving] = useState(false);
   const [detailInvoiceOpen, setDetailInvoiceOpen] = useState(false);
@@ -203,21 +208,17 @@ export function OrdersPage() {
     });
   }, [orderDetail?.id, orderDetail?.paymentSummary?.remainingAmount, orderDetail?.paymentSummary?.total, orderDetail?.totalPrice, orderDetail?.collaborator?.id, orderDetail?.expectedCompletionDate]);
 
-  const openStageDialog = (orderId: string, currentStage: string) => {
-    setStageOrderId(orderId);
-    setSelectedStage(currentStage);
-    setStageOpen(true);
-  };
+  useEffect(() => {
+    const computedStatus = deriveInvoiceStatusFromAmounts(detailInvoiceForm.amount, detailInvoiceForm.initialPaidAmount);
+    setDetailInvoiceForm((prev) => (prev.status === computedStatus ? prev : { ...prev, status: computedStatus }));
+  }, [detailInvoiceForm.amount, detailInvoiceForm.initialPaidAmount]);
 
-  const saveStage = async (nextStage: string) => {
-    if (!stageOrderId) return;
-    setStageSaving(true);
+  const saveListStage = async (orderId: string, nextStage: string) => {
+    setListStageSavingId(orderId);
     try {
-      await updateOrder(stageOrderId, { stage: nextStage });
-      setStageOpen(false);
-      setStageOrderId(null);
+      await updateOrder(orderId, { stage: nextStage });
     } finally {
-      setStageSaving(false);
+      setListStageSavingId(null);
     }
   };
 
@@ -243,6 +244,7 @@ export function OrdersPage() {
     const amount = toNumber(detailInvoiceForm.amount);
     const discountAmount = toNumber(detailInvoiceForm.discountAmount);
     const initialPaidAmount = toNumber(detailInvoiceForm.initialPaidAmount);
+    const status = deriveInvoiceStatusFromAmounts(detailInvoiceForm.amount, detailInvoiceForm.initialPaidAmount);
     const collaboratorId = orderDetail.collaborator?.id;
     if (!collaboratorId) return;
 
@@ -254,7 +256,7 @@ export function OrdersPage() {
         amount,
         discountAmount,
         initialPaidAmount,
-        status: detailInvoiceForm.status,
+        status,
         payerType: 'COLLABORATOR',
         payerId: collaboratorId,
         dueDate: detailInvoiceForm.dueDate || undefined,
@@ -531,7 +533,7 @@ export function OrdersPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber ?? 'invoice'}.pdf`)}
+                            onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`)}
                           >
                             <Download className="h-4 w-4" />
                             دانلود
@@ -771,7 +773,20 @@ export function OrdersPage() {
                         )}
                       </TableCell>
                       <TableCell>{WORK_TYPES.find((item) => item.value === order.workType)?.label} / {meshTypeLabelsFromItems(order.lineItems)}</TableCell>
-                      <TableCell><Badge variant={orderStageBadgeVariant(order.stage)}>{ORDER_STAGES.find((item) => item.value === order.stage)?.label ?? order.stage}</Badge></TableCell>
+                      <TableCell className="min-w-[180px]">
+                        <SearchableSelect
+                          value={order.stage}
+                          onChange={(value) => {
+                            if (!value || value === order.stage) return;
+                            void saveListStage(order.id, value);
+                          }}
+                          options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
+                          placeholder="مرحله سفارش"
+                          isSearchable={false}
+                          className="max-w-[170px]"
+                          disabled={listStageSavingId === order.id}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="mb-1">
                           <Badge variant={paymentStatusBadgeVariant(order.paymentSummary.status)}>{paymentStatusLabel(order.paymentSummary.status)}</Badge>
@@ -793,7 +808,6 @@ export function OrdersPage() {
                               <Eye className="h-4 w-4" />
                               مشاهده
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openStageDialog(order.id, order.stage)}>تغییر مرحله</DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeOrder(order.id)}>حذف </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -827,27 +841,6 @@ export function OrdersPage() {
         }}
       />
 
-      <Dialog open={stageOpen} onOpenChange={setStageOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>تغییر مرحله سفارش</DialogTitle>
-            <DialogDescription>مرحله جدید را انتخاب کنید.</DialogDescription>
-          </DialogHeader>
-          <SearchableSelect
-            options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
-            value={selectedStage}
-            onChange={(value) => {
-              setSelectedStage(value);
-              void saveStage(value);
-            }}
-            placeholder="انتخاب مرحله"
-            disabled={stageSaving}
-          />
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => setStageOpen(false)} disabled={stageSaving}>انصراف</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }
