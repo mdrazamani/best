@@ -28,7 +28,7 @@ services:
       context: .
       dockerfile: ./apps/api/Dockerfile
     container_name: best-api
-    command: node dist/apps/api/main.js
+    command: node dist/main.js
     restart: unless-stopped
     depends_on:
       postgres:
