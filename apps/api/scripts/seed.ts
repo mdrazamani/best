@@ -102,24 +102,22 @@ async function main() {
     });
   }
 
-  const user = await prisma.user.upsert({
-    where: { username },
-    update: {
-      firstName,
-      lastName,
-      passwordHash: await argon2.hash(password),
-      status: 'ACTIVE',
-      locale: 'fa'
-    },
-    create: {
-      firstName,
-      lastName,
-      username,
-      passwordHash: await argon2.hash(password),
-      status: 'ACTIVE',
-      locale: 'fa'
-    }
-  });
+  let user = await prisma.user.findUnique({ where: { username } });
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        firstName,
+        lastName,
+        username,
+        passwordHash: await argon2.hash(password),
+        status: 'ACTIVE',
+        locale: 'fa'
+      }
+    });
+    console.log(`Created super admin: ${username}`);
+  } else {
+    console.log(`Super admin already exists: ${username}`);
+  }
 
   await prisma.userRole.upsert({
     where: {
@@ -137,7 +135,7 @@ async function main() {
 
   console.log('Seed completed.');
   console.log(`Username: ${username}`);
-  console.log(`Password: ${password}`);
+  console.log('Password left unchanged if the user already existed.');
 }
 
 main()

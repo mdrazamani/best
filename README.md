@@ -31,8 +31,23 @@ docker compose -f docker-compose.dev.yaml up -d
 ## Run Full Stack With Docker
 
 ```bash
-docker compose up -d --build
+# Linux/macOS
+./up.sh
+
+# Windows PowerShell
+./up.ps1
 ```
+
+`up.sh` / `up.ps1` do this automatically:
+- creates `.env` from `.env.production.example` if missing
+- creates `apps/api/.env` if missing
+- creates `apps/dashboard/.env` if missing
+- runs `docker compose up -d --build`
+
+API startup behavior:
+- Runs `prisma migrate deploy` on container startup (safe for production deployment flow)
+- Runs seed script (idempotent): creates `superadmin` only if it does not already exist
+- Existing business data is preserved across restarts because PostgreSQL uses the named volume `best_postgres_data`
 
 Endpoints:
 

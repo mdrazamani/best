@@ -7,8 +7,8 @@ import { Input } from '../components/ui/input';
 
 export function LoginPage() {
   const { login } = useBestContext();
-  const [username, setUsername] = useState('superadmin');
-  const [password, setPassword] = useState('Best@123456');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 

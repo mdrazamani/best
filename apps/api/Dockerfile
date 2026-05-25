@@ -1,13 +1,19 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /workspace
 
-RUN apk add --no-cache postgresql-client tzdata
+RUN apk add --no-cache postgresql-client tzdata openssl
 
-COPY package*.json ./
+COPY apps/api/package*.json ./apps/api/
+WORKDIR /workspace/apps/api
 RUN npm ci
 
-COPY . .
+WORKDIR /workspace
+COPY tsconfig.base.json ./tsconfig.base.json
+COPY apps/api ./apps/api
+
+WORKDIR /workspace/apps/api
+RUN npm run prisma:generate
 RUN npm run build
 
 EXPOSE 3000

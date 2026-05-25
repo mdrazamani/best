@@ -1,13 +1,13 @@
-﻿services:
+services:
   postgres:
     image: postgres:16-alpine
     container_name: best-postgres
     restart: unless-stopped
     stop_grace_period: 60s
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: best
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-BestDb#2026!Secure}
+      POSTGRES_DB: ${POSTGRES_DB:-best}
       POSTGRES_INITDB_ARGS: --data-checksums
     ports:
       - '5432:5432'
@@ -18,15 +18,15 @@
         volume:
           nocopy: true
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d best']
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
       interval: 10s
       timeout: 5s
       retries: 10
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/api/Dockerfile
     container_name: best-api
     restart: unless-stopped
     depends_on:
@@ -36,20 +36,20 @@
       NODE_ENV: production
       TZ: Asia/Tehran
       PORT: 3000
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/best?schema=public
-      AUTH_JWT_SECRET: change-this-super-secret-value
-      AUTH_JWT_ISSUER: best-api
-      AUTH_JWT_AUDIENCE: best-dashboard
-      AUTH_JWT_ACCESS_TTL: 15m
-      AUTH_JWT_REFRESH_TTL: 30d
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-best}?schema=public
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-BestJwt_2026_Str0ng_S3cret_For_Production_Change_This_Immediately}
+      AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-best-api}
+      AUTH_JWT_AUDIENCE: ${AUTH_JWT_AUDIENCE:-best-dashboard}
+      AUTH_JWT_ACCESS_TTL: ${AUTH_JWT_ACCESS_TTL:-15m}
+      AUTH_JWT_REFRESH_TTL: ${AUTH_JWT_REFRESH_TTL:-30d}
       BACKUP_DIRECTORY: /app/backups
-      BACKUP_INTERVAL_MINUTES: 1440
-      BACKUP_CRON: 0 0 * * *
-      BACKUP_TIMEZONE: Asia/Tehran
-      SEED_SUPER_ADMIN_USERNAME: superadmin
-      SEED_SUPER_ADMIN_PASSWORD: Best@123456
-      SEED_SUPER_ADMIN_FIRSTNAME: مدیر
-      SEED_SUPER_ADMIN_LASTNAME: اصلی
+      BACKUP_INTERVAL_MINUTES: ${BACKUP_INTERVAL_MINUTES:-1440}
+      BACKUP_CRON: ${BACKUP_CRON:-0 0 * * *}
+      BACKUP_TIMEZONE: ${BACKUP_TIMEZONE:-Asia/Tehran}
+      SEED_SUPER_ADMIN_USERNAME: ${SEED_SUPER_ADMIN_USERNAME:-superadmin}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD:-Best@123456}
+      SEED_SUPER_ADMIN_FIRSTNAME: ${SEED_SUPER_ADMIN_FIRSTNAME:-Manager}
+      SEED_SUPER_ADMIN_LASTNAME: ${SEED_SUPER_ADMIN_LASTNAME:-Admin}
     expose:
       - '3000'
     volumes:
@@ -58,25 +58,40 @@
         target: /app/backups
         volume:
           nocopy: true
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
 
   dashboard:
     build:
-      context: ./apps/dashboard
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/dashboard/Dockerfile
     container_name: best-dashboard
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     expose:
       - '80'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1/ || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
 
   nginx:
     image: nginx:1.27-alpine
     container_name: best-nginx
     restart: unless-stopped
     depends_on:
-      - api
-      - dashboard
+      api:
+        condition: service_healthy
+      dashboard:
+        condition: service_healthy
     ports:
       - '80:80'
     volumes:

@@ -74,6 +74,13 @@ async function bootstrap() {
     }
   }));
 
+  fastify.get('/health', async () => ({
+    success: true,
+    data: {
+      status: 'ok'
+    }
+  }));
+
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port, '0.0.0.0');
 }

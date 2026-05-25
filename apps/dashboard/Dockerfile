@@ -1,16 +1,21 @@
 FROM node:20-alpine AS build
 
-WORKDIR /app
+WORKDIR /workspace
 
-COPY package*.json ./
+COPY apps/dashboard/package*.json ./apps/dashboard/
+WORKDIR /workspace/apps/dashboard
 RUN npm ci
 
-COPY . .
+WORKDIR /workspace
+COPY tsconfig.base.json ./tsconfig.base.json
+COPY apps/dashboard ./apps/dashboard
+
+WORKDIR /workspace/apps/dashboard
 RUN npm run build
 
 FROM nginx:1.27-alpine
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY apps/dashboard/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /workspace/apps/dashboard/dist /usr/share/nginx/html
 
 EXPOSE 80
