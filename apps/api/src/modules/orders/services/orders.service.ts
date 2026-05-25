@@ -442,8 +442,8 @@ export class OrdersService extends BaseService {
     const collaboratorPhone = order.collaborator?.phone || '-';
     const dimensions = `${widthCm}×${heightCm}`;
     const fontFace = this.getVazirmatnFontFaceCss();
-    const dimensionFontSize = this.pickLabelFontSize(dimensions, 15, 10.2);
-    const customerFontSize = this.pickLabelFontSize(customerName, 10.8, 7.6);
+    const dimensionFontSize = this.pickLabelFontSize(dimensions, 15.2, 10);
+    const customerFontSize = this.pickLabelFontSize(customerName, 10.4, 7.4);
     const phoneFontSize = this.pickLabelFontSize(collaboratorPhone, 9.2, 7);
 
     return `<!doctype html>
@@ -460,25 +460,27 @@ ${fontFace}
 html,body{
   margin:0;
   padding:0;
-  width:${LABEL_WIDTH_MM}mm;
-  height:${LABEL_HEIGHT_MM}mm;
+  width:100%;
+  height:100%;
 }
 body{
   font-family:'Vazirmatn',Tahoma,sans-serif;
   direction:rtl;
   color:#0f172a;
   background:#fff;
+  padding:0.9mm;
 }
 .label{
   width:100%;
-  height:100%;
-  border:0.3mm solid #cbd5e1;
-  border-radius:1.2mm;
-  padding:1.2mm 0.8mm 0.8mm;
+  min-height:18mm;
+  border:1px solid #cbd5e1;
+  border-radius:1.5mm;
+  padding:1.2mm 0.9mm;
   display:flex;
   flex-direction:column;
-  gap:0.95mm;
-  justify-content:flex-start;
+  gap:1mm;
+  justify-content:center;
+  background:#fff;
 }
 .line{
   text-align:center;
