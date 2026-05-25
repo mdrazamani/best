@@ -6,7 +6,7 @@ services:
     stop_grace_period: 60s
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-BestDb#2026!Secure}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-BestDbBestDb_2026_Secure}
       POSTGRES_DB: ${POSTGRES_DB:-best}
       POSTGRES_INITDB_ARGS: --data-checksums
     ports:
