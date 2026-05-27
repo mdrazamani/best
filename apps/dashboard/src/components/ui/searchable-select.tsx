@@ -19,7 +19,8 @@ export function SearchableSelect({
   actionLabel,
   actionTitle,
   onActionClick,
-  actionDisabled
+  actionDisabled,
+  actionOnEnter = false
 }: {
   options: SearchableSelectOption[];
   value?: string;
@@ -32,13 +33,15 @@ export function SearchableSelect({
   isSearchable?: boolean;
   actionLabel?: string;
   actionTitle?: string;
-  onActionClick?: () => void;
+  onActionClick?: (inputValue: string) => void;
   actionDisabled?: boolean;
+  actionOnEnter?: boolean;
 }) {
   const selected = options.find((option) => option.value === value) ?? null;
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | undefined>(undefined);
   const [insideDialog, setInsideDialog] = useState(false);
+  const [inputValue, setInputValue] = useState('');
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -49,6 +52,8 @@ export function SearchableSelect({
 
   const effectivePortalTarget = insideDialog ? undefined : portalTarget;
   const effectiveMenuPosition = insideDialog ? 'absolute' : 'fixed';
+  const normalizedInput = inputValue.trim();
+  const normalizedInputLower = normalizedInput.toLocaleLowerCase();
 
   return (
     <div ref={wrapperRef} className={cn('w-full text-right', className)}>
@@ -56,7 +61,32 @@ export function SearchableSelect({
         isRtl
         options={options}
         value={selected}
-        onChange={(option) => onChange(option?.value ?? '')}
+        onChange={(option) => {
+          onChange(option?.value ?? '');
+          setInputValue('');
+        }}
+        inputValue={inputValue}
+        onInputChange={(nextInputValue, meta) => {
+          if (meta.action === 'input-change') {
+            setInputValue(nextInputValue);
+          } else if (meta.action === 'menu-close' || meta.action === 'set-value' || meta.action === 'input-blur') {
+            setInputValue('');
+          }
+          return nextInputValue;
+        }}
+        onKeyDown={(event) => {
+          if (!onActionClick || !actionOnEnter || event.key !== 'Enter') return;
+          if (!normalizedInput) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const exactMatch = options.find((item) => item.label.trim().toLocaleLowerCase() === normalizedInputLower);
+          if (exactMatch) {
+            onChange(exactMatch.value);
+            setInputValue('');
+            return;
+          }
+          onActionClick(normalizedInput);
+        }}
         isDisabled={disabled}
         isSearchable={isSearchable}
         placeholder={placeholder}
@@ -72,12 +102,12 @@ export function SearchableSelect({
               {onActionClick ? (
                 <button
                   type="button"
-                  className="mx-1 inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-input px-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mx-1 inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-input px-2 text-base font-semibold leading-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     if (disabled || actionDisabled) return;
-                    onActionClick();
+                    onActionClick(normalizedInput);
                   }}
                   disabled={disabled || actionDisabled}
                   aria-label={actionLabel ?? 'عملیات'}

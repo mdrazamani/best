@@ -269,12 +269,30 @@ export function CreateOrderDialog({
     );
   };
 
-  const submitQuickCustomer = async () => {
+  const submitQuickCustomer = async (typedLastName?: string) => {
     if (!onQuickCreateCustomer) return;
 
     const firstName = quickCustomerForm.firstName.trim();
-    const lastName = quickCustomerForm.lastName.trim();
+    const typedLastNameNormalized = typedLastName?.trim() ?? '';
+    const lastName = quickCustomerForm.lastName.trim() || typedLastNameNormalized;
     const phone = quickCustomerForm.phone.trim();
+
+    if (!firstName && !lastName && typedLastName !== undefined) {
+      setQuickCustomerOpen((prev) => !prev);
+      return;
+    }
+
+    if (!firstName && typedLastNameNormalized) {
+      const existing = prioritizedCustomerOptions.find(
+        (item) => item.label.trim().toLocaleLowerCase() === typedLastNameNormalized.toLocaleLowerCase()
+      );
+      if (existing) {
+        setForm((prev) => ({ ...prev, customerId: existing.value }));
+        setQuickCustomerOpen(false);
+        return;
+      }
+    }
+
     if (!firstName && !lastName) {
       toast.error('حداقل نام یا نام خانوادگی مشتری را وارد کنید.');
       return;
@@ -409,7 +427,9 @@ export function CreateOrderDialog({
                   placeholder="انتخاب مشتری"
                   actionLabel="افزودن سریع مشتری"
                   actionTitle="افزودن سریع مشتری"
-                  onActionClick={onQuickCreateCustomer ? () => setQuickCustomerOpen((prev) => !prev) : undefined}
+                  onActionClick={onQuickCreateCustomer ? (typedValue) => void submitQuickCustomer(typedValue) : undefined}
+                  actionDisabled={quickCustomerSubmitting}
+                  actionOnEnter
                 />
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
