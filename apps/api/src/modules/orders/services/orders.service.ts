@@ -251,7 +251,7 @@ export class OrdersService extends BaseService {
     const lineItem = lineItems[lineItemIndex];
     const buffer = await this.renderLabelPdf(order, lineItem, lineItemIndex);
     return {
-      fileName: this.buildLabelFileName(order.orderNumber, lineItemIndex),
+      fileName: this.buildLabelFileName(order, lineItem, lineItemIndex),
       buffer
     };
   }
@@ -270,7 +270,7 @@ export class OrdersService extends BaseService {
     try {
       const labels = await Promise.all(
         lineItems.map(async (item, index) => ({
-          fileName: this.buildLabelFileName(order.orderNumber, index),
+          fileName: this.buildLabelFileName(order, item, index),
           buffer: await this.renderLabelPdf(order, item, index)
         }))
       );
@@ -399,8 +399,48 @@ export class OrdersService extends BaseService {
     return trimmed || undefined;
   }
 
-  private buildLabelFileName(orderNumber: string, index: number) {
-    return `${orderNumber}-item-${index + 1}.pdf`;
+  private buildLabelFileName(order: any, lineItem: any, index: number) {
+    const collaboratorName = this.buildPersonFileNamePart(order?.collaborator, 'بدون-همکار');
+    const customerName = this.buildPersonFileNamePart(order?.customer, 'بدون-مشتری');
+    const dimensions = this.buildDimensionFileNamePart(lineItem);
+    const orderNumber = String(order?.orderNumber ?? 'order').trim() || 'order';
+    return `${orderNumber}-${collaboratorName}-${customerName}-${dimensions}-item-${index + 1}.pdf`;
+  }
+
+  private buildPersonFileNamePart(person: any, fallback: string) {
+    const firstName = String(person?.firstName ?? '').trim();
+    const lastName = String(person?.lastName ?? '').trim();
+    const fullName = [firstName, lastName].filter(Boolean).join('-');
+    if (fullName) {
+      return this.normalizeFileNamePart(fullName);
+    }
+    const phone = String(person?.phone ?? '').trim();
+    if (phone) {
+      return this.normalizeFileNamePart(phone);
+    }
+    return fallback;
+  }
+
+  private buildDimensionFileNamePart(lineItem: any) {
+    const width = this.normalizeSizeNumber(lineItem?.width);
+    const height = this.normalizeSizeNumber(lineItem?.height);
+    return `${width}x${height}`;
+  }
+
+  private normalizeSizeNumber(value: unknown) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return '0';
+    if (Number.isInteger(parsed)) return String(parsed);
+    return String(parsed).replace(/\.?0+$/, '');
+  }
+
+  private normalizeFileNamePart(value: string) {
+    return value
+      .replace(/[\\/:*?"<>|\r\n]+/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .trim();
   }
 
   private mmToPx(mm: number) {
@@ -442,7 +482,7 @@ export class OrdersService extends BaseService {
     const collaboratorPhone = order.collaborator?.phone || '-';
     const dimensions = `${widthCm}×${heightCm}`;
     const fontFace = this.getVazirmatnFontFaceCss();
-    const dimensionFontSize = this.pickLabelFontSize(dimensions, 19.2, 13.2);
+    const dimensionFontSize = this.pickLabelFontSize(dimensions, 18.4, 13.2);
     const customerFontSize = this.pickLabelFontSize(customerName, 12.6, 8.8);
     const phoneFontSize = this.pickLabelFontSize(collaboratorPhone, 10.8, 7.8);
     const labelInnerWidthMm = Math.max(LABEL_WIDTH_MM - 1, 1);
@@ -504,6 +544,7 @@ body{
 }
 .line-1{
   font-weight:900;
+  letter-spacing:0.32mm;
 }
 .line-2{
   transform:translateY(2mm);
@@ -542,7 +583,7 @@ body{
     return minSize;
   }
 
-  private async renderLabelPdf(order: any, lineItem: any, index: number) {
+  private async renderLabelPdf(order: any, lineItem: any, _index: number) {
     const widthMm = LABEL_WIDTH_MM;
     const heightMm = LABEL_HEIGHT_MM;
     const widthPx = this.mmToPx(widthMm);

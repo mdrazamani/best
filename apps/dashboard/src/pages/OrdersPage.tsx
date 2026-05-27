@@ -467,7 +467,7 @@ export function OrdersPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void downloadProtected(`/orders/${orderDetail.id}/line-items/${item.id}/label`, `${orderDetail.orderNumber}-item-${idx + 1}.pdf`)}
+                            onClick={() => void downloadProtected(`/orders/${orderDetail.id}/line-items/${item.id}/label`)}
                           >
                             <Download className="h-4 w-4" />
                             دانلود لیبل
