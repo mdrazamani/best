@@ -443,6 +443,7 @@ export function CreateOrderDialog({
                 </div>
                 {quickCustomerOpen ? (
                   <div className="grid gap-2 rounded-md border border-dashed p-2">
+                    <p className="text-xs text-muted-foreground">حداقل یکی از نام یا نام خانوادگی مشتری الزامی است.</p>
                     <Input
                       value={quickCustomerForm.firstName}
                       onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, firstName: e.target.value }))}

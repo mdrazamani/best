@@ -80,6 +80,13 @@ export type Person = {
     phone?: string;
   } | null;
   _count?: { orders: number };
+  accounting?: {
+    totalInvoiced: number;
+    totalInvoicePaid: number;
+    totalDirectPaid: number;
+    totalPaid: number;
+    remaining: number;
+  };
 };
 
 export type Order = {

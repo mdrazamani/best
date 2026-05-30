@@ -49,6 +49,7 @@ export function CollaboratorsPage() {
     removeOrder,
     removeInvoice,
     addInvoicePayment,
+    addCollaboratorPayment,
     openInvoiceDetail,
     openCollaboratorDetail,
     closeCollaboratorDetail,
@@ -76,11 +77,18 @@ export function CollaboratorsPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
   const [paymentForm, setPaymentForm] = useState({ amount: '', paidAt: '', note: '' });
+  const [collaboratorPaymentOpen, setCollaboratorPaymentOpen] = useState(false);
+  const [collaboratorPaymentForm, setCollaboratorPaymentForm] = useState({ amount: '', paidAt: '', note: '' });
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
 
   const collaboratorRemainingById = useMemo(() => {
     const map = new Map<string, number>();
+
+    for (const collaborator of collaborators) {
+      const remainingFromAccounting = Number(collaborator.accounting?.remaining ?? 0);
+      map.set(collaborator.id, Math.max(remainingFromAccounting, 0));
+    }
 
     for (const invoice of invoiceRows) {
       const isCollaboratorPayer = (invoice.payerType ?? 'CUSTOMER') === 'COLLABORATOR';
@@ -91,6 +99,7 @@ export function CollaboratorsPage() {
 
       const collaboratorId = relatedOrders.find((order) => order.collaborator?.id)?.collaborator?.id ?? invoice.payerId;
       if (!collaboratorId) continue;
+      if (map.has(collaboratorId)) continue;
 
       const amount = Number(invoice.amount ?? 0);
       const paidAmount = Number(invoice.paidAmount ?? 0);
@@ -101,7 +110,7 @@ export function CollaboratorsPage() {
     }
 
     return map;
-  }, [invoiceRows]);
+  }, [collaborators, invoiceRows]);
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -233,10 +242,25 @@ export function CollaboratorsPage() {
     setPaymentForm({ amount: '', paidAt: '', note: '' });
   };
 
+  const submitCollaboratorPayment = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!detailId) return;
+    await addCollaboratorPayment(detailId, {
+      amount: Number(collaboratorPaymentForm.amount || 0),
+      paidAt: collaboratorPaymentForm.paidAt || undefined,
+      note: collaboratorPaymentForm.note || undefined
+    });
+    await openCollaboratorDetail(detailId);
+    setCollaboratorPaymentOpen(false);
+    setCollaboratorPaymentForm({ amount: '', paidAt: '', note: '' });
+  };
+
   if (detail) {
     const orders = Array.isArray(detail.orders) ? detail.orders : [];
     const invoices = Array.isArray(detail.invoices) ? detail.invoices : [];
+    const paymentHistory = Array.isArray(detail.paymentHistory) ? detail.paymentHistory : [];
     const detailCustomers = Array.isArray(detail.customers) ? detail.customers : [];
+    const totalRemaining = Number(detail.summary?.totalRemaining ?? 0);
     const filteredOrders = orders.filter((order: any) => {
       const q = detailOrdersSearch.trim().toLowerCase();
       const orderNumber = (order.orderNumber ?? '').toLowerCase();
@@ -295,12 +319,15 @@ export function CollaboratorsPage() {
                 <p className="mt-1 text-lg font-bold">{money(detail.summary?.totalInvoiced ?? 0)}</p>
               </div>
               <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">مبلغ پرداخت‌شده</p>
+                <p className="text-xs text-muted-foreground">کل پرداخت‌شده</p>
                 <p className="mt-1 text-lg font-bold">{money(detail.summary?.totalPaid ?? 0)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  فاکتوری: {money(detail.summary?.totalInvoicePaid ?? 0)} | کلی: {money(detail.summary?.totalDirectPaid ?? 0)}
+                </p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مانده</p>
-                <p className="mt-1 text-lg font-bold text-destructive">{money(detail.summary?.totalRemaining ?? 0)}</p>
+                <p className="mt-1 text-lg font-bold text-destructive">{money(totalRemaining)}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">تحویل‌شده / درحال‌انجام</p>
@@ -313,6 +340,69 @@ export function CollaboratorsPage() {
               <p><span className="font-semibold">آدرس:</span> {detail.address || '-'}</p>
               <p><span className="font-semibold">توضیحات:</span> {detail.description || '-'}</p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <CardTitle className="text-xl font-bold">پرداخت‌های همکار</CardTitle>
+            <Button
+              size="sm"
+              disabled={totalRemaining <= 0}
+              onClick={() => {
+                setCollaboratorPaymentForm((prev) => ({
+                  ...prev,
+                  amount: totalRemaining > 0 ? String(totalRemaining) : ''
+                }));
+                setCollaboratorPaymentOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              ثبت پرداخت برای همکار
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {paymentHistory.length === 0 ? (
+              <EmptyState title="پرداختی برای این همکار ثبت نشده است" />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>تاریخ پرداخت</TableHead>
+                    <TableHead>منبع پرداخت</TableHead>
+                    <TableHead>شماره فاکتور</TableHead>
+                    <TableHead>مبلغ</TableHead>
+                    <TableHead>ثبت‌کننده</TableHead>
+                    <TableHead>توضیح</TableHead>
+                    <TableHead>رسید</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paymentHistory.map((item: any, idx: number) => (
+                    <TableRow key={item.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
+                      <TableCell>{shamsiDate(item.paidAt)}</TableCell>
+                      <TableCell>{item.source === 'COLLABORATOR' ? 'پرداخت کلی همکار' : 'پرداخت فاکتور'}</TableCell>
+                      <TableCell>{item.invoiceNumber || '-'}</TableCell>
+                      <TableCell className="font-semibold">{money(Number(item.amount ?? 0))}</TableCell>
+                      <TableCell>{fullName(item.createdBy)}</TableCell>
+                      <TableCell>{item.note || '-'}</TableCell>
+                      <TableCell>
+                        {item.source === 'COLLABORATOR' && detailId && item.collaboratorPaymentId ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void downloadProtected(`/collaborators/${detailId}/payments/${item.collaboratorPaymentId}/pdf`)}
+                          >
+                            <Download className="h-4 w-4" />
+                            دانلود رسید
+                          </Button>
+                        ) : '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
@@ -741,6 +831,50 @@ export function CollaboratorsPage() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="secondary" onClick={() => setPaymentOpen(false)}>
+                  انصراف
+                </Button>
+                <Button type="submit">ثبت پرداخت</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={collaboratorPaymentOpen} onOpenChange={setCollaboratorPaymentOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>ثبت پرداخت کلی همکار</DialogTitle>
+              <DialogDescription>
+                این پرداخت به بدهی کلی همکار اعمال می‌شود و الزامی نیست به فاکتور خاصی متصل شود.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={submitCollaboratorPayment} className="space-y-3">
+              <div>
+                <label className="text-sm font-medium">مبلغ پرداخت (تومان)</label>
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={collaboratorPaymentForm.amount}
+                  onChange={(e) => setCollaboratorPaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">تاریخ پرداخت</label>
+                <PersianDatePicker
+                  value={collaboratorPaymentForm.paidAt}
+                  onChange={(value) => setCollaboratorPaymentForm((prev) => ({ ...prev, paidAt: value ?? '' }))}
+                  placeholder="تاریخ پرداخت"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">توضیح (اختیاری)</label>
+                <Textarea
+                  value={collaboratorPaymentForm.note}
+                  onChange={(e) => setCollaboratorPaymentForm((prev) => ({ ...prev, note: e.target.value }))}
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setCollaboratorPaymentOpen(false)}>
                   انصراف
                 </Button>
                 <Button type="submit">ثبت پرداخت</Button>

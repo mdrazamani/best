@@ -520,6 +520,8 @@ export function useBestApp() {
     removeInventoryItem: (itemId: string) => deleteAndReload(`/inventory/${itemId}`, 'آیتم انبار با موفقیت حذف شد.'),
     createCollaborator: (payload: Record<string, unknown>) => postAndReload('/collaborators', payload, 'POST', 'همکار با موفقیت ایجاد شد.'),
     removeCollaborator: (collaboratorId: string) => deleteAndReload(`/collaborators/${collaboratorId}`, 'همکار با موفقیت حذف شد.'),
+    addCollaboratorPayment: (collaboratorId: string, payload: Record<string, unknown>) =>
+      postAndReload(`/collaborators/${collaboratorId}/payments`, payload, 'POST', 'پرداخت همکار ثبت شد.'),
     createCustomer: (payload: Record<string, unknown>) => postAndReload('/customers', payload, 'POST', 'مشتری با موفقیت ایجاد شد.'),
     removeCustomer: (customerId: string) => deleteAndReload(`/customers/${customerId}`, 'مشتری با موفقیت حذف شد.'),
     createOrder: (payload: Record<string, unknown>) => postAndReload('/orders', payload, 'POST', 'سفارش با موفقیت ثبت شد.'),

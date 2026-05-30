@@ -36,6 +36,14 @@ export class CollaboratorsRepository extends BaseRepository {
     return this.prisma.collaborator.findFirst({
       where: { id, deletedAt: null },
       include: {
+        payments: {
+          include: {
+            createdBy: {
+              select: { id: true, firstName: true, lastName: true, username: true }
+            }
+          },
+          orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] as any
+        },
         orders: {
           where: {
             deletedAt: null
@@ -49,7 +57,18 @@ export class CollaboratorsRepository extends BaseRepository {
                 }
               },
               include: {
-                invoice: true
+                invoice: {
+                  include: {
+                    payments: {
+                      include: {
+                        createdBy: {
+                          select: { id: true, firstName: true, lastName: true, username: true }
+                        }
+                      },
+                      orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] as any
+                    }
+                  }
+                }
               }
             },
             lineItems: {
@@ -92,5 +111,100 @@ export class CollaboratorsRepository extends BaseRepository {
 
   orderCount(id: string) {
     return this.prisma.order.count({ where: { collaboratorId: id, deletedAt: null } });
+  }
+
+  aggregateCollaboratorInvoiceSummary(collaboratorId: string, options?: { beforeDate?: Date; excludeInvoiceId?: string }) {
+    return this.prisma.invoice.aggregate({
+      _sum: {
+        amount: true,
+        paidAmount: true
+      },
+      where: {
+        deletedAt: null,
+        payerType: 'COLLABORATOR',
+        payerId: collaboratorId,
+        createdAt: options?.beforeDate ? { lt: options.beforeDate } : undefined,
+        id: options?.excludeInvoiceId ? { not: options.excludeInvoiceId } : undefined
+      }
+    });
+  }
+
+  aggregateCollaboratorDirectPayments(collaboratorId: string, options?: { beforeDate?: Date }) {
+    return this.prisma.collaboratorPayment.aggregate({
+      _sum: {
+        amount: true
+      },
+      where: {
+        collaboratorId,
+        paidAt: options?.beforeDate ? { lte: options.beforeDate } : undefined
+      }
+    });
+  }
+
+  addDirectPayment(data: {
+    collaboratorId: string;
+    amount: number;
+    paidAt: Date;
+    note?: string;
+    createdById: string;
+  }) {
+    return this.prisma.collaboratorPayment.create({
+      data: {
+        collaboratorId: data.collaboratorId,
+        amount: data.amount,
+        paidAt: data.paidAt,
+        note: data.note,
+        createdById: data.createdById
+      },
+      include: {
+        createdBy: {
+          select: { id: true, firstName: true, lastName: true, username: true }
+        }
+      }
+    });
+  }
+
+  findDirectPaymentById(collaboratorId: string, paymentId: string) {
+    return this.prisma.collaboratorPayment.findFirst({
+      where: {
+        id: paymentId,
+        collaboratorId
+      },
+      include: {
+        collaborator: true,
+        createdBy: {
+          select: { id: true, firstName: true, lastName: true, username: true }
+        }
+      }
+    });
+  }
+
+  aggregateInvoiceSummaryByCollaboratorIds(collaboratorIds: string[]) {
+    if (!collaboratorIds.length) return Promise.resolve([]);
+    return this.prisma.invoice.groupBy({
+      by: ['payerId'],
+      _sum: {
+        amount: true,
+        paidAmount: true
+      },
+      where: {
+        deletedAt: null,
+        payerType: 'COLLABORATOR',
+        payerId: { in: collaboratorIds }
+      }
+    });
+  }
+
+  aggregateDirectPaymentByCollaboratorIds(collaboratorIds: string[]) {
+    if (!collaboratorIds.length) return Promise.resolve([]);
+    return this.prisma.collaboratorPayment.groupBy({
+      by: ['collaboratorId'],
+      _sum: {
+        amount: true
+      },
+      where: {
+        collaboratorId: { in: collaboratorIds }
+      }
+    });
   }
 }

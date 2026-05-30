@@ -45,6 +45,7 @@ export type BestActions = {
   removeInventoryItem: (itemId: string) => Promise<any>;
   createCollaborator: (payload: Record<string, unknown>) => Promise<any>;
   removeCollaborator: (collaboratorId: string) => Promise<any>;
+  addCollaboratorPayment: (collaboratorId: string, payload: Record<string, unknown>) => Promise<any>;
   createCustomer: (payload: Record<string, unknown>) => Promise<any>;
   removeCustomer: (customerId: string) => Promise<any>;
   createOrder: (payload: Record<string, unknown>) => Promise<any>;

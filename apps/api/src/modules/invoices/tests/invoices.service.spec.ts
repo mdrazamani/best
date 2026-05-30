@@ -17,7 +17,11 @@ describe('InvoicesService', () => {
     log: jest.fn()
   };
 
-  const service = new InvoicesService(invoicesRepository as any, operationLogsService as any);
+  const collaboratorsService = {
+    getCollaboratorBalance: jest.fn()
+  };
+
+  const service = new InvoicesService(invoicesRepository as any, operationLogsService as any, collaboratorsService as any);
 
   beforeEach(() => {
     jest.clearAllMocks();

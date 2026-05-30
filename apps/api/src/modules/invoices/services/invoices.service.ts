@@ -9,6 +9,7 @@ import { addMoney, clampMoneyNonNegative, deriveInvoiceStatus, maxMoney, subtrac
 import { buildPuppeteerLaunchOptions } from '../../../common/utils/puppeteer.util';
 import { InvoicesRepository } from '../invoices.repository';
 import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
+import { CollaboratorsService } from '../../collaborators/services/collaborators.service';
 import { CreateInvoiceDto } from '../dto/create-invoice.dto';
 import { UpdateInvoiceDto } from '../dto/update-invoice.dto';
 import { ListInvoicesQueryDto } from '../dto/list-invoices-query.dto';
@@ -18,7 +19,8 @@ import { AddInvoicePaymentDto } from '../dto/add-invoice-payment.dto';
 export class InvoicesService extends BaseService {
   constructor(
     private readonly invoicesRepository: InvoicesRepository,
-    private readonly operationLogsService: OperationLogsService
+    private readonly operationLogsService: OperationLogsService,
+    private readonly collaboratorsService: CollaboratorsService
   ) {
     super();
   }
@@ -287,7 +289,22 @@ export class InvoicesService extends BaseService {
 
   async pdf(id: string) {
     const invoice = await this.detail(id);
-    const html = this.renderInvoiceHtml(invoice);
+    const collaboratorId = this.resolveInvoiceCollaboratorId(invoice);
+    let previousRemaining = 0;
+
+    if (collaboratorId) {
+      const balance = await this.collaboratorsService.getCollaboratorBalance(collaboratorId, {
+        beforeDate: new Date(invoice.createdAt),
+        excludeInvoiceId: invoice.id
+      });
+      previousRemaining = toMoneyNumber(balance.remaining);
+    }
+
+    const html = this.renderInvoiceHtml({
+      ...invoice,
+      previousRemaining,
+      finalPayableAmount: Number(invoice.amount ?? 0) + previousRemaining
+    });
     const buffer = await this.renderPdfFromHtml(html);
 
     return {
@@ -538,10 +555,27 @@ export class InvoicesService extends BaseService {
 
     summaryRows.push(`
       <div class="sum-row final">
-        <div class="sum-label">مبلغ قابل پرداخت (تومان)</div>
+        <div class="sum-label">مبلغ کل فاکتور (تومان)</div>
         <div class="sum-amount">${this.formatMoney(finalAmount)}</div>
       </div>
     `);
+
+    const previousRemaining = Math.max(Number(invoice.previousRemaining ?? 0), 0);
+    if (previousRemaining > 0) {
+      const finalPayableAmount = Math.max(Number(invoice.finalPayableAmount ?? finalAmount + previousRemaining), 0);
+      summaryRows.push(`
+        <div class="sum-row">
+          <div class="sum-label">مانده قبلی (تومان)</div>
+          <div class="sum-amount">${this.formatMoney(previousRemaining)}</div>
+        </div>
+      `);
+      summaryRows.push(`
+        <div class="sum-row final">
+          <div class="sum-label">مبلغ نهایی قابل پرداخت (تومان)</div>
+          <div class="sum-amount">${this.formatMoney(finalPayableAmount)}</div>
+        </div>
+      `);
+    }
 
     const installmentInfo = showInstallmentInfo
       ? `<p class="installment-note">این فاکتور پارت ${this.escapeHtml(invoicePart)} از ${this.escapeHtml(totalInvoiceParts)} است و مانده سفارش بعد از این فاکتور ${this.escapeHtml(this.formatMoney(remainingAfterCurrent))} تومان می‌باشد.</p>`
@@ -1079,6 +1113,13 @@ export class InvoicesService extends BaseService {
       .trim()
       .replace(/\s/g, '-')
       .slice(0, 60);
+  }
+
+  private resolveInvoiceCollaboratorId(invoice: any) {
+    const payerId = invoice?.payerType === 'COLLABORATOR' ? invoice?.payerId : null;
+    if (payerId) return payerId;
+    const orders = Array.isArray(invoice?.orders) ? invoice.orders : invoice?.order ? [invoice.order] : [];
+    return orders.find((order: any) => order?.collaborator?.id)?.collaborator?.id ?? null;
   }
 }
 

@@ -1,7 +1,7 @@
-﻿import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, Fragment, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ClipboardList, Download, Eye, FileText, History, List, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
 import { useBestContext } from '../contexts/best-context';
-import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageLabel, paymentStatusBadgeVariant, paymentStatusLabel, shamsiDate, textFa } from '../lib/format';
+import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageLabel, shamsiDate } from '../lib/format';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -74,7 +74,6 @@ export function OrdersPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<'all' | string>('all');
-  const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [detailStageDraft, setDetailStageDraft] = useState('RECEIVED');
@@ -120,20 +119,9 @@ export function OrdersPage() {
     () => [{ value: 'all', label: 'همه مراحل' }, ...ORDER_STAGES.map((stage) => ({ value: stage.value, label: stage.label }))],
     []
   );
-  const paymentFilterOptions = useMemo(
-    () => [
-      { value: 'all', label: 'همه وضعیت‌های پرداخت' },
-      { value: 'paid', label: 'تسویه‌شده' },
-      { value: 'partial', label: 'پرداخت ناقص' },
-      { value: 'unpaid', label: 'پرداخت نشده' }
-    ],
-    []
-  );
-
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
     return orders.filter((item) => {
-      const orderNo = item.orderNumber.toLowerCase();
       const orderTitle = (item.title ?? '').toLowerCase();
       const customerName = `${item.customer?.firstName ?? ''} ${item.customer?.lastName ?? ''}`.toLowerCase();
       const customerPhone = (item.customer?.phone ?? '').toLowerCase();
@@ -141,17 +129,15 @@ export function OrdersPage() {
       const collaboratorPhone = (item.collaborator?.phone ?? '').toLowerCase();
       const matchesSearch =
         !q ||
-        orderNo.includes(q) ||
         orderTitle.includes(q) ||
         customerName.includes(q) ||
         customerPhone.includes(q) ||
         collaboratorName.includes(q) ||
         collaboratorPhone.includes(q);
       const matchesStage = stageFilter === 'all' || item.stage === stageFilter;
-      const matchesPayment = paymentFilter === 'all' || item.paymentSummary.status === paymentFilter;
-      return matchesSearch && matchesStage && matchesPayment;
+      return matchesSearch && matchesStage;
     });
-  }, [orders, search, stageFilter, paymentFilter]);
+  }, [orders, search, stageFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const pageItems = useMemo(() => {
@@ -685,7 +671,7 @@ export function OrdersPage() {
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input ref={searchInputRef} className="pr-9" placeholder="جستجو: شماره سفارش، نام/شماره مشتری، نام/شماره همکار ( / )" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} onKeyDown={onSearchKeyDown} />
+              <Input ref={searchInputRef} className="pr-9" placeholder="جستجو: نام/شماره مشتری، نام/شماره همکار ( / )" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} onKeyDown={onSearchKeyDown} />
             </div>
             <SearchableSelect
               value={stageFilter}
@@ -697,16 +683,6 @@ export function OrdersPage() {
               placeholder="همه مراحل"
               isSearchable={false}
             />
-            <SearchableSelect
-              value={paymentFilter}
-              onChange={(value) => {
-                setPaymentFilter((value || 'all') as 'all' | 'paid' | 'partial' | 'unpaid');
-                setPage(1);
-              }}
-              options={paymentFilterOptions}
-              placeholder="همه وضعیت‌های پرداخت"
-              isSearchable={false}
-            />
           </div>
 
           {filteredOrders.length === 0 ? (
@@ -716,104 +692,125 @@ export function OrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>شماره سفارش</TableHead>
                     <TableHead>مشتری</TableHead>
                     <TableHead>همکار</TableHead>
-                    <TableHead>نوع/توری</TableHead>
+                    <TableHead>نوع کار</TableHead>
                     <TableHead>مرحله</TableHead>
-                    <TableHead>پرداخت</TableHead>
-                    <TableHead>تکمیل تقریبی</TableHead>
-                    <TableHead>تاریخ ثبت</TableHead>
                     <TableHead className="w-[60px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pageItems.map((order, idx) => (
-                    <TableRow key={order.id} className={`${idx % 2 ? 'bg-muted/10' : ''} cursor-pointer`} onDoubleClick={() => void openDetail(order.id)}>
-                      <TableCell>
-                        <button type="button" className="font-medium text-primary hover:underline" onClick={() => void openDetail(order.id)}>
-                          {order.orderNumber}
-                        </button>
-                        <div className="text-xs text-muted-foreground">{textFa(order.title)}</div>
-                      </TableCell>
-                      <TableCell>
-                        {order.customer?.id ? (
-                          <button
-                            type="button"
-                            className="font-medium text-primary hover:underline"
-                            onClick={() => {
-                              const customerId = order.customer?.id;
-                              if (!customerId) return;
-                              void openCustomerDetail(customerId);
-                              navigateToTab('customers');
-                            }}
-                          >
-                            {fullName(order.customer)}
-                          </button>
-                        ) : (
-                          fullName(order.customer)
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {order.collaborator?.id ? (
-                          <button
-                            type="button"
-                            className="font-medium text-primary hover:underline"
-                            onClick={() => {
-                              const collaboratorId = order.collaborator?.id;
-                              if (!collaboratorId) return;
-                              void openCollaboratorDetail(collaboratorId);
-                              navigateToTab('collaborators');
-                            }}
-                          >
-                            {fullName(order.collaborator)}
-                          </button>
-                        ) : (
-                          fullName(order.collaborator || undefined)
-                        )}
-                      </TableCell>
-                      <TableCell>{WORK_TYPES.find((item) => item.value === order.workType)?.label} / {meshTypeLabelsFromItems(order.lineItems)}</TableCell>
-                      <TableCell className="min-w-[180px]">
-                        <SearchableSelect
-                          value={order.stage}
-                          onChange={(value) => {
-                            if (!value || value === order.stage) return;
-                            void saveListStage(order.id, value);
-                          }}
-                          options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
-                          placeholder="مرحله سفارش"
-                          isSearchable={false}
-                          className="max-w-[170px]"
-                          disabled={listStageSavingId === order.id}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="mb-1">
-                          <Badge variant={paymentStatusBadgeVariant(order.paymentSummary.status)}>{paymentStatusLabel(order.paymentSummary.status)}</Badge>
-                        </div>
-                        <div className="text-xs text-muted-foreground">{order.paymentSummary.percent}%</div>
-                        <div className="font-medium">{money(order.paymentSummary.paidAmount)} / {money(order.paymentSummary.total)}</div>
-                      </TableCell>
-                      <TableCell>{shamsiDate(order.expectedCompletionDate || undefined)}</TableCell>
-                      <TableCell>{shamsiDate(order.createdAt)}</TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => void openDetail(order.id)}>
-                              <Eye className="h-4 w-4" />
-                              مشاهده
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeOrder(order.id)}>حذف </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {pageItems.map((order, idx) => {
+                    const lineItems = Array.isArray(order.lineItems) ? order.lineItems : [];
+                    return (
+                      <Fragment key={order.id}>
+                        <TableRow key={`${order.id}-main`} className={`${idx % 2 ? 'bg-muted/10' : ''} cursor-pointer`} onDoubleClick={() => void openDetail(order.id)}>
+                          <TableCell>
+                            {order.customer?.id ? (
+                              <button
+                                type="button"
+                                className="font-medium text-primary hover:underline"
+                                onClick={() => {
+                                  const customerId = order.customer?.id;
+                                  if (!customerId) return;
+                                  void openCustomerDetail(customerId);
+                                  navigateToTab('customers');
+                                }}
+                              >
+                                {fullName(order.customer)}
+                              </button>
+                            ) : (
+                              fullName(order.customer)
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {order.collaborator?.id ? (
+                              <button
+                                type="button"
+                                className="font-medium text-primary hover:underline"
+                                onClick={() => {
+                                  const collaboratorId = order.collaborator?.id;
+                                  if (!collaboratorId) return;
+                                  void openCollaboratorDetail(collaboratorId);
+                                  navigateToTab('collaborators');
+                                }}
+                              >
+                                {fullName(order.collaborator)}
+                              </button>
+                            ) : (
+                              fullName(order.collaborator || undefined)
+                            )}
+                          </TableCell>
+                          <TableCell>{WORK_TYPES.find((item) => item.value === order.workType)?.label}</TableCell>
+                          <TableCell className="min-w-[180px]">
+                            <SearchableSelect
+                              value={order.stage}
+                              onChange={(value) => {
+                                if (!value || value === order.stage) return;
+                                void saveListStage(order.id, value);
+                              }}
+                              options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
+                              placeholder="مرحله سفارش"
+                              isSearchable={false}
+                              className="max-w-[170px]"
+                              disabled={listStageSavingId === order.id}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => void openDetail(order.id)}>
+                                  <Eye className="h-4 w-4" />
+                                  مشاهده جزئیات
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeOrder(order.id)}>حذف </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                        <TableRow key={`${order.id}-summary`} className={idx % 2 ? 'bg-muted/5' : 'bg-muted/20'}>
+                          <TableCell colSpan={5} className="py-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="space-y-2">
+                                <p className="text-sm font-semibold">خلاصه اقلام سفارش</p>
+                                {lineItems.length ? (
+                                  <div className="space-y-1.5">
+                                    {lineItems.map((item, itemIndex) => (
+                                      <p key={item.id ?? `${order.id}-${itemIndex}`} className="text-xs sm:text-sm">
+                                        <span className="font-semibold">{itemIndex + 1}. {item.meshType?.title || '-'}</span>
+                                        <span className="text-muted-foreground">
+                                          {' '}| ابعاد: {Number(item.width ?? 0)} × {Number(item.height ?? 0)} | تعداد: {Number(item.quantity ?? 0)}
+                                          {item.description ? ` | توضیح: ${item.description}` : ''}
+                                        </span>
+                                      </p>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">برای این سفارش ردیفی ثبت نشده است.</p>
+                                )}
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void downloadProtected(`/orders/${order.id}/line-items/labels.zip`, `labels-${order.orderNumber}.zip`);
+                                }}
+                              >
+                                <Download className="h-4 w-4" />
+                                دانلود همه لیبل‌های سفارش
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      </Fragment>
+                    );
+                  })}
                 </TableBody>
               </Table>
               <Pagination page={Math.min(page, totalPages)} total={filteredOrders.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
@@ -844,4 +841,3 @@ export function OrdersPage() {
     </section>
   );
 }
-

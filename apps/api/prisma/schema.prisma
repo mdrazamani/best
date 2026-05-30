@@ -62,6 +62,7 @@ model User {
   createdOrders         Order[]        @relation("OrderCreator")
   createdInvoices       Invoice[]      @relation("InvoiceCreator")
   createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreator")
+  createdCollaboratorPayments CollaboratorPayment[] @relation("CollaboratorPaymentCreator")
   createdInventoryItems InventoryItem[] @relation("InventoryItemCreator")
   inventoryLogs         InventoryLog[]  @relation("InventoryLogActor")
   operationLogs         OperationLog[] @relation("OperationActor")
@@ -183,6 +184,7 @@ model Collaborator {
   createdBy User  @relation("CollaboratorCreator", fields: [createdById], references: [id])
   orders    Order[]
   referredCustomers Customer[] @relation("CustomerReferrer")
+  payments CollaboratorPayment[]
 
   @@index([firstName])
   @@index([lastName])
@@ -348,6 +350,23 @@ model InvoicePayment {
   createdBy User    @relation("InvoicePaymentCreator", fields: [createdById], references: [id])
 
   @@index([invoiceId])
+  @@index([paidAt])
+  @@index([createdById])
+}
+
+model CollaboratorPayment {
+  id             String   @id @default(uuid())
+  collaboratorId String
+  amount         Decimal  @db.Decimal(18, 2)
+  paidAt         DateTime
+  note           String?
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  collaborator Collaborator @relation(fields: [collaboratorId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("CollaboratorPaymentCreator", fields: [createdById], references: [id])
+
+  @@index([collaboratorId])
   @@index([paidAt])
   @@index([createdById])
 }
