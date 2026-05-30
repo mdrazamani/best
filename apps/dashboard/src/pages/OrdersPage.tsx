@@ -150,7 +150,9 @@ export function OrdersPage() {
   const [detailStageSaving, setDetailStageSaving] = useState(false);
   const [detailInvoiceOpen, setDetailInvoiceOpen] = useState(false);
   const [detailInvoiceSubmitting, setDetailInvoiceSubmitting] = useState(false);
-  const [labelsDownloadingOrderId, setLabelsDownloadingOrderId] = useState<string | null>(null);
+  const [labelsDownloadingOrderId, setLabelsDownloadingOrderId] = useState<
+    string | null
+  >(null);
   const [detailInvoiceForm, setDetailInvoiceForm] = useState({
     title: "",
     amount: "",
@@ -318,10 +320,11 @@ export function OrdersPage() {
 
   const downloadAllLabelsSequentially = async (
     orderId: string,
-    orderNumber: string,
     lineItems: Array<{ id?: string | null }>,
   ) => {
-    const labelItemIds = lineItems.map((item) => item?.id).filter(Boolean) as string[];
+    const labelItemIds = lineItems
+      .map((item) => item?.id)
+      .filter(Boolean) as string[];
     if (!labelItemIds.length) {
       toast.info("برای این سفارش لیبلی ثبت نشده است.");
       return;
@@ -334,7 +337,7 @@ export function OrdersPage() {
         const lineItemId = labelItemIds[index];
         await downloadProtected(
           `/orders/${orderId}/line-items/${lineItemId}/label`,
-          `label-${orderNumber}-${index + 1}.pdf`,
+          undefined,
           { silent: true },
         );
         await new Promise((resolve) => setTimeout(resolve, 120));
@@ -629,7 +632,6 @@ export function OrdersPage() {
                 onClick={() =>
                   void downloadAllLabelsSequentially(
                     orderDetail.id,
-                    orderDetail.orderNumber,
                     detailLineItems,
                   )
                 }
@@ -1070,9 +1072,6 @@ export function OrdersPage() {
                             ) : (
                               fullName(order.customer)
                             )}
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {order.customer?.phone || "-"}
-                            </div>
                           </TableCell>
                           <TableCell>
                             {order.collaborator?.id ? (
@@ -1102,9 +1101,6 @@ export function OrdersPage() {
                                   (item) => item.value === order.workType,
                                 )?.label
                               }
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {order.title || "بدون عنوان سفارش"}
                             </div>
                           </TableCell>
                           <TableCell className="min-w-[180px]">
@@ -1166,13 +1162,15 @@ export function OrdersPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  disabled={!lineItems.length || labelsDownloadingOrderId === order.id}
+                                  disabled={
+                                    !lineItems.length ||
+                                    labelsDownloadingOrderId === order.id
+                                  }
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     if (!lineItems.length) return;
                                     void downloadAllLabelsSequentially(
                                       order.id,
-                                      order.orderNumber,
                                       lineItems,
                                     );
                                   }}

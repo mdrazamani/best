@@ -59,8 +59,8 @@ export class OrdersService extends BaseService {
     const customerId = this.normalizeId(dto.customerId);
     const collaboratorId = this.normalizeId(dto.collaboratorId);
 
-    if (!customerId && !collaboratorId) {
-      throw new BadRequestException('برای ثبت سفارش، حداقل یکی از «مشتری» یا «همکار» الزامی است.');
+    if (!collaboratorId) {
+      throw new BadRequestException('برای ثبت سفارش، انتخاب همکار الزامی است.');
     }
 
     const lineItems = this.normalizeLineItems(dto.lineItems);
@@ -152,8 +152,8 @@ export class OrdersService extends BaseService {
     const nextCollaboratorId =
       dto.collaboratorId === undefined ? existing.collaboratorId ?? null : this.normalizeId(dto.collaboratorId) ?? null;
 
-    if (!nextCustomerId && !nextCollaboratorId) {
-      throw new BadRequestException('برای ثبت سفارش، حداقل یکی از «مشتری» یا «همکار» الزامی است.');
+    if (!nextCollaboratorId) {
+      throw new BadRequestException('هر سفارش باید همکار داشته باشد.');
     }
 
     const lineItems = dto.lineItems ? this.normalizeLineItems(dto.lineItems) : undefined;
@@ -448,8 +448,7 @@ export class OrdersService extends BaseService {
     const collaboratorName = this.buildPersonFileNamePart(order?.collaborator, 'بدون-همکار');
     const customerName = this.buildPersonFileNamePart(order?.customer, 'بدون-مشتری');
     const dimensions = this.buildDimensionFileNamePart(lineItem);
-    const orderNumber = String(order?.orderNumber ?? 'order').trim() || 'order';
-    return `${orderNumber}-${collaboratorName}-${customerName}-${dimensions}-item-${index + 1}.pdf`;
+    return `لیبل-${customerName}-${collaboratorName}-${dimensions}-${index + 1}.pdf`;
   }
 
   private buildPersonFileNamePart(person: any, fallback: string) {

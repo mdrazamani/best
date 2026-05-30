@@ -35,7 +35,7 @@ type LineItemForm = {
 type CreateOrderPayload = {
   title?: string;
   customerId?: string;
-  collaboratorId?: string | null;
+  collaboratorId?: string;
   workType: 'NEW_CONSTRUCTION' | 'REPAIR';
   expectedCompletionDate?: string;
   width?: number;
@@ -192,7 +192,7 @@ export function CreateOrderDialog({
   }, [open, lockedCollaborator?.id, lockedCustomer?.id, defaultMesh?.value, defaultMesh?.unitPrice]);
 
   const collaboratorSelectOptions = useMemo(
-    () => [{ value: '', label: 'بدون همکار' }, ...(collaboratorOptions ?? [])],
+    () => collaboratorOptions ?? [],
     [collaboratorOptions]
   );
 
@@ -335,8 +335,8 @@ export function CreateOrderDialog({
     const customerId = lockedCustomer?.id ?? form.customerId;
     const collaboratorId = lockedCollaborator?.id ?? form.collaboratorId;
 
-    if (!customerId.trim() && !collaboratorId.trim()) {
-      toast.error('برای ثبت سفارش، حداقل یکی از مشتری یا همکار را انتخاب کنید.');
+    if (!collaboratorId.trim()) {
+      toast.error('برای ثبت سفارش، انتخاب همکار الزامی است.');
       return;
     }
 
@@ -381,7 +381,7 @@ export function CreateOrderDialog({
       await onSubmit({
         title: form.title || undefined,
         customerId: customerId || undefined,
-        collaboratorId: collaboratorId || null,
+        collaboratorId: collaboratorId || undefined,
         workType: form.workType,
         expectedCompletionDate: form.expectedCompletionDate || undefined,
         width: firstLine?.width,
@@ -476,7 +476,7 @@ export function CreateOrderDialog({
                 options={collaboratorSelectOptions}
                 value={form.collaboratorId}
                 onChange={(value) => setForm((prev) => ({ ...prev, collaboratorId: value }))}
-                placeholder="انتخاب همکار"
+                placeholder="انتخاب همکار (الزامی)"
               />
             )}
 

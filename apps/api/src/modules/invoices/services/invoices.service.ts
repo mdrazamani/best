@@ -314,7 +314,6 @@ export class InvoicesService extends BaseService {
   }
 
   private buildInvoicePdfFileName(invoice: any) {
-    const invoiceNumber = this.normalizeFileNameSegment(invoice?.invoiceNumber) || 'بدون-شماره';
     const orders = Array.isArray(invoice?.orders) ? invoice.orders : [];
 
     const collaboratorName = this.buildPartyFileNameSegment(
@@ -326,7 +325,7 @@ export class InvoicesService extends BaseService {
       'مشتری-نامشخص'
     );
 
-    return `${collaboratorName} (${customerName}) ${invoiceNumber}.pdf`;
+    return `فاکتور-${customerName}-${collaboratorName}.pdf`;
   }
 
   private jalaliDateCode(date: Date) {

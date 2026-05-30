@@ -31,9 +31,9 @@ export class CreateOrderDto {
   @IsString()
   title?: string;
 
-  @IsOptional()
+  @IsDefined({ message: 'انتخاب همکار الزامی است.' })
   @IsString({ message: 'شناسه همکار معتبر نیست.' })
-  collaboratorId?: string | null;
+  collaboratorId!: string;
 
   @IsOptional()
   @IsString({ message: 'شناسه مشتری معتبر نیست.' })
