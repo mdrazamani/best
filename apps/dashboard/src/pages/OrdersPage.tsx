@@ -1,26 +1,84 @@
-import { FormEvent, Fragment, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ClipboardList, Download, Eye, FileText, History, List, MoreHorizontal, Plus, Search, Trash2, User, Users } from 'lucide-react';
-import { useBestContext } from '../contexts/best-context';
-import { INVOICE_STATUS, ORDER_STAGES, WORK_TYPES, activityActionLabel, activityDescriptionLabel, fullName, invoiceStatusBadgeVariant, invoiceStatusLabel, money, orderStageLabel, shamsiDate } from '../lib/format';
-import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Input } from '../components/ui/input';
-import { Textarea } from '../components/ui/textarea';
-import { SearchableSelect } from '../components/ui/searchable-select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Badge } from '../components/ui/badge';
-import { EmptyState } from '../components/shared/empty-state';
-import { Pagination } from '../components/shared/pagination';
-import { PersianDatePicker } from '../components/ui/persian-date-picker';
-import { CreateOrderDialog } from '../components/modals/CreateOrderDialog';
+import {
+  FormEvent,
+  Fragment,
+  KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ArrowRight,
+  ClipboardList,
+  Download,
+  Eye,
+  FileText,
+  History,
+  List,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Trash2,
+  User,
+  Users,
+} from "lucide-react";
+import { useBestContext } from "../contexts/best-context";
+import {
+  INVOICE_STATUS,
+  ORDER_STAGES,
+  WORK_TYPES,
+  activityActionLabel,
+  activityDescriptionLabel,
+  fullName,
+  invoiceStatusBadgeVariant,
+  invoiceStatusLabel,
+  money,
+  orderStageLabel,
+  shamsiDate,
+} from "../lib/format";
+import { Button } from "../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
+import { SearchableSelect } from "../components/ui/searchable-select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { Badge } from "../components/ui/badge";
+import { EmptyState } from "../components/shared/empty-state";
+import { Pagination } from "../components/shared/pagination";
+import { PersianDatePicker } from "../components/ui/persian-date-picker";
+import { CreateOrderDialog } from "../components/modals/CreateOrderDialog";
 
 const PAGE_SIZE = 10;
 const INVOICE_STATUS_OPTIONS = [
-  { value: 'UNPAID', label: 'پرداخت نشده' },
-  { value: 'PARTIAL', label: 'ناقص' },
-  { value: 'PAID', label: 'پرداخت شده' }
+  { value: "UNPAID", label: "پرداخت نشده" },
+  { value: "PARTIAL", label: "ناقص" },
+  { value: "PAID", label: "پرداخت شده" },
 ] as const;
 
 const toNumber = (value: string) => {
@@ -30,22 +88,31 @@ const toNumber = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const deriveInvoiceStatusFromAmounts = (amountValue: string, initialPaidValue: string): 'UNPAID' | 'PARTIAL' | 'PAID' => {
+const deriveInvoiceStatusFromAmounts = (
+  amountValue: string,
+  initialPaidValue: string,
+): "UNPAID" | "PARTIAL" | "PAID" => {
   const amount = Math.max(toNumber(amountValue), 0);
   const initialPaidAmount = Math.max(toNumber(initialPaidValue), 0);
-  if (initialPaidAmount <= 0) return 'UNPAID';
-  if (initialPaidAmount >= amount) return 'PAID';
-  return 'PARTIAL';
+  if (initialPaidAmount <= 0) return "UNPAID";
+  if (initialPaidAmount >= amount) return "PAID";
+  return "PARTIAL";
 };
 
 const payerTypeLabel = (value?: string) => {
-  if (value === 'COLLABORATOR') return 'همکار';
-  return '-';
+  if (value === "COLLABORATOR") return "همکار";
+  return "-";
 };
 
-const meshTypeLabelsFromItems = (lineItems?: Array<{ meshType?: { title?: string } | null }>) => {
-  const titles = Array.from(new Set((lineItems ?? []).map((item) => item?.meshType?.title).filter(Boolean)));
-  return titles.length ? titles.join('، ') : '-';
+const meshTypeLabelsFromItems = (
+  lineItems?: Array<{ meshType?: { title?: string } | null }>,
+) => {
+  const titles = Array.from(
+    new Set(
+      (lineItems ?? []).map((item) => item?.meshType?.title).filter(Boolean),
+    ),
+  );
+  return titles.length ? titles.join("، ") : "-";
 };
 
 export function OrdersPage() {
@@ -66,28 +133,30 @@ export function OrdersPage() {
     openCollaboratorDetail,
     createInvoice,
     navigateToTab,
-    downloadProtected
+    downloadProtected,
   } = useBestContext();
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [listStageSavingId, setListStageSavingId] = useState<string | null>(null);
+  const [listStageSavingId, setListStageSavingId] = useState<string | null>(
+    null,
+  );
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [stageFilter, setStageFilter] = useState<'all' | string>('all');
+  const [search, setSearch] = useState("");
+  const [stageFilter, setStageFilter] = useState<"all" | string>("all");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [detailStageDraft, setDetailStageDraft] = useState('RECEIVED');
+  const [detailStageDraft, setDetailStageDraft] = useState("RECEIVED");
   const [detailStageSaving, setDetailStageSaving] = useState(false);
   const [detailInvoiceOpen, setDetailInvoiceOpen] = useState(false);
   const [detailInvoiceSubmitting, setDetailInvoiceSubmitting] = useState(false);
   const [detailInvoiceForm, setDetailInvoiceForm] = useState({
-    title: '',
-    amount: '',
-    discountAmount: '',
-    initialPaidAmount: '',
-    status: 'UNPAID',
-    dueDate: '',
-    description: ''
+    title: "",
+    amount: "",
+    discountAmount: "",
+    initialPaidAmount: "",
+    status: "UNPAID",
+    dueDate: "",
+    description: "",
   });
 
   const customerOptions = useMemo(
@@ -95,13 +164,19 @@ export function OrdersPage() {
       customers.map((item) => ({
         value: item.id,
         label: fullName(item),
-        referredByCollaboratorId: item.referredByCollaborator?.id ?? null
+        referredByCollaboratorId: item.referredByCollaborator?.id ?? null,
       })),
-    [customers]
+    [customers],
   );
   const collaboratorOptions = useMemo(
-    () => [{ value: '', label: 'بدون همکار' }, ...collaborators.map((item) => ({ value: item.id, label: fullName(item) }))],
-    [collaborators]
+    () => [
+      { value: "", label: "بدون همکار" },
+      ...collaborators.map((item) => ({
+        value: item.id,
+        label: fullName(item),
+      })),
+    ],
+    [collaborators],
   );
   const meshOptions = useMemo(
     () =>
@@ -111,22 +186,30 @@ export function OrdersPage() {
           value: item.id,
           label: item.title,
           unitPrice: Number(item.unitPrice ?? 0),
-          isDefault: Boolean(item.isDefault)
+          isDefault: Boolean(item.isDefault),
         })),
-    [meshTypes]
+    [meshTypes],
   );
   const stageFilterOptions = useMemo(
-    () => [{ value: 'all', label: 'همه مراحل' }, ...ORDER_STAGES.map((stage) => ({ value: stage.value, label: stage.label }))],
-    []
+    () => [
+      { value: "all", label: "همه مراحل" },
+      ...ORDER_STAGES.map((stage) => ({
+        value: stage.value,
+        label: stage.label,
+      })),
+    ],
+    [],
   );
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
     return orders.filter((item) => {
-      const orderTitle = (item.title ?? '').toLowerCase();
-      const customerName = `${item.customer?.firstName ?? ''} ${item.customer?.lastName ?? ''}`.toLowerCase();
-      const customerPhone = (item.customer?.phone ?? '').toLowerCase();
-      const collaboratorName = `${item.collaborator?.firstName ?? ''} ${item.collaborator?.lastName ?? ''}`.toLowerCase();
-      const collaboratorPhone = (item.collaborator?.phone ?? '').toLowerCase();
+      const orderTitle = (item.title ?? "").toLowerCase();
+      const customerName =
+        `${item.customer?.firstName ?? ""} ${item.customer?.lastName ?? ""}`.toLowerCase();
+      const customerPhone = (item.customer?.phone ?? "").toLowerCase();
+      const collaboratorName =
+        `${item.collaborator?.firstName ?? ""} ${item.collaborator?.lastName ?? ""}`.toLowerCase();
+      const collaboratorPhone = (item.collaborator?.phone ?? "").toLowerCase();
       const matchesSearch =
         !q ||
         orderTitle.includes(q) ||
@@ -134,7 +217,7 @@ export function OrdersPage() {
         customerPhone.includes(q) ||
         collaboratorName.includes(q) ||
         collaboratorPhone.includes(q);
-      const matchesStage = stageFilter === 'all' || item.stage === stageFilter;
+      const matchesStage = stageFilter === "all" || item.stage === stageFilter;
       return matchesSearch && matchesStage;
     });
   }, [orders, search, stageFilter]);
@@ -148,25 +231,25 @@ export function OrdersPage() {
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== '/') return;
+      if (event.key !== "/") return;
       const target = event.target as HTMLElement | null;
       const tagName = target?.tagName?.toLowerCase();
-      if (tagName === 'input' || tagName === 'textarea') return;
+      if (tagName === "input" || tagName === "textarea") return;
       event.preventDefault();
       searchInputRef.current?.focus();
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Escape') {
-      setSearch('');
+    if (event.key === "Escape") {
+      setSearch("");
       setPage(1);
       return;
     }
-    if (event.key !== 'Enter') return;
+    if (event.key !== "Enter") return;
     const firstItem = filteredOrders[0];
     if (firstItem?.id) {
       event.preventDefault();
@@ -182,21 +265,40 @@ export function OrdersPage() {
 
   useEffect(() => {
     if (!orderDetail?.id) return;
-    const remainingAmount = Number(orderDetail.paymentSummary?.remainingAmount ?? orderDetail.paymentSummary?.total ?? orderDetail.totalPrice ?? 0);
+    const remainingAmount = Number(
+      orderDetail.paymentSummary?.remainingAmount ??
+        orderDetail.paymentSummary?.total ??
+        orderDetail.totalPrice ??
+        0,
+    );
     setDetailInvoiceForm({
-      title: '',
-      amount: remainingAmount > 0 ? String(remainingAmount) : '',
-      discountAmount: '',
-      initialPaidAmount: '',
-      status: 'UNPAID',
-      dueDate: orderDetail.expectedCompletionDate ?? '',
-      description: ''
+      title: "",
+      amount: remainingAmount > 0 ? String(remainingAmount) : "",
+      discountAmount: "",
+      initialPaidAmount: "",
+      status: "UNPAID",
+      dueDate: orderDetail.expectedCompletionDate ?? "",
+      description: "",
     });
-  }, [orderDetail?.id, orderDetail?.paymentSummary?.remainingAmount, orderDetail?.paymentSummary?.total, orderDetail?.totalPrice, orderDetail?.collaborator?.id, orderDetail?.expectedCompletionDate]);
+  }, [
+    orderDetail?.id,
+    orderDetail?.paymentSummary?.remainingAmount,
+    orderDetail?.paymentSummary?.total,
+    orderDetail?.totalPrice,
+    orderDetail?.collaborator?.id,
+    orderDetail?.expectedCompletionDate,
+  ]);
 
   useEffect(() => {
-    const computedStatus = deriveInvoiceStatusFromAmounts(detailInvoiceForm.amount, detailInvoiceForm.initialPaidAmount);
-    setDetailInvoiceForm((prev) => (prev.status === computedStatus ? prev : { ...prev, status: computedStatus }));
+    const computedStatus = deriveInvoiceStatusFromAmounts(
+      detailInvoiceForm.amount,
+      detailInvoiceForm.initialPaidAmount,
+    );
+    setDetailInvoiceForm((prev) =>
+      prev.status === computedStatus
+        ? prev
+        : { ...prev, status: computedStatus },
+    );
   }, [detailInvoiceForm.amount, detailInvoiceForm.initialPaidAmount]);
 
   const saveListStage = async (orderId: string, nextStage: string) => {
@@ -230,7 +332,10 @@ export function OrdersPage() {
     const amount = toNumber(detailInvoiceForm.amount);
     const discountAmount = toNumber(detailInvoiceForm.discountAmount);
     const initialPaidAmount = toNumber(detailInvoiceForm.initialPaidAmount);
-    const status = deriveInvoiceStatusFromAmounts(detailInvoiceForm.amount, detailInvoiceForm.initialPaidAmount);
+    const status = deriveInvoiceStatusFromAmounts(
+      detailInvoiceForm.amount,
+      detailInvoiceForm.initialPaidAmount,
+    );
     const collaboratorId = orderDetail.collaborator?.id;
     if (!collaboratorId) return;
 
@@ -243,10 +348,10 @@ export function OrdersPage() {
         discountAmount,
         initialPaidAmount,
         status,
-        payerType: 'COLLABORATOR',
+        payerType: "COLLABORATOR",
         payerId: collaboratorId,
         dueDate: detailInvoiceForm.dueDate || undefined,
-        description: detailInvoiceForm.description || undefined
+        description: detailInvoiceForm.description || undefined,
       });
       await openOrderDetail(orderDetail.id);
       setDetailInvoiceOpen(false);
@@ -256,17 +361,31 @@ export function OrdersPage() {
   };
 
   if (orderDetail) {
-    const detailLineItems = Array.isArray(orderDetail.lineItems) ? orderDetail.lineItems : [];
+    const detailLineItems = Array.isArray(orderDetail.lineItems)
+      ? orderDetail.lineItems
+      : [];
     const detailMeshTypeText = meshTypeLabelsFromItems(detailLineItems);
-    const detailInvoices = Array.isArray(orderDetail.invoices) ? orderDetail.invoices : [];
-    const detailLogs = Array.isArray(orderDetail.operationLogs) ? orderDetail.operationLogs : [];
+    const detailInvoices = Array.isArray(orderDetail.invoices)
+      ? orderDetail.invoices
+      : [];
+    const detailLogs = Array.isArray(orderDetail.operationLogs)
+      ? orderDetail.operationLogs
+      : [];
     const hasInvoices = detailInvoices.length > 0;
     const detailTotal = Number(orderDetail.paymentSummary?.total ?? 0);
-    const detailPaidAmount = Number(orderDetail.paymentSummary?.paidAmount ?? 0);
-    const detailRemainingAmount = Number(orderDetail.paymentSummary?.remainingAmount ?? 0);
-    const detailDiscount = detailInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice?.discountAmount ?? 0), 0);
+    const detailPaidAmount = Number(
+      orderDetail.paymentSummary?.paidAmount ?? 0,
+    );
+    const detailRemainingAmount = Number(
+      orderDetail.paymentSummary?.remainingAmount ?? 0,
+    );
+    const detailDiscount = detailInvoices.reduce(
+      (sum: number, invoice: any) => sum + Number(invoice?.discountAmount ?? 0),
+      0,
+    );
     const detailBase = Math.max(detailTotal + detailDiscount, 0);
-    const detailMoneyLabel = (value: number) => (hasInvoices ? money(value) : '-');
+    const detailMoneyLabel = (value: number) =>
+      hasInvoices ? money(value) : "-";
 
     return (
       <section className="space-y-4">
@@ -277,8 +396,12 @@ export function OrdersPage() {
                 <ClipboardList className="h-6 w-6 text-muted-foreground" />
                 جزئیات سفارش {orderDetail.orderNumber}
               </CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">عنوان: {orderDetail.title || '-'}</p>
-              <p className="mt-1 text-sm text-muted-foreground">تاریخ ثبت: {shamsiDate(orderDetail.createdAt)}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                عنوان: {orderDetail.title || "-"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                تاریخ ثبت: {shamsiDate(orderDetail.createdAt)}
+              </p>
             </div>
             <Button variant="outline" onClick={closeOrderDetail}>
               <ArrowRight className="h-4 w-4" />
@@ -289,20 +412,37 @@ export function OrdersPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مرحله سفارش</p>
-                <p className="mt-1 font-bold">{orderStageLabel(orderDetail.stage)}</p>
+                <p className="mt-1 font-bold">
+                  {orderStageLabel(orderDetail.stage)}
+                </p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">درصد پرداخت</p>
-                <p className="mt-1 font-bold">{hasInvoices ? `${orderDetail.paymentSummary?.percent ?? 0}%` : '-'}</p>
-                <p className="mt-1 text-xs text-muted-foreground">بر اساس فاکتورهای ثبت‌شده</p>
+                <p className="mt-1 font-bold">
+                  {hasInvoices
+                    ? `${orderDetail.paymentSummary?.percent ?? 0}%`
+                    : "-"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  بر اساس فاکتورهای ثبت‌شده
+                </p>
               </div>
               <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">تاریخ تکمیل تقریبی</p>
-                <p className="mt-1 font-bold">{shamsiDate(orderDetail.expectedCompletionDate)}</p>
+                <p className="text-xs text-muted-foreground">
+                  تاریخ تکمیل تقریبی
+                </p>
+                <p className="mt-1 font-bold">
+                  {shamsiDate(orderDetail.expectedCompletionDate)}
+                </p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">نوع کار / توری</p>
-                <p className="mt-1 font-bold">{WORK_TYPES.find((item) => item.value === orderDetail.workType)?.label ?? '-'} / {detailMeshTypeText}</p>
+                <p className="mt-1 font-bold">
+                  {WORK_TYPES.find(
+                    (item) => item.value === orderDetail.workType,
+                  )?.label ?? "-"}{" "}
+                  / {detailMeshTypeText}
+                </p>
               </div>
             </div>
             <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_auto]">
@@ -312,43 +452,67 @@ export function OrdersPage() {
                   setDetailStageDraft(value);
                   void saveDetailStage(value);
                 }}
-                options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
+                options={ORDER_STAGES.map((item) => ({
+                  value: item.value,
+                  label: item.label,
+                }))}
                 placeholder="تغییر مرحله سفارش"
                 isSearchable={false}
                 disabled={detailStageSaving}
               />
-              <div className="flex items-center px-2 text-xs text-muted-foreground">{detailStageSaving ? 'در حال ذخیره...' : 'تغییر خودکار'}</div>
+              <div className="flex items-center px-2 text-xs text-muted-foreground">
+                {detailStageSaving ? "در حال ذخیره..." : "تغییر خودکار"}
+              </div>
             </div>
             {!hasInvoices ? (
               <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2 text-sm text-amber-900">
-                <p className="font-semibold">هنوز فاکتوری برای این سفارش ثبت نشده است.</p>
-                <p className="text-xs">تا زمان ثبت اولین فاکتور، اعداد مالی بر اساس فاکتور قابل محاسبه نیست.</p>
+                <p className="font-semibold">
+                  هنوز فاکتوری برای این سفارش ثبت نشده است.
+                </p>
+                <p className="text-xs">
+                  تا زمان ثبت اولین فاکتور، اعداد مالی بر اساس فاکتور قابل
+                  محاسبه نیست.
+                </p>
               </div>
             ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مبلغ کل سفارش</p>
-                <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailTotal)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">پایه: {hasInvoices ? money(detailBase) : '-'}</p>
+                <p className="mt-1 text-lg font-bold">
+                  {detailMoneyLabel(detailTotal)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  پایه: {hasInvoices ? money(detailBase) : "-"}
+                </p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">تخفیف</p>
-                <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailDiscount)}</p>
+                <p className="mt-1 text-lg font-bold">
+                  {detailMoneyLabel(detailDiscount)}
+                </p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مبلغ پرداخت‌شده</p>
-                <p className="mt-1 text-lg font-bold">{detailMoneyLabel(detailPaidAmount)}</p>
+                <p className="mt-1 text-lg font-bold">
+                  {detailMoneyLabel(detailPaidAmount)}
+                </p>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">مانده</p>
-                <p className={`mt-1 text-lg font-bold ${hasInvoices && detailRemainingAmount > 0 ? 'text-destructive' : ''}`}>{detailMoneyLabel(detailRemainingAmount)}</p>
+                <p
+                  className={`mt-1 text-lg font-bold ${hasInvoices && detailRemainingAmount > 0 ? "text-destructive" : ""}`}
+                >
+                  {detailMoneyLabel(detailRemainingAmount)}
+                </p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">تعداد فاکتورها</p>
-                <p className="mt-1 text-lg font-bold">{detailInvoices.length}</p>
+                <p className="mt-1 text-lg font-bold">
+                  {detailInvoices.length}
+                </p>
               </div>
             </div>
 
@@ -364,16 +528,22 @@ export function OrdersPage() {
                     className="mt-1 font-semibold text-primary hover:underline"
                     onClick={() => {
                       void openCustomerDetail(orderDetail.customer.id);
-                      navigateToTab('customers');
+                      navigateToTab("customers");
                     }}
                   >
                     {fullName(orderDetail.customer)}
                   </button>
                 ) : (
-                  <p className="mt-1 font-semibold">{fullName(orderDetail.customer)}</p>
+                  <p className="mt-1 font-semibold">
+                    {fullName(orderDetail.customer)}
+                  </p>
                 )}
-                <p className="mt-2 text-xs text-muted-foreground">موبایل: {orderDetail.customer?.phone || '-'}</p>
-                <p className="mt-1 text-xs text-muted-foreground">آدرس: {orderDetail.customer?.address || '-'}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  موبایل: {orderDetail.customer?.phone || "-"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  آدرس: {orderDetail.customer?.address || "-"}
+                </p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -386,19 +556,26 @@ export function OrdersPage() {
                     className="mt-1 font-semibold text-primary hover:underline"
                     onClick={() => {
                       void openCollaboratorDetail(orderDetail.collaborator.id);
-                      navigateToTab('collaborators');
+                      navigateToTab("collaborators");
                     }}
                   >
                     {fullName(orderDetail.collaborator)}
                   </button>
                 ) : (
-                  <p className="mt-1 font-semibold">{fullName(orderDetail.collaborator)}</p>
+                  <p className="mt-1 font-semibold">
+                    {fullName(orderDetail.collaborator)}
+                  </p>
                 )}
-                <p className="mt-2 text-xs text-muted-foreground">موبایل: {orderDetail.collaborator?.phone || '-'}</p>
-                <p className="mt-1 text-xs text-muted-foreground">آدرس: {orderDetail.collaborator?.address || '-'}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  موبایل: {orderDetail.collaborator?.phone || "-"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  آدرس: {orderDetail.collaborator?.address || "-"}
+                </p>
               </div>
               <p className="sm:col-span-2">
-                <span className="font-semibold">توضیحات سفارش:</span> {orderDetail.description || '-'}
+                <span className="font-semibold">توضیحات سفارش:</span>{" "}
+                {orderDetail.description || "-"}
               </p>
             </div>
           </CardContent>
@@ -414,7 +591,12 @@ export function OrdersPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => void downloadProtected(`/orders/${orderDetail.id}/line-items/labels.zip`, `labels-${orderDetail.orderNumber}.zip`)}
+                onClick={() =>
+                  void downloadProtected(
+                    `/orders/${orderDetail.id}/line-items/labels.zip`,
+                    `labels-${orderDetail.orderNumber}.zip`,
+                  )
+                }
               >
                 <Download className="h-4 w-4" />
                 دانلود همه لیبل‌ها
@@ -440,25 +622,38 @@ export function OrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {detailLineItems.map((item: any, idx: number) => (
-                    <TableRow key={item.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
-                      <TableCell>{item.meshType?.title || '-'}</TableCell>
+                    <TableRow
+                      key={item.id ?? idx}
+                      className={idx % 2 ? "bg-muted/10" : ""}
+                    >
+                      <TableCell>{item.meshType?.title || "-"}</TableCell>
                       <TableCell>{Number(item.width ?? 0)}</TableCell>
                       <TableCell>{Number(item.height ?? 0)}</TableCell>
                       <TableCell>{Number(item.quantity ?? 0)}</TableCell>
-                      <TableCell>{money(Number(item.unitPrice ?? 0))}</TableCell>
-                      <TableCell className="font-semibold">{money(Number(item.lineTotal ?? 0))}</TableCell>
-                      <TableCell>{item.description || '-'}</TableCell>
+                      <TableCell>
+                        {money(Number(item.unitPrice ?? 0))}
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        {money(Number(item.lineTotal ?? 0))}
+                      </TableCell>
+                      <TableCell>{item.description || "-"}</TableCell>
                       <TableCell>
                         {orderDetail.id && item.id ? (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void downloadProtected(`/orders/${orderDetail.id}/line-items/${item.id}/label`)}
+                            onClick={() =>
+                              void downloadProtected(
+                                `/orders/${orderDetail.id}/line-items/${item.id}/label`,
+                              )
+                            }
                           >
                             <Download className="h-4 w-4" />
                             دانلود لیبل
                           </Button>
-                        ) : '-'}
+                        ) : (
+                          "-"
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -474,7 +669,10 @@ export function OrdersPage() {
               <FileText className="h-5 w-5 text-muted-foreground" />
               فاکتورهای سفارش و وضعیت پرداخت
             </CardTitle>
-            <Button onClick={() => setDetailInvoiceOpen(true)} disabled={detailInvoices.length > 0}>
+            <Button
+              onClick={() => setDetailInvoiceOpen(true)}
+              disabled={detailInvoices.length > 0}
+            >
               <Plus className="h-4 w-4" />
               افزودن فاکتور
             </Button>
@@ -499,18 +697,30 @@ export function OrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {detailInvoices.map((invoice: any, idx: number) => (
-                    <TableRow key={invoice.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
-                      <TableCell className="font-medium">{invoice.invoiceNumber ?? '-'}</TableCell>
-                      <TableCell>{invoice.title || '-'}</TableCell>
+                    <TableRow
+                      key={invoice.id ?? idx}
+                      className={idx % 2 ? "bg-muted/10" : ""}
+                    >
+                      <TableCell className="font-medium">
+                        {invoice.invoiceNumber ?? "-"}
+                      </TableCell>
+                      <TableCell>{invoice.title || "-"}</TableCell>
                       <TableCell>{payerTypeLabel(invoice.payerType)}</TableCell>
                       <TableCell>
-                        <Badge variant={invoiceStatusBadgeVariant(invoice.status)}>
+                        <Badge
+                          variant={invoiceStatusBadgeVariant(invoice.status)}
+                        >
                           {invoiceStatusLabel(invoice.status)}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div>{money(Number(invoice.paidAmount ?? 0))} / {money(Number(invoice.amount ?? 0))}</div>
-                        <div className="text-xs text-muted-foreground">تخفیف: {money(Number(invoice.discountAmount ?? 0))}</div>
+                        <div>
+                          {money(Number(invoice.paidAmount ?? 0))} /{" "}
+                          {money(Number(invoice.amount ?? 0))}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          تخفیف: {money(Number(invoice.discountAmount ?? 0))}
+                        </div>
                       </TableCell>
                       <TableCell>{shamsiDate(invoice.dueDate)}</TableCell>
                       <TableCell>{shamsiDate(invoice.createdAt)}</TableCell>
@@ -519,12 +729,18 @@ export function OrdersPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void downloadProtected(`/invoices/${invoice.id}/pdf`)}
+                            onClick={() =>
+                              void downloadProtected(
+                                `/invoices/${invoice.id}/pdf`,
+                              )
+                            }
                           >
                             <Download className="h-4 w-4" />
                             دانلود
                           </Button>
-                        ) : '-'}
+                        ) : (
+                          "-"
+                        )}
                       </TableCell>
                       <TableCell>
                         {invoice.id ? (
@@ -533,12 +749,14 @@ export function OrdersPage() {
                             variant="outline"
                             onClick={() => {
                               void openInvoiceDetail(invoice.id);
-                              navigateToTab('invoices');
+                              navigateToTab("invoices");
                             }}
                           >
                             جزئیات
                           </Button>
-                        ) : '-'}
+                        ) : (
+                          "-"
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -551,15 +769,24 @@ export function OrdersPage() {
         <Dialog open={detailInvoiceOpen} onOpenChange={setDetailInvoiceOpen}>
           <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-xl">
             <DialogHeader>
-              <DialogTitle>افزودن فاکتور برای سفارش {orderDetail.orderNumber}</DialogTitle>
-              <DialogDescription>از همین صفحه می‌توانید فاکتور جدید ثبت کنید.</DialogDescription>
+              <DialogTitle>
+                افزودن فاکتور برای سفارش {orderDetail.orderNumber}
+              </DialogTitle>
+              <DialogDescription>
+                از همین صفحه می‌توانید فاکتور جدید ثبت کنید.
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={submitDetailInvoice} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Input
                   value={detailInvoiceForm.title}
                   placeholder="عنوان فاکتور (اختیاری)"
-                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, title: e.target.value }))}
+                  onChange={(e) =>
+                    setDetailInvoiceForm((prev) => ({
+                      ...prev,
+                      title: e.target.value,
+                    }))
+                  }
                   className="sm:col-span-2"
                 />
                 <Input
@@ -568,7 +795,12 @@ export function OrdersPage() {
                   step="0.01"
                   value={detailInvoiceForm.amount}
                   placeholder="مبلغ کل فاکتور"
-                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, amount: e.target.value }))}
+                  onChange={(e) =>
+                    setDetailInvoiceForm((prev) => ({
+                      ...prev,
+                      amount: e.target.value,
+                    }))
+                  }
                 />
                 <Input
                   type="number"
@@ -576,7 +808,12 @@ export function OrdersPage() {
                   step="0.01"
                   value={detailInvoiceForm.discountAmount}
                   placeholder="تخفیف"
-                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, discountAmount: e.target.value }))}
+                  onChange={(e) =>
+                    setDetailInvoiceForm((prev) => ({
+                      ...prev,
+                      discountAmount: e.target.value,
+                    }))
+                  }
                 />
                 <Input
                   type="number"
@@ -584,20 +821,42 @@ export function OrdersPage() {
                   step="0.01"
                   value={detailInvoiceForm.initialPaidAmount}
                   placeholder="پرداخت اولیه"
-                  onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, initialPaidAmount: e.target.value }))}
+                  onChange={(e) =>
+                    setDetailInvoiceForm((prev) => ({
+                      ...prev,
+                      initialPaidAmount: e.target.value,
+                    }))
+                  }
                 />
                 <SearchableSelect
                   value={detailInvoiceForm.status}
-                  onChange={(value) => setDetailInvoiceForm((prev) => ({ ...prev, status: value }))}
-                  options={INVOICE_STATUS_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                  onChange={(value) =>
+                    setDetailInvoiceForm((prev) => ({ ...prev, status: value }))
+                  }
+                  options={INVOICE_STATUS_OPTIONS.map((item) => ({
+                    value: item.value,
+                    label: item.label,
+                  }))}
                   placeholder="وضعیت فاکتور"
                   isSearchable={false}
                 />
-                <Input value={orderDetail.collaborator?.id ? 'همکار' : 'این سفارش همکار ندارد'} disabled />
+                <Input
+                  value={
+                    orderDetail.collaborator?.id
+                      ? "همکار"
+                      : "این سفارش همکار ندارد"
+                  }
+                  disabled
+                />
                 <div className="sm:col-span-2">
                   <PersianDatePicker
                     value={detailInvoiceForm.dueDate}
-                    onChange={(value) => setDetailInvoiceForm((prev) => ({ ...prev, dueDate: value ?? '' }))}
+                    onChange={(value) =>
+                      setDetailInvoiceForm((prev) => ({
+                        ...prev,
+                        dueDate: value ?? "",
+                      }))
+                    }
                     placeholder="تاریخ سررسید فاکتور"
                   />
                 </div>
@@ -605,13 +864,27 @@ export function OrdersPage() {
               <Textarea
                 value={detailInvoiceForm.description}
                 placeholder="توضیحات فاکتور"
-                onChange={(e) => setDetailInvoiceForm((prev) => ({ ...prev, description: e.target.value }))}
+                onChange={(e) =>
+                  setDetailInvoiceForm((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
               />
               <DialogFooter>
-                <Button type="button" variant="secondary" onClick={() => setDetailInvoiceOpen(false)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setDetailInvoiceOpen(false)}
+                >
                   انصراف
                 </Button>
-                <Button type="submit" disabled={detailInvoiceSubmitting || !orderDetail.collaborator?.id}>
+                <Button
+                  type="submit"
+                  disabled={
+                    detailInvoiceSubmitting || !orderDetail.collaborator?.id
+                  }
+                >
                   ذخیره فاکتور
                 </Button>
               </DialogFooter>
@@ -641,11 +914,16 @@ export function OrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {detailLogs.slice(0, 20).map((log: any, idx: number) => (
-                    <TableRow key={log.id ?? idx} className={idx % 2 ? 'bg-muted/10' : ''}>
+                    <TableRow
+                      key={log.id ?? idx}
+                      className={idx % 2 ? "bg-muted/10" : ""}
+                    >
                       <TableCell>{shamsiDate(log.createdAt)}</TableCell>
                       <TableCell>{fullName(log.actor)}</TableCell>
                       <TableCell>{activityActionLabel(log.action)}</TableCell>
-                      <TableCell>{activityDescriptionLabel(log.description)}</TableCell>
+                      <TableCell>
+                        {activityDescriptionLabel(log.description)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -661,7 +939,9 @@ export function OrdersPage() {
     <section className="space-y-4">
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-2xl font-extrabold">مدیریت سفارشات</CardTitle>
+          <CardTitle className="text-2xl font-extrabold">
+            مدیریت سفارشات
+          </CardTitle>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />
             ثبت سفارش
@@ -671,12 +951,22 @@ export function OrdersPage() {
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <div className="relative md:col-span-2">
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input ref={searchInputRef} className="pr-9" placeholder="جستجو: نام/شماره مشتری، نام/شماره همکار ( / )" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} onKeyDown={onSearchKeyDown} />
+              <Input
+                ref={searchInputRef}
+                className="pr-9"
+                placeholder="جستجو: نام/شماره مشتری، نام/شماره همکار ( / )"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                onKeyDown={onSearchKeyDown}
+              />
             </div>
             <SearchableSelect
               value={stageFilter}
               onChange={(value) => {
-                setStageFilter((value || 'all') as 'all' | string);
+                setStageFilter((value || "all") as "all" | string);
                 setPage(1);
               }}
               options={stageFilterOptions}
@@ -686,7 +976,10 @@ export function OrdersPage() {
           </div>
 
           {filteredOrders.length === 0 ? (
-            <EmptyState title="سفارشی پیدا نشد" description="با ثبت سفارش جدید شروع کنید." />
+            <EmptyState
+              title="سفارشی پیدا نشد"
+              description="با ثبت سفارش جدید شروع کنید."
+            />
           ) : (
             <>
               <Table>
@@ -701,9 +994,14 @@ export function OrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {pageItems.map((order, idx) => {
-                    const lineItems = Array.isArray(order.lineItems) ? order.lineItems : [];
+                    const lineItems = Array.isArray(order.lineItems)
+                      ? order.lineItems
+                      : [];
                     const totalRows = lineItems.length;
-                    const totalQuantity = lineItems.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
+                    const totalQuantity = lineItems.reduce(
+                      (sum, item) => sum + Number(item.quantity ?? 0),
+                      0,
+                    );
                     const totalArea = lineItems.reduce((sum, item) => {
                       const width = Number(item.width ?? 0);
                       const height = Number(item.height ?? 0);
@@ -712,7 +1010,11 @@ export function OrdersPage() {
                     }, 0);
                     return (
                       <Fragment key={order.id}>
-                        <TableRow key={`${order.id}-main`} className={`${idx % 2 ? 'bg-muted/10' : ''} cursor-pointer border-b-0`} onDoubleClick={() => void openDetail(order.id)}>
+                        <TableRow
+                          key={`${order.id}-main`}
+                          className={`${idx % 2 ? "bg-muted/10" : ""} cursor-pointer border-b-0`}
+                          onDoubleClick={() => void openDetail(order.id)}
+                        >
                           <TableCell>
                             {order.customer?.id ? (
                               <button
@@ -722,7 +1024,7 @@ export function OrdersPage() {
                                   const customerId = order.customer?.id;
                                   if (!customerId) return;
                                   void openCustomerDetail(customerId);
-                                  navigateToTab('customers');
+                                  navigateToTab("customers");
                                 }}
                               >
                                 {fullName(order.customer)}
@@ -730,7 +1032,9 @@ export function OrdersPage() {
                             ) : (
                               fullName(order.customer)
                             )}
-                            <div className="mt-1 text-xs text-muted-foreground">{order.customer?.phone || '-'}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {order.customer?.phone || "-"}
+                            </div>
                           </TableCell>
                           <TableCell>
                             {order.collaborator?.id ? (
@@ -741,7 +1045,7 @@ export function OrdersPage() {
                                   const collaboratorId = order.collaborator?.id;
                                   if (!collaboratorId) return;
                                   void openCollaboratorDetail(collaboratorId);
-                                  navigateToTab('collaborators');
+                                  navigateToTab("collaborators");
                                 }}
                               >
                                 {fullName(order.collaborator)}
@@ -749,11 +1053,21 @@ export function OrdersPage() {
                             ) : (
                               fullName(order.collaborator || undefined)
                             )}
-                            <div className="mt-1 text-xs text-muted-foreground">{order.collaborator?.phone || '-'}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {order.collaborator?.phone || "-"}
+                            </div>
                           </TableCell>
                           <TableCell>
-                            <div className="font-semibold">{WORK_TYPES.find((item) => item.value === order.workType)?.label}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">{order.title || 'بدون عنوان سفارش'}</div>
+                            <div className="font-semibold">
+                              {
+                                WORK_TYPES.find(
+                                  (item) => item.value === order.workType,
+                                )?.label
+                              }
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {order.title || "بدون عنوان سفارش"}
+                            </div>
                           </TableCell>
                           <TableCell className="min-w-[180px]">
                             <SearchableSelect
@@ -762,7 +1076,10 @@ export function OrdersPage() {
                                 if (!value || value === order.stage) return;
                                 void saveListStage(order.id, value);
                               }}
-                              options={ORDER_STAGES.map((item) => ({ value: item.value, label: item.label }))}
+                              options={ORDER_STAGES.map((item) => ({
+                                value: item.value,
+                                label: item.label,
+                              }))}
                               placeholder="مرحله سفارش"
                               isSearchable={false}
                               className="max-w-[170px]"
@@ -777,47 +1094,46 @@ export function OrdersPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => void openDetail(order.id)}>
+                                <DropdownMenuItem
+                                  onClick={() => void openDetail(order.id)}
+                                >
                                   <Eye className="h-4 w-4" />
                                   مشاهده جزئیات
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeOrder(order.id)}>حذف </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => void removeOrder(order.id)}
+                                >
+                                  حذف{" "}
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                        <TableRow key={`${order.id}-summary`} className={idx % 2 ? 'bg-muted/5 border-t-0' : 'bg-muted/20 border-t-0'}>
+                        <TableRow
+                          key={`${order.id}-summary`}
+                          className={
+                            idx % 2
+                              ? "bg-muted/5 border-t-0"
+                              : "bg-muted/20 border-t-0"
+                          }
+                        >
                           <TableCell colSpan={5} className="py-3">
                             <div className="space-y-3 rounded-md border bg-background p-3">
                               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="space-y-2">
-                                  <p className="text-sm font-bold">خلاصه سفارش</p>
-                                  <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3 sm:text-sm">
-                                    <div className="rounded-md border bg-muted/40 px-2 py-1">
-                                      <span className="text-muted-foreground">تعداد ردیف:</span> <span className="font-semibold">{totalRows}</span>
-                                    </div>
-                                    <div className="rounded-md border bg-muted/40 px-2 py-1">
-                                      <span className="text-muted-foreground">جمع تعداد:</span> <span className="font-semibold">{totalQuantity}</span>
-                                    </div>
-                                    <div className="rounded-md border bg-muted/40 px-2 py-1">
-                                      <span className="text-muted-foreground">جمع متراژ:</span> <span className="font-semibold">{totalArea.toFixed(2)}</span>
-                                    </div>
-                                  </div>
-                                  <div className="text-xs sm:text-sm">
-                                    <span className="text-muted-foreground">جمع کل سفارش:</span> <span className="font-bold">{money(Number(order.totalPrice ?? 0))}</span>
-                                  </div>
+                                  <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3 sm:text-sm"></div>
                                 </div>
-                                {lineItems.length ? (
-                                  <div className="text-xs text-muted-foreground sm:text-sm">اقلام: {lineItems.map((item) => item.meshType?.title || '-').join('، ')}</div>
-                                ) : (
-                                  <p className="text-xs text-muted-foreground">برای این سفارش ردیفی ثبت نشده است.</p>
-                                )}
+
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    void downloadProtected(`/orders/${order.id}/line-items/labels.zip`, `labels-${order.orderNumber}.zip`);
+                                    void downloadProtected(
+                                      `/orders/${order.id}/line-items/labels.zip`,
+                                      `labels-${order.orderNumber}.zip`,
+                                    );
                                   }}
                                 >
                                   <Download className="h-4 w-4" />
@@ -829,7 +1145,9 @@ export function OrdersPage() {
                                   <Table>
                                     <TableHeader>
                                       <TableRow>
-                                        <TableHead className="w-[50px]">#</TableHead>
+                                        <TableHead className="w-[50px]">
+                                          #
+                                        </TableHead>
                                         <TableHead>نوع توری</TableHead>
                                         <TableHead>ابعاد</TableHead>
                                         <TableHead>تعداد</TableHead>
@@ -838,12 +1156,28 @@ export function OrdersPage() {
                                     </TableHeader>
                                     <TableBody>
                                       {lineItems.map((item, itemIndex) => (
-                                        <TableRow key={item.id ?? `${order.id}-${itemIndex}`}>
-                                          <TableCell className="text-xs text-muted-foreground sm:text-sm">{itemIndex + 1}</TableCell>
-                                          <TableCell className="font-medium">{item.meshType?.title || '-'}</TableCell>
-                                          <TableCell>{Number(item.width ?? 0)} × {Number(item.height ?? 0)}</TableCell>
-                                          <TableCell>{Number(item.quantity ?? 0)}</TableCell>
-                                          <TableCell className="max-w-[320px] truncate text-xs text-muted-foreground sm:text-sm">{item.description || '-'}</TableCell>
+                                        <TableRow
+                                          key={
+                                            item.id ??
+                                            `${order.id}-${itemIndex}`
+                                          }
+                                        >
+                                          <TableCell className="text-xs text-muted-foreground sm:text-sm">
+                                            {itemIndex + 1}
+                                          </TableCell>
+                                          <TableCell className="font-medium">
+                                            {item.meshType?.title || "-"}
+                                          </TableCell>
+                                          <TableCell>
+                                            {Number(item.width ?? 0)} ×{" "}
+                                            {Number(item.height ?? 0)}
+                                          </TableCell>
+                                          <TableCell>
+                                            {Number(item.quantity ?? 0)}
+                                          </TableCell>
+                                          <TableCell className="max-w-[320px] truncate text-xs text-muted-foreground sm:text-sm">
+                                            {item.description || "-"}
+                                          </TableCell>
                                         </TableRow>
                                       ))}
                                     </TableBody>
@@ -858,7 +1192,12 @@ export function OrdersPage() {
                   })}
                 </TableBody>
               </Table>
-              <Pagination page={Math.min(page, totalPages)} total={filteredOrders.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+              <Pagination
+                page={Math.min(page, totalPages)}
+                total={filteredOrders.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+              />
             </>
           )}
         </CardContent>
@@ -870,19 +1209,25 @@ export function OrdersPage() {
         collaboratorOptions={collaboratorOptions.filter((item) => item.value)}
         meshOptions={meshOptions}
         onQuickCreateCustomer={async (payload) => {
-          const created = await createCustomer(payload as Record<string, unknown>);
+          const created = await createCustomer(
+            payload as Record<string, unknown>,
+          );
           if (!created) return null;
           const id = (created as any).id as string | undefined;
           const firstName = (created as any).firstName as string | undefined;
           const lastName = (created as any).lastName as string | undefined;
           if (!id) return null;
-          return { id, label: [firstName, lastName].filter(Boolean).join(' ').trim() || 'مشتری جدید' };
+          return {
+            id,
+            label:
+              [firstName, lastName].filter(Boolean).join(" ").trim() ||
+              "مشتری جدید",
+          };
         }}
         onSubmit={async (payload) => {
           await createOrder(payload as Record<string, unknown>);
         }}
       />
-
     </section>
   );
 }
