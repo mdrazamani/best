@@ -129,6 +129,23 @@ export class CollaboratorsRepository extends BaseRepository {
     });
   }
 
+  findByIdSafe(id: string) {
+    return this.prisma.collaborator.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        orders: {
+          where: {
+            deletedAt: null
+          },
+          include: {
+            customer: true
+          },
+          orderBy: { createdAt: 'desc' }
+        }
+      }
+    });
+  }
+
   aggregateCollaboratorDirectPayments(collaboratorId: string, options?: { beforeDate?: Date }) {
     return this.prisma.collaboratorPayment.aggregate({
       _sum: {

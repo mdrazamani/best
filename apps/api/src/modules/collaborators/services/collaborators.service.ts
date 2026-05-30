@@ -71,20 +71,36 @@ export class CollaboratorsService extends BaseService {
   }
 
   private isMissingCollaboratorPaymentSchemaError(error: unknown) {
-    if (!error || typeof error !== 'object') return false;
-    const maybeError = error as { code?: string; message?: string };
-    if (maybeError.code !== 'P2021' && maybeError.code !== 'P2022') return false;
+    if (!this.isSchemaMissingError(error)) return false;
+    const maybeError = error as { message?: string };
     const message = String(maybeError.message ?? '');
     return message.includes('CollaboratorPayment') || message.includes('collaboratorpayment');
   }
 
+  private isSchemaMissingError(error: unknown) {
+    if (!error || typeof error !== 'object') return false;
+    const maybeError = error as { code?: string };
+    return maybeError.code === 'P2021' || maybeError.code === 'P2022';
+  }
+
   async detail(id: string) {
-    const collaborator = await this.collaboratorsRepository.findById(id);
+    let usedSafeFallback = false;
+    let collaborator: any;
+    try {
+      collaborator = await this.collaboratorsRepository.findById(id);
+    } catch (error) {
+      if (!this.isSchemaMissingError(error)) {
+        throw error;
+      }
+      usedSafeFallback = true;
+      collaborator = await this.collaboratorsRepository.findByIdSafe(id);
+    }
+
     if (!collaborator) {
       throw new NotFoundException('همکار پيدا نشد.');
     }
 
-    const activeOrders = collaborator.orders.filter((order) => order.stage !== 'CANCELLED');
+    const activeOrders = collaborator.orders.filter((order: any) => order.stage !== 'CANCELLED');
     const invoiceMap = new Map<string, any>();
     for (const order of activeOrders) {
       for (const link of order.invoiceLinks ?? []) {
@@ -106,16 +122,16 @@ export class CollaboratorsService extends BaseService {
     const totalInvoiced = collaboratorInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
     const totalInvoicePaid = collaboratorInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount), 0);
     const directPayments = Array.isArray(collaborator.payments) ? collaborator.payments : [];
-    const totalDirectPaid = directPayments.reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+    const totalDirectPaid = directPayments.reduce((sum: number, item: any) => sum + Number(item.amount ?? 0), 0);
     const totalPaid = totalInvoicePaid + totalDirectPaid;
-    const completedOrders = activeOrders.filter((order) => order.stage === 'DELIVERED').length;
-    const inProgressOrders = activeOrders.filter((order) => ['IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
+    const completedOrders = activeOrders.filter((order: any) => order.stage === 'DELIVERED').length;
+    const inProgressOrders = activeOrders.filter((order: any) => ['IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
 
     const customers = Array.from(
       new Map(
         activeOrders
-          .filter((order) => Boolean(order.customer))
-          .map((order) => [
+          .filter((order: any) => Boolean(order.customer))
+          .map((order: any) => [
             order.customer!.id,
             {
               id: order.customer!.id,
@@ -160,6 +176,9 @@ export class CollaboratorsService extends BaseService {
 
     return {
       ...collaborator,
+      schemaWarning: usedSafeFallback
+        ? 'برخی ساختارهای دیتابیس هنوز اعمال نشده‌اند. لطفاً migrationها را کامل اجرا کنید.'
+        : undefined,
       summary: {
         totalOrders: activeOrders.length,
         totalOrderAmount: totalInvoiced,
