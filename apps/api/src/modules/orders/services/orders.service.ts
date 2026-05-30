@@ -268,12 +268,7 @@ export class OrdersService extends BaseService {
     }
 
     try {
-      const labels = await Promise.all(
-        lineItems.map(async (item, index) => ({
-          fileName: this.buildLabelFileName(order, item, index),
-          buffer: await this.renderLabelPdf(order, item, index)
-        }))
-      );
+      const labels = await this.renderAllLabelsPdf(order, lineItems);
 
       const zipBuffer = await this.createZipBuffer(labels);
       return {
@@ -285,6 +280,48 @@ export class OrdersService extends BaseService {
         throw error;
       }
       throw new BadRequestException('ساخت فایل فشرده لیبل‌ها در سرور انجام نشد. لطفا دوباره تلاش کنید.');
+    }
+  }
+
+  private async renderAllLabelsPdf(order: any, lineItems: any[]) {
+    const widthMm = LABEL_WIDTH_MM;
+    const heightMm = LABEL_HEIGHT_MM;
+    const widthPx = this.mmToPx(widthMm);
+    const heightPx = this.mmToPx(heightMm);
+    const { default: puppeteer } = await import('puppeteer');
+
+    const browser = await puppeteer.launch(buildPuppeteerLaunchOptions());
+    try {
+      const labels: Array<{ fileName: string; buffer: Buffer }> = [];
+
+      for (let index = 0; index < lineItems.length; index += 1) {
+        const item = lineItems[index];
+        const page = await browser.newPage();
+        try {
+          await page.setViewport({ width: widthPx, height: heightPx });
+          await page.emulateMediaType('print');
+          await page.setContent(this.renderLabelHtml(order, item), { waitUntil: 'domcontentloaded' });
+          const pdf = await page.pdf({
+            printBackground: true,
+            width: `${widthMm}mm`,
+            height: `${heightMm}mm`,
+            landscape: true,
+            scale: 1,
+            margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
+            preferCSSPageSize: true
+          });
+          labels.push({
+            fileName: this.buildLabelFileName(order, item, index),
+            buffer: Buffer.from(pdf)
+          });
+        } finally {
+          await page.close();
+        }
+      }
+
+      return labels;
+    } finally {
+      await browser.close();
     }
   }
 
