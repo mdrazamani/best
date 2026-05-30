@@ -347,18 +347,15 @@ export class CollaboratorsService extends BaseService {
     const paymentDate = new Date(payment.paidAt);
     const beforeDate = new Date(paymentDate.getTime() - 1);
 
-    const [beforeBalance, afterBalance, currentBalance] = await Promise.all([
+    const [beforeBalance, afterBalance] = await Promise.all([
       this.getCollaboratorBalance(collaboratorId, { beforeDate }),
-      this.getCollaboratorBalance(collaboratorId, { beforeDate: paymentDate }),
-      this.getCollaboratorBalance(collaboratorId)
+      this.getCollaboratorBalance(collaboratorId, { beforeDate: paymentDate })
     ]);
 
     const html = this.renderPaymentReceiptHtml({
       payment,
       beforeRemaining: toMoneyNumber(beforeBalance.remaining),
-      remainingAfterPayment: toMoneyNumber(afterBalance.remaining),
-      currentRemaining: toMoneyNumber(currentBalance.remaining),
-      totalInvoicedUntilPayment: toMoneyNumber(afterBalance.totalInvoiced)
+      remainingAfterPayment: toMoneyNumber(afterBalance.remaining)
     });
     const buffer = await this.renderPdfFromHtml(html);
 
@@ -425,14 +422,11 @@ export class CollaboratorsService extends BaseService {
     payment: any;
     beforeRemaining: number;
     remainingAfterPayment: number;
-    currentRemaining: number;
-    totalInvoicedUntilPayment: number;
   }) {
-    const { payment, beforeRemaining, remainingAfterPayment, currentRemaining, totalInvoicedUntilPayment } = input;
+    const { payment, beforeRemaining, remainingAfterPayment } = input;
     const collaboratorName = this.buildFullName(payment?.collaborator) || '-';
     const collaboratorPhone = payment?.collaborator?.phone || '-';
     const paymentAmount = Number(payment?.amount ?? 0);
-    const createdByName = this.buildFullName(payment?.createdBy) || payment?.createdBy?.username || '-';
     const note = String(payment?.note ?? '').trim() || '-';
     const fontFace = this.getVazirmatnFontFaceCss();
 
@@ -465,51 +459,34 @@ export class CollaboratorsService extends BaseService {
   <div class="wrap">
     <div class="head">
       <div>
-        <h1 class="title">رسید پرداخت همکار</h1>
-        <p class="sub">این پرداخت به صورت کلی برای حساب همکار ثبت شده است.</p>
+        <h1 class="title">رسید پرداخت</h1>
       </div>
-      <div class="sub">شناسه رسید: ${this.escapeHtml(payment?.id ?? '-')}</div>
+      <div class="sub">${this.escapeHtml(this.formatJalaliDate(payment?.paidAt))}</div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <div class="label">نام همکار</div>
+        <div class="label">نام</div>
         <div class="value">${this.escapeHtml(collaboratorName)}</div>
       </div>
       <div class="card">
         <div class="label">شماره تماس</div>
         <div class="value">${this.escapeHtml(collaboratorPhone)}</div>
       </div>
-      <div class="card">
-        <div class="label">تاریخ پرداخت</div>
-        <div class="value">${this.escapeHtml(this.formatJalaliDate(payment?.paidAt))}</div>
-      </div>
-      <div class="card">
-        <div class="label">ثبت‌کننده</div>
-        <div class="value">${this.escapeHtml(createdByName)}</div>
-      </div>
     </div>
 
     <div class="table">
       <div class="row">
-        <div class="cell-label">مانده قبل از این پرداخت (تومان)</div>
+        <div class="cell-label">مانده قبل از این (تومان)</div>
         <div class="cell-value">${this.formatMoney(beforeRemaining)}</div>
       </div>
       <div class="row">
-        <div class="cell-label">مبلغ پرداخت‌شده (تومان)</div>
+        <div class="cell-label">مبلغ رسید (تومان)</div>
         <div class="cell-value">${this.formatMoney(paymentAmount)}</div>
       </div>
       <div class="row final">
-        <div class="cell-label">مانده بعد از این پرداخت (تومان)</div>
+        <div class="cell-label">مانده بعد از رسید (تومان)</div>
         <div class="cell-value">${this.formatMoney(remainingAfterPayment)}</div>
-      </div>
-      <div class="row">
-        <div class="cell-label">مانده فعلی حساب همکار (تومان)</div>
-        <div class="cell-value">${this.formatMoney(currentRemaining)}</div>
-      </div>
-      <div class="row">
-        <div class="cell-label">کل مبلغ فاکتورهای همکار تا این تاریخ (تومان)</div>
-        <div class="cell-value">${this.formatMoney(totalInvoicedUntilPayment)}</div>
       </div>
     </div>
 
