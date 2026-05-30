@@ -103,7 +103,7 @@ export function SearchableSelect({
                 <button
                   type="button"
                   className="mx-1 inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-input px-2 text-base font-semibold leading-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  onMouseDown={(event) => {
+                  onPointerDown={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     if (disabled || actionDisabled) return;

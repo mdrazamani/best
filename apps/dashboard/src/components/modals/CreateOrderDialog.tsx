@@ -436,6 +436,11 @@ export function CreateOrderDialog({
                     {activeCollaboratorId ? 'ابتدا مشتری‌های مرتبط با همین همکار نمایش داده می‌شوند.' : 'برای سرعت بیشتر، می‌توانید اول همکار را انتخاب کنید.'}
                   </p>
                 </div>
+                <div className="flex justify-start">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setQuickCustomerOpen((prev) => !prev)} disabled={quickCustomerSubmitting}>
+                    {quickCustomerOpen ? '\u0628\u0633\u062a\u0646 \u0641\u0631\u0645 \u0627\u0641\u0632\u0648\u062f\u0646 \u0633\u0631\u06cc\u0639 \u0645\u0634\u062a\u0631\u06cc' : '\u0627\u0641\u0632\u0648\u062f\u0646 \u0633\u0631\u06cc\u0639 \u0645\u0634\u062a\u0631\u06cc'}
+                  </Button>
+                </div>
                 {quickCustomerOpen ? (
                   <div className="grid gap-2 rounded-md border border-dashed p-2">
                     <Input
