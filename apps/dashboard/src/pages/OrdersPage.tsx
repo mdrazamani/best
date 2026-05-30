@@ -702,9 +702,17 @@ export function OrdersPage() {
                 <TableBody>
                   {pageItems.map((order, idx) => {
                     const lineItems = Array.isArray(order.lineItems) ? order.lineItems : [];
+                    const totalRows = lineItems.length;
+                    const totalQuantity = lineItems.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
+                    const totalArea = lineItems.reduce((sum, item) => {
+                      const width = Number(item.width ?? 0);
+                      const height = Number(item.height ?? 0);
+                      const quantity = Number(item.quantity ?? 0);
+                      return sum + width * height * quantity;
+                    }, 0);
                     return (
                       <Fragment key={order.id}>
-                        <TableRow key={`${order.id}-main`} className={`${idx % 2 ? 'bg-muted/10' : ''} cursor-pointer`} onDoubleClick={() => void openDetail(order.id)}>
+                        <TableRow key={`${order.id}-main`} className={`${idx % 2 ? 'bg-muted/10' : ''} cursor-pointer border-b-0`} onDoubleClick={() => void openDetail(order.id)}>
                           <TableCell>
                             {order.customer?.id ? (
                               <button
@@ -722,6 +730,7 @@ export function OrdersPage() {
                             ) : (
                               fullName(order.customer)
                             )}
+                            <div className="mt-1 text-xs text-muted-foreground">{order.customer?.phone || '-'}</div>
                           </TableCell>
                           <TableCell>
                             {order.collaborator?.id ? (
@@ -740,8 +749,12 @@ export function OrdersPage() {
                             ) : (
                               fullName(order.collaborator || undefined)
                             )}
+                            <div className="mt-1 text-xs text-muted-foreground">{order.collaborator?.phone || '-'}</div>
                           </TableCell>
-                          <TableCell>{WORK_TYPES.find((item) => item.value === order.workType)?.label}</TableCell>
+                          <TableCell>
+                            <div className="font-semibold">{WORK_TYPES.find((item) => item.value === order.workType)?.label}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{order.title || 'بدون عنوان سفارش'}</div>
+                          </TableCell>
                           <TableCell className="min-w-[180px]">
                             <SearchableSelect
                               value={order.stage}
@@ -773,38 +786,70 @@ export function OrdersPage() {
                             </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                        <TableRow key={`${order.id}-summary`} className={idx % 2 ? 'bg-muted/5' : 'bg-muted/20'}>
+                        <TableRow key={`${order.id}-summary`} className={idx % 2 ? 'bg-muted/5 border-t-0' : 'bg-muted/20 border-t-0'}>
                           <TableCell colSpan={5} className="py-3">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div className="space-y-2">
-                                <p className="text-sm font-semibold">خلاصه اقلام سفارش</p>
-                                {lineItems.length ? (
-                                  <div className="space-y-1.5">
-                                    {lineItems.map((item, itemIndex) => (
-                                      <p key={item.id ?? `${order.id}-${itemIndex}`} className="text-xs sm:text-sm">
-                                        <span className="font-semibold">{itemIndex + 1}. {item.meshType?.title || '-'}</span>
-                                        <span className="text-muted-foreground">
-                                          {' '}| ابعاد: {Number(item.width ?? 0)} × {Number(item.height ?? 0)} | تعداد: {Number(item.quantity ?? 0)}
-                                          {item.description ? ` | توضیح: ${item.description}` : ''}
-                                        </span>
-                                      </p>
-                                    ))}
+                            <div className="space-y-3 rounded-md border bg-background p-3">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="space-y-2">
+                                  <p className="text-sm font-bold">خلاصه سفارش</p>
+                                  <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3 sm:text-sm">
+                                    <div className="rounded-md border bg-muted/40 px-2 py-1">
+                                      <span className="text-muted-foreground">تعداد ردیف:</span> <span className="font-semibold">{totalRows}</span>
+                                    </div>
+                                    <div className="rounded-md border bg-muted/40 px-2 py-1">
+                                      <span className="text-muted-foreground">جمع تعداد:</span> <span className="font-semibold">{totalQuantity}</span>
+                                    </div>
+                                    <div className="rounded-md border bg-muted/40 px-2 py-1">
+                                      <span className="text-muted-foreground">جمع متراژ:</span> <span className="font-semibold">{totalArea.toFixed(2)}</span>
+                                    </div>
                                   </div>
+                                  <div className="text-xs sm:text-sm">
+                                    <span className="text-muted-foreground">جمع کل سفارش:</span> <span className="font-bold">{money(Number(order.totalPrice ?? 0))}</span>
+                                  </div>
+                                </div>
+                                {lineItems.length ? (
+                                  <div className="text-xs text-muted-foreground sm:text-sm">اقلام: {lineItems.map((item) => item.meshType?.title || '-').join('، ')}</div>
                                 ) : (
                                   <p className="text-xs text-muted-foreground">برای این سفارش ردیفی ثبت نشده است.</p>
                                 )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void downloadProtected(`/orders/${order.id}/line-items/labels.zip`, `labels-${order.orderNumber}.zip`);
+                                  }}
+                                >
+                                  <Download className="h-4 w-4" />
+                                  دانلود همه لیبل‌های سفارش
+                                </Button>
                               </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void downloadProtected(`/orders/${order.id}/line-items/labels.zip`, `labels-${order.orderNumber}.zip`);
-                                }}
-                              >
-                                <Download className="h-4 w-4" />
-                                دانلود همه لیبل‌های سفارش
-                              </Button>
+                              {lineItems.length ? (
+                                <div className="overflow-x-auto">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead className="w-[50px]">#</TableHead>
+                                        <TableHead>نوع توری</TableHead>
+                                        <TableHead>ابعاد</TableHead>
+                                        <TableHead>تعداد</TableHead>
+                                        <TableHead>توضیح</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {lineItems.map((item, itemIndex) => (
+                                        <TableRow key={item.id ?? `${order.id}-${itemIndex}`}>
+                                          <TableCell className="text-xs text-muted-foreground sm:text-sm">{itemIndex + 1}</TableCell>
+                                          <TableCell className="font-medium">{item.meshType?.title || '-'}</TableCell>
+                                          <TableCell>{Number(item.width ?? 0)} × {Number(item.height ?? 0)}</TableCell>
+                                          <TableCell>{Number(item.quantity ?? 0)}</TableCell>
+                                          <TableCell className="max-w-[320px] truncate text-xs text-muted-foreground sm:text-sm">{item.description || '-'}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              ) : null}
                             </div>
                           </TableCell>
                         </TableRow>
