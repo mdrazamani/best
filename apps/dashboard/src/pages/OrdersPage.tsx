@@ -73,6 +73,7 @@ import { EmptyState } from "../components/shared/empty-state";
 import { Pagination } from "../components/shared/pagination";
 import { PersianDatePicker } from "../components/ui/persian-date-picker";
 import { CreateOrderDialog } from "../components/modals/CreateOrderDialog";
+import { toast } from "react-toastify";
 
 const PAGE_SIZE = 10;
 const INVOICE_STATUS_OPTIONS = [
@@ -149,6 +150,7 @@ export function OrdersPage() {
   const [detailStageSaving, setDetailStageSaving] = useState(false);
   const [detailInvoiceOpen, setDetailInvoiceOpen] = useState(false);
   const [detailInvoiceSubmitting, setDetailInvoiceSubmitting] = useState(false);
+  const [labelsDownloadingOrderId, setLabelsDownloadingOrderId] = useState<string | null>(null);
   const [detailInvoiceForm, setDetailInvoiceForm] = useState({
     title: "",
     amount: "",
@@ -312,6 +314,38 @@ export function OrdersPage() {
 
   const openDetail = async (orderId: string) => {
     await openOrderDetail(orderId);
+  };
+
+  const downloadAllLabelsSequentially = async (
+    orderId: string,
+    orderNumber: string,
+    lineItems: Array<{ id?: string | null }>,
+  ) => {
+    const labelItemIds = lineItems.map((item) => item?.id).filter(Boolean) as string[];
+    if (!labelItemIds.length) {
+      toast.info("برای این سفارش لیبلی ثبت نشده است.");
+      return;
+    }
+
+    if (labelsDownloadingOrderId === orderId) return;
+    setLabelsDownloadingOrderId(orderId);
+    try {
+      for (let index = 0; index < labelItemIds.length; index += 1) {
+        const lineItemId = labelItemIds[index];
+        await downloadProtected(
+          `/orders/${orderId}/line-items/${lineItemId}/label`,
+          `label-${orderNumber}-${index + 1}.pdf`,
+          { silent: true },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      toast.success("دانلود لیبل‌های سفارش انجام شد.");
+    } catch (error) {
+      toast.error("دانلود همه لیبل‌ها کامل نشد.");
+      throw error;
+    } finally {
+      setLabelsDownloadingOrderId(null);
+    }
   };
 
   const saveDetailStage = async (nextStage: string) => {
@@ -591,15 +625,19 @@ export function OrdersPage() {
               <Button
                 size="sm"
                 variant="outline"
+                disabled={labelsDownloadingOrderId === orderDetail.id}
                 onClick={() =>
-                  void downloadProtected(
-                    `/orders/${orderDetail.id}/line-items/labels.zip`,
-                    `labels-${orderDetail.orderNumber}.zip`,
+                  void downloadAllLabelsSequentially(
+                    orderDetail.id,
+                    orderDetail.orderNumber,
+                    detailLineItems,
                   )
                 }
               >
                 <Download className="h-4 w-4" />
-                دانلود همه لیبل‌ها
+                {labelsDownloadingOrderId === orderDetail.id
+                  ? "در حال دانلود لیبل‌ها..."
+                  : "دانلود همه لیبل‌ها"}
               </Button>
             ) : null}
           </CardHeader>
@@ -1128,20 +1166,23 @@ export function OrdersPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  disabled={!lineItems.length}
+                                  disabled={!lineItems.length || labelsDownloadingOrderId === order.id}
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     if (!lineItems.length) return;
-                                    void downloadProtected(
-                                      `/orders/${order.id}/line-items/labels.zip`,
-                                      `labels-${order.orderNumber}.zip`,
+                                    void downloadAllLabelsSequentially(
+                                      order.id,
+                                      order.orderNumber,
+                                      lineItems,
                                     );
                                   }}
                                 >
                                   <Download className="h-4 w-4" />
-                                  {lineItems.length
-                                    ? "دانلود همه لیبل‌های سفارش"
-                                    : "این سفارش لیبل ندارد"}
+                                  {labelsDownloadingOrderId === order.id
+                                    ? "در حال دانلود لیبل‌ها..."
+                                    : lineItems.length
+                                      ? "دانلود همه لیبل‌های سفارش"
+                                      : "این سفارش لیبل ندارد"}
                                 </Button>
                               </div>
                               {lineItems.length ? (

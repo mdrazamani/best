@@ -661,9 +661,12 @@ body{
     }
   }
 
-  private createZipBuffer(files: Array<{ fileName: string; buffer: Buffer }>) {
-    return import('archiver').then(({ default: archiver }) =>
-      new Promise<Buffer>((resolve, reject) => {
+  private async createZipBuffer(files: Array<{ fileName: string; buffer: Buffer }>) {
+    const dynamicImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<any>;
+    const archiverModule = await dynamicImport('archiver');
+    const archiver = archiverModule.default ?? archiverModule;
+
+    return new Promise<Buffer>((resolve, reject) => {
       const output = new PassThrough();
       const chunks: Buffer[] = [];
       output.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
@@ -679,7 +682,6 @@ body{
       }
 
       void archive.finalize();
-      })
-    );
+    });
   }
 }

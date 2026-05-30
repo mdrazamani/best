@@ -247,7 +247,7 @@ export function useBestApp() {
     }
   };
 
-  const downloadProtected = async (url: string, fileName?: string) => {
+  const downloadProtected = async (url: string, fileName?: string, options?: { silent?: boolean }) => {
     const accessToken = tokenRef.current;
     if (!accessToken) return;
 
@@ -283,11 +283,15 @@ export function useBestApp() {
       a.click();
       a.remove();
       URL.revokeObjectURL(href);
-      toast.success('دانلود فایل انجام شد.');
+      if (!options?.silent) {
+        toast.success('دانلود فایل انجام شد.');
+      }
     } catch (error) {
       const message = normalizeErrorMessage(error, 'خطا در دریافت فایل');
       setError(message);
-      toast.error(message);
+      if (!options?.silent) {
+        toast.error(message);
+      }
       throw error;
     }
   };
