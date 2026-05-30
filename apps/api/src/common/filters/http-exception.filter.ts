@@ -5,7 +5,14 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<any>();
-    const request = ctx.getRequest<{ path?: string; headers?: Record<string, string> }>();
+    const request = ctx.getRequest<{
+      id?: string;
+      path?: string;
+      url?: string;
+      originalUrl?: string;
+      raw?: { url?: string };
+      headers?: Record<string, string>;
+    }>();
 
     const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const payload = exception instanceof HttpException ? exception.getResponse() : { message: 'خطاي داخلي سرور' };
@@ -21,8 +28,8 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
         details: typeof payload === 'string' ? undefined : payload
       },
       meta: {
-        requestId: request.headers?.['x-request-id'] ?? 'n/a',
-        path: request.path ?? '',
+        requestId: request.id ?? request.headers?.['x-request-id'] ?? 'n/a',
+        path: request.path ?? request.url ?? request.originalUrl ?? request.raw?.url ?? '',
         timestamp: new Date().toISOString(),
         locale: 'fa'
       }

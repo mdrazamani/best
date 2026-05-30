@@ -24,10 +24,18 @@ export class CollaboratorsService extends BaseService {
   async list(q?: string) {
     const collaborators = await this.collaboratorsRepository.list(q?.trim());
     const ids = collaborators.map((item) => item.id);
-    const [invoiceSums, directPaymentSums] = await Promise.all([
-      this.collaboratorsRepository.aggregateInvoiceSummaryByCollaboratorIds(ids),
-      this.collaboratorsRepository.aggregateDirectPaymentByCollaboratorIds(ids)
-    ]);
+    const invoiceSums = await this.collaboratorsRepository.aggregateInvoiceSummaryByCollaboratorIds(ids);
+    let directPaymentSums: Array<{ collaboratorId: string; _sum: { amount: unknown } }> = [];
+    try {
+      directPaymentSums = await this.collaboratorsRepository.aggregateDirectPaymentByCollaboratorIds(ids) as Array<{
+        collaboratorId: string;
+        _sum: { amount: unknown };
+      }>;
+    } catch (error) {
+      if (!this.isMissingCollaboratorPaymentSchemaError(error)) {
+        throw error;
+      }
+    }
 
     const invoiceSumById = new Map<string, { invoiced: number; invoicePaid: number }>();
     for (const row of invoiceSums) {
@@ -60,6 +68,14 @@ export class CollaboratorsService extends BaseService {
         }
       };
     });
+  }
+
+  private isMissingCollaboratorPaymentSchemaError(error: unknown) {
+    if (!error || typeof error !== 'object') return false;
+    const maybeError = error as { code?: string; message?: string };
+    if (maybeError.code !== 'P2021' && maybeError.code !== 'P2022') return false;
+    const message = String(maybeError.message ?? '');
+    return message.includes('CollaboratorPayment') || message.includes('collaboratorpayment');
   }
 
   async detail(id: string) {

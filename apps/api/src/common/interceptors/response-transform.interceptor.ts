@@ -5,9 +5,17 @@ import { map, Observable } from 'rxjs';
 @Injectable()
 export class ResponseTransformInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context.switchToHttp().getRequest<{ path?: string; headers?: Record<string, string>; requestId?: string }>();
-    const requestId = request.requestId ?? request.headers?.['x-request-id'] ?? randomUUID();
-    const path = request.path ?? '';
+    const request = context.switchToHttp().getRequest<{
+      id?: string;
+      path?: string;
+      url?: string;
+      originalUrl?: string;
+      raw?: { url?: string };
+      headers?: Record<string, string>;
+      requestId?: string;
+    }>();
+    const requestId = request.requestId ?? request.id ?? request.headers?.['x-request-id'] ?? randomUUID();
+    const path = request.path ?? request.url ?? request.originalUrl ?? request.raw?.url ?? '';
 
     return next.handle().pipe(
       map((data) => ({
