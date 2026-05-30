@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { EmptyState } from '../components/shared/empty-state';
+import { ConfirmActionDialog } from '../components/shared/confirm-action-dialog';
 import { Pagination } from '../components/shared/pagination';
 import { PersianDatePicker } from '../components/ui/persian-date-picker';
 import { CreateInvoiceDialog } from '../components/modals/CreateInvoiceDialog';
@@ -67,6 +68,7 @@ export function InvoicesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'UNPAID' | 'PARTIAL' | 'PAID'>('all');
   const [payerFilter, setPayerFilter] = useState<'all' | 'COLLABORATOR'>('all');
+  const [deleteInvoiceId, setDeleteInvoiceId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<InvoiceFormState>({ ...emptyInvoiceForm });
   const [paymentForm, setPaymentForm] = useState({ ...emptyPaymentForm });
 
@@ -459,7 +461,7 @@ export function InvoicesPage() {
                               <Download className="h-4 w-4" />
                               دانلود PDF
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeInvoice(invoice.id)}>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteInvoiceId(invoice.id)}>
                               حذف
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -526,6 +528,19 @@ export function InvoicesPage() {
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmActionDialog
+        open={Boolean(deleteInvoiceId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteInvoiceId(null);
+        }}
+        title="حذف فاکتور"
+        description="آیا از حذف این فاکتور مطمئن هستید؟"
+        onConfirm={async () => {
+          if (!deleteInvoiceId) return;
+          await removeInvoice(deleteInvoiceId);
+          setDeleteInvoiceId(null);
+        }}
+      />
     </section>
   );
 }

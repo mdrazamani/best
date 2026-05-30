@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '../components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { EmptyState } from '../components/shared/empty-state';
+import { ConfirmActionDialog } from '../components/shared/confirm-action-dialog';
 import { Pagination } from '../components/shared/pagination';
 import { SearchableSelect } from '../components/ui/searchable-select';
 import { Badge } from '../components/ui/badge';
@@ -41,6 +42,7 @@ export function CustomersPage() {
   const [search, setSearch] = useState('');
   const [referralFilter, setReferralFilter] = useState<'all' | 'with_referrer' | 'without_referrer'>('all');
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const collaboratorOptions = useMemo(
@@ -422,7 +424,7 @@ export function CustomersPage() {
                               <Eye className="h-4 w-4" />
                               مشاهده
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeCustomer(item.id)}>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteCustomerId(item.id)}>
                               <Trash2 className="h-4 w-4" />
                               حذف 
                             </DropdownMenuItem>
@@ -445,6 +447,19 @@ export function CustomersPage() {
         referrerOptions={collaboratorOptions.filter((item) => item.value)}
         onSubmit={async (payload) => {
           await createCustomer(payload as Record<string, unknown>);
+        }}
+      />
+      <ConfirmActionDialog
+        open={Boolean(deleteCustomerId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteCustomerId(null);
+        }}
+        title="حذف مشتری"
+        description="آیا از حذف این مشتری مطمئن هستید؟"
+        onConfirm={async () => {
+          if (!deleteCustomerId) return;
+          await removeCustomer(deleteCustomerId);
+          setDeleteCustomerId(null);
         }}
       />
     </section>

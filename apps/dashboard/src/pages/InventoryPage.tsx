@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '../components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Textarea } from '../components/ui/textarea';
+import { ConfirmActionDialog } from '../components/shared/confirm-action-dialog';
 import { EmptyState } from '../components/shared/empty-state';
 import { Pagination } from '../components/shared/pagination';
 
@@ -131,6 +132,7 @@ export function InventoryPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [form, setForm] = useState({ name: '', quantity: '' });
@@ -277,7 +279,7 @@ export function InventoryPage() {
                                   className="text-destructive focus:text-destructive"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    void removeInventoryItem(item.id);
+                                    setDeleteItemId(item.id);
                                   }}
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -304,6 +306,19 @@ export function InventoryPage() {
         onOpenChange={(value) => {
           setAdjustOpen(value);
           if (!value) setSelectedItem(null);
+        }}
+      />
+      <ConfirmActionDialog
+        open={Boolean(deleteItemId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteItemId(null);
+        }}
+        title="حذف آیتم انبار"
+        description="آیا از حذف این آیتم انبار مطمئن هستید؟"
+        onConfirm={async () => {
+          if (!deleteItemId) return;
+          await removeInventoryItem(deleteItemId);
+          setDeleteItemId(null);
         }}
       />
     </section>

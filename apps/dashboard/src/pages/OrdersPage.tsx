@@ -70,6 +70,7 @@ import {
 } from "../components/ui/table";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/shared/empty-state";
+import { ConfirmActionDialog } from "../components/shared/confirm-action-dialog";
 import { Pagination } from "../components/shared/pagination";
 import { PersianDatePicker } from "../components/ui/persian-date-picker";
 import { CreateOrderDialog } from "../components/modals/CreateOrderDialog";
@@ -153,6 +154,7 @@ export function OrdersPage() {
   const [labelsDownloadingOrderId, setLabelsDownloadingOrderId] = useState<
     string | null
   >(null);
+  const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
   const [detailInvoiceForm, setDetailInvoiceForm] = useState({
     title: "",
     amount: "",
@@ -1136,7 +1138,7 @@ export function OrdersPage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
-                                  onClick={() => void removeOrder(order.id)}
+                                  onClick={() => setDeleteOrderId(order.id)}
                                 >
                                   حذف{" "}
                                 </DropdownMenuItem>
@@ -1265,6 +1267,19 @@ export function OrdersPage() {
         }}
         onSubmit={async (payload) => {
           await createOrder(payload as Record<string, unknown>);
+        }}
+      />
+      <ConfirmActionDialog
+        open={Boolean(deleteOrderId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteOrderId(null);
+        }}
+        title="حذف سفارش"
+        description="آیا از حذف این سفارش مطمئن هستید؟"
+        onConfirm={async () => {
+          if (!deleteOrderId) return;
+          await removeOrder(deleteOrderId);
+          setDeleteOrderId(null);
         }}
       />
     </section>

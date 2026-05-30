@@ -146,6 +146,13 @@ export class CollaboratorsRepository extends BaseRepository {
     });
   }
 
+  existsById(id: string) {
+    return this.prisma.collaborator.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true }
+    });
+  }
+
   aggregateCollaboratorDirectPayments(collaboratorId: string, options?: { beforeDate?: Date }) {
     return this.prisma.collaboratorPayment.aggregate({
       _sum: {

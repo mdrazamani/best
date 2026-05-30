@@ -10,6 +10,7 @@ import { SearchableSelect } from '../components/ui/searchable-select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { EmptyState } from '../components/shared/empty-state';
+import { ConfirmActionDialog } from '../components/shared/confirm-action-dialog';
 import { Pagination } from '../components/shared/pagination';
 import { Badge } from '../components/ui/badge';
 
@@ -21,6 +22,7 @@ export function UsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | string>('all');
@@ -185,7 +187,7 @@ export function UsersPage() {
                         مشاهده
                       </Button>
                       {isDefaultManagerUser(item) ? null : (
-                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => void removeUser(item.id)}>
+                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => setDeleteUserId(item.id)}>
                           <Trash2 className="h-4 w-4" />
                           حذف
                         </Button>
@@ -235,7 +237,7 @@ export function UsersPage() {
                                 مشاهده
                               </DropdownMenuItem>
                               {isDefaultManagerUser(item) ? null : (
-                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeUser(item.id)}>
+                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteUserId(item.id)}>
                                   <Trash2 className="h-4 w-4" />
                                   حذف
                                 </DropdownMenuItem>
@@ -303,6 +305,19 @@ export function UsersPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+      <ConfirmActionDialog
+        open={Boolean(deleteUserId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteUserId(null);
+        }}
+        title="حذف کاربر"
+        description="آیا از حذف این کاربر مطمئن هستید؟"
+        onConfirm={async () => {
+          if (!deleteUserId) return;
+          await removeUser(deleteUserId);
+          setDeleteUserId(null);
+        }}
+      />
     </section>
   );
 }

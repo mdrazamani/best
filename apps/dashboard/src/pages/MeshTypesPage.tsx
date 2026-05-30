@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Textarea } from '../components/ui/textarea';
 import { EmptyState } from '../components/shared/empty-state';
+import { ConfirmActionDialog } from '../components/shared/confirm-action-dialog';
 import { Pagination } from '../components/shared/pagination';
 import { Badge } from '../components/ui/badge';
 import { SearchableSelect } from '../components/ui/searchable-select';
@@ -35,6 +36,7 @@ export function MeshTypesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deleteMeshTypeId, setDeleteMeshTypeId] = useState<string | null>(null);
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [form, setForm] = useState({ title: '', description: '', unitPrice: '', isDefault: false });
 
@@ -245,7 +247,7 @@ export function MeshTypesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeMeshType(item.id)}>
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteMeshTypeId(item.id)}>
                                 <Trash2 className="h-4 w-4" />
                                 حذف
                               </DropdownMenuItem>
@@ -262,6 +264,19 @@ export function MeshTypesPage() {
           )}
         </CardContent>
       </Card>
+      <ConfirmActionDialog
+        open={Boolean(deleteMeshTypeId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteMeshTypeId(null);
+        }}
+        title="حذف نوع توری"
+        description="آیا از حذف این نوع توری مطمئن هستید؟"
+        onConfirm={async () => {
+          if (!deleteMeshTypeId) return;
+          await removeMeshType(deleteMeshTypeId);
+          setDeleteMeshTypeId(null);
+        }}
+      />
     </section>
   );
 }

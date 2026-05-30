@@ -325,7 +325,7 @@ export class CollaboratorsService extends BaseService {
   }
 
   async remove(actorId: string, id: string) {
-    const existing = await this.collaboratorsRepository.findById(id);
+    const existing = await this.collaboratorsRepository.existsById(id);
     if (!existing) {
       throw new NotFoundException('همکار پيدا نشد.');
     }

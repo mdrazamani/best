@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '../components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { EmptyState } from '../components/shared/empty-state';
+import { ConfirmActionDialog } from '../components/shared/confirm-action-dialog';
 import { Pagination } from '../components/shared/pagination';
 import { Badge } from '../components/ui/badge';
 import { SearchableSelect } from '../components/ui/searchable-select';
@@ -79,6 +80,7 @@ export function CollaboratorsPage() {
   const [paymentForm, setPaymentForm] = useState({ amount: '', paidAt: '', note: '' });
   const [collaboratorPaymentOpen, setCollaboratorPaymentOpen] = useState(false);
   const [collaboratorPaymentForm, setCollaboratorPaymentForm] = useState({ amount: '', paidAt: '', note: '' });
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'collaborator' | 'order' | 'invoice' | 'customer'; id: string; label: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
 
@@ -510,10 +512,7 @@ export function CollaboratorsPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
-                                onClick={async () => {
-                                  await removeOrder(order.id);
-                                  if (detailId) await openCollaboratorDetail(detailId);
-                                }}
+                                onClick={() => setDeleteTarget({ type: 'order', id: order.id, label: 'حذف سفارش' })}
                               >
                                 <Trash2 className="h-4 w-4" />
                                 حذف
@@ -647,10 +646,7 @@ export function CollaboratorsPage() {
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
-                                onClick={async () => {
-                                  await removeInvoice(invoice.id);
-                                  if (detailId) await openCollaboratorDetail(detailId);
-                                }}
+                                onClick={() => setDeleteTarget({ type: 'invoice', id: invoice.id, label: 'حذف فاکتور' })}
                               >
                                 <Trash2 className="h-4 w-4" />
                                 حذف
@@ -726,10 +722,7 @@ export function CollaboratorsPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
-                                onClick={async () => {
-                                  await removeCustomer(customer.id);
-                                  if (detailId) await openCollaboratorDetail(detailId);
-                                }}
+                                onClick={() => setDeleteTarget({ type: 'customer', id: customer.id, label: 'حذف مشتری' })}
                               >
                                 <Trash2 className="h-4 w-4" />
                                 حذف
@@ -967,7 +960,7 @@ export function CollaboratorsPage() {
                                 <Eye className="h-4 w-4" />
                                 مشاهده
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeCollaborator(item.id)}>
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget({ type: 'collaborator', id: item.id, label: 'حذف همکار' })}>
                                 <Trash2 className="h-4 w-4" />
                                 حذف
                               </DropdownMenuItem>
@@ -990,6 +983,30 @@ export function CollaboratorsPage() {
         onOpenChange={setCreateCollaboratorOpen}
         onSubmit={async (payload) => {
           await createCollaborator(payload as Record<string, unknown>);
+        }}
+      />
+      <ConfirmActionDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={deleteTarget?.label || 'تایید حذف'}
+        description="آیا از انجام این حذف مطمئن هستید؟"
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          if (deleteTarget.type === 'collaborator') {
+            await removeCollaborator(deleteTarget.id);
+          } else if (deleteTarget.type === 'order') {
+            await removeOrder(deleteTarget.id);
+            if (detailId) await openCollaboratorDetail(detailId);
+          } else if (deleteTarget.type === 'invoice') {
+            await removeInvoice(deleteTarget.id);
+            if (detailId) await openCollaboratorDetail(detailId);
+          } else if (deleteTarget.type === 'customer') {
+            await removeCustomer(deleteTarget.id);
+            if (detailId) await openCollaboratorDetail(detailId);
+          }
+          setDeleteTarget(null);
         }}
       />
     </section>
