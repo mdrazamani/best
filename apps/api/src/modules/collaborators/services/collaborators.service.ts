@@ -1,22 +1,32 @@
-﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { BaseService } from '../../../common/services/base.service';
-import { addMoney, clampMoneyNonNegative, maxMoney, subtractMoney, toMoneyNumber } from '../../../common/utils/accounting.util';
-import * as fs from 'fs';
-import * as path from 'path';
-import puppeteer from 'puppeteer';
-import { buildAttachmentContentDisposition } from '../../../common/utils/download.util';
-import { buildPuppeteerLaunchOptions } from '../../../common/utils/puppeteer.util';
-import { CollaboratorsRepository } from '../collaborators.repository';
-import { OperationLogsService } from '../../operation-logs/services/operation-logs.service';
-import { CreateCollaboratorDto } from '../dto/create-collaborator.dto';
-import { UpdateCollaboratorDto } from '../dto/update-collaborator.dto';
-import { AddCollaboratorPaymentDto } from '../dto/add-collaborator-payment.dto';
+﻿import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { BaseService } from "../../../common/services/base.service";
+import {
+  addMoney,
+  clampMoneyNonNegative,
+  maxMoney,
+  subtractMoney,
+  toMoneyNumber,
+} from "../../../common/utils/accounting.util";
+import * as fs from "fs";
+import * as path from "path";
+import puppeteer from "puppeteer";
+import { buildAttachmentContentDisposition } from "../../../common/utils/download.util";
+import { buildPuppeteerLaunchOptions } from "../../../common/utils/puppeteer.util";
+import { CollaboratorsRepository } from "../collaborators.repository";
+import { OperationLogsService } from "../../operation-logs/services/operation-logs.service";
+import { CreateCollaboratorDto } from "../dto/create-collaborator.dto";
+import { UpdateCollaboratorDto } from "../dto/update-collaborator.dto";
+import { AddCollaboratorPaymentDto } from "../dto/add-collaborator-payment.dto";
 
 @Injectable()
 export class CollaboratorsService extends BaseService {
   constructor(
     private readonly collaboratorsRepository: CollaboratorsRepository,
-    private readonly operationLogsService: OperationLogsService
+    private readonly operationLogsService: OperationLogsService,
   ) {
     super();
   }
@@ -24,25 +34,37 @@ export class CollaboratorsService extends BaseService {
   async list(q?: string) {
     const collaborators = await this.collaboratorsRepository.list(q?.trim());
     const ids = collaborators.map((item) => item.id);
-    const invoiceSums = await this.collaboratorsRepository.aggregateInvoiceSummaryByCollaboratorIds(ids);
-    let directPaymentSums: Array<{ collaboratorId: string; _sum: { amount: unknown } }> = [];
+    const invoiceSums =
+      await this.collaboratorsRepository.aggregateInvoiceSummaryByCollaboratorIds(
+        ids,
+      );
+    let directPaymentSums: Array<{
+      collaboratorId: string;
+      _sum: { amount: unknown };
+    }> = [];
     try {
-      directPaymentSums = await this.collaboratorsRepository.aggregateDirectPaymentByCollaboratorIds(ids) as Array<{
-        collaboratorId: string;
-        _sum: { amount: unknown };
-      }>;
+      directPaymentSums =
+        (await this.collaboratorsRepository.aggregateDirectPaymentByCollaboratorIds(
+          ids,
+        )) as Array<{
+          collaboratorId: string;
+          _sum: { amount: unknown };
+        }>;
     } catch (error) {
       if (!this.isMissingCollaboratorPaymentSchemaError(error)) {
         throw error;
       }
     }
 
-    const invoiceSumById = new Map<string, { invoiced: number; invoicePaid: number }>();
+    const invoiceSumById = new Map<
+      string,
+      { invoiced: number; invoicePaid: number }
+    >();
     for (const row of invoiceSums) {
       if (!row.payerId) continue;
       invoiceSumById.set(row.payerId, {
         invoiced: Number(row._sum.amount ?? 0),
-        invoicePaid: Number(row._sum.paidAmount ?? 0)
+        invoicePaid: Number(row._sum.paidAmount ?? 0),
       });
     }
 
@@ -52,7 +74,10 @@ export class CollaboratorsService extends BaseService {
     }
 
     return collaborators.map((item) => {
-      const invoiceAgg = invoiceSumById.get(item.id) ?? { invoiced: 0, invoicePaid: 0 };
+      const invoiceAgg = invoiceSumById.get(item.id) ?? {
+        invoiced: 0,
+        invoicePaid: 0,
+      };
       const directPaid = directPaidById.get(item.id) ?? 0;
       const totalPaid = invoiceAgg.invoicePaid + directPaid;
       const remaining = Math.max(invoiceAgg.invoiced - totalPaid, 0);
@@ -64,8 +89,8 @@ export class CollaboratorsService extends BaseService {
           totalInvoicePaid: invoiceAgg.invoicePaid,
           totalDirectPaid: directPaid,
           totalPaid,
-          remaining
-        }
+          remaining,
+        },
       };
     });
   }
@@ -73,14 +98,17 @@ export class CollaboratorsService extends BaseService {
   private isMissingCollaboratorPaymentSchemaError(error: unknown) {
     if (!this.isSchemaMissingError(error)) return false;
     const maybeError = error as { message?: string };
-    const message = String(maybeError.message ?? '');
-    return message.includes('CollaboratorPayment') || message.includes('collaboratorpayment');
+    const message = String(maybeError.message ?? "");
+    return (
+      message.includes("CollaboratorPayment") ||
+      message.includes("collaboratorpayment")
+    );
   }
 
   private isSchemaMissingError(error: unknown) {
-    if (!error || typeof error !== 'object') return false;
+    if (!error || typeof error !== "object") return false;
     const maybeError = error as { code?: string };
-    return maybeError.code === 'P2021' || maybeError.code === 'P2022';
+    return maybeError.code === "P2021" || maybeError.code === "P2022";
   }
 
   async detail(id: string) {
@@ -98,13 +126,16 @@ export class CollaboratorsService extends BaseService {
     }
 
     if (!collaborator) {
-      throw new NotFoundException('همکار پيدا نشد.');
+      throw new NotFoundException("همکار پيدا نشد.");
     }
 
-    const activeOrders = collaborator.orders.filter((order: any) => order.stage !== 'CANCELLED');
+    const activeOrders = collaborator.orders.filter(
+      (order: any) => order.stage !== "CANCELLED",
+    );
     let directPayments: any[] = [];
     try {
-      directPayments = await this.collaboratorsRepository.listDirectPayments(id);
+      directPayments =
+        await this.collaboratorsRepository.listDirectPayments(id);
     } catch (error) {
       if (!this.isMissingCollaboratorPaymentSchemaError(error)) {
         throw error;
@@ -113,7 +144,8 @@ export class CollaboratorsService extends BaseService {
       directPayments = [];
     }
 
-    const payerInvoices = await this.collaboratorsRepository.listInvoicesByCollaboratorPayer(id);
+    const payerInvoices =
+      await this.collaboratorsRepository.listInvoicesByCollaboratorPayer(id);
     const invoiceMap = new Map<string, any>();
     for (const order of activeOrders) {
       for (const link of order.invoiceLinks ?? []) {
@@ -124,27 +156,38 @@ export class CollaboratorsService extends BaseService {
           invoiceMap.set(invoice.id, {
             ...invoice,
             order,
-            orders: [order]
+            orders: [order],
           });
           continue;
         }
-        current.orders = Array.isArray(current.orders) ? [...current.orders, order] : [order];
+        current.orders = Array.isArray(current.orders)
+          ? [...current.orders, order]
+          : [order];
       }
     }
 
     for (const invoice of payerInvoices) {
-      const linkedOrders = Array.isArray(invoice.orders) ? invoice.orders.map((link: any) => link?.order).filter(Boolean) : [];
+      const linkedOrders = Array.isArray(invoice.orders)
+        ? invoice.orders.map((link: any) => link?.order).filter(Boolean)
+        : [];
       const current = invoiceMap.get(invoice.id);
       if (!current) {
         invoiceMap.set(invoice.id, {
           ...invoice,
           order: linkedOrders[0] ?? null,
-          orders: linkedOrders
+          orders: linkedOrders,
         });
         continue;
       }
-      const mergedOrders = [...(Array.isArray(current.orders) ? current.orders : []), ...linkedOrders];
-      const uniqueOrders = Array.from(new Map(mergedOrders.filter(Boolean).map((item: any) => [item.id, item])).values());
+      const mergedOrders = [
+        ...(Array.isArray(current.orders) ? current.orders : []),
+        ...linkedOrders,
+      ];
+      const uniqueOrders = Array.from(
+        new Map(
+          mergedOrders.filter(Boolean).map((item: any) => [item.id, item]),
+        ).values(),
+      );
       current.orders = uniqueOrders;
       if (!current.order && uniqueOrders.length) {
         current.order = uniqueOrders[0];
@@ -154,17 +197,39 @@ export class CollaboratorsService extends BaseService {
       }
     }
 
-    const collaboratorInvoices = Array.from(invoiceMap.values()).filter((invoice) => {
-      if (invoice.payerType === 'COLLABORATOR' && invoice.payerId === id) return true;
-      const invoiceOrders = Array.isArray(invoice.orders) ? invoice.orders : invoice.order ? [invoice.order] : [];
-      return invoiceOrders.some((order: any) => order?.collaborator?.id === id);
-    });
-    const totalInvoiced = collaboratorInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
-    const totalInvoicePaid = collaboratorInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount), 0);
-    const totalDirectPaid = directPayments.reduce((sum: number, item: any) => sum + Number(item.amount ?? 0), 0);
+    const collaboratorInvoices = Array.from(invoiceMap.values()).filter(
+      (invoice) => {
+        if (invoice.payerType === "COLLABORATOR" && invoice.payerId === id)
+          return true;
+        const invoiceOrders = Array.isArray(invoice.orders)
+          ? invoice.orders
+          : invoice.order
+            ? [invoice.order]
+            : [];
+        return invoiceOrders.some(
+          (order: any) => order?.collaborator?.id === id,
+        );
+      },
+    );
+    const totalInvoiced = collaboratorInvoices.reduce(
+      (sum, invoice) => sum + Number(invoice.amount),
+      0,
+    );
+    const totalInvoicePaid = collaboratorInvoices.reduce(
+      (sum, invoice) => sum + Number(invoice.paidAmount),
+      0,
+    );
+    const totalDirectPaid = directPayments.reduce(
+      (sum: number, item: any) => sum + Number(item.amount ?? 0),
+      0,
+    );
     const totalPaid = totalInvoicePaid + totalDirectPaid;
-    const completedOrders = activeOrders.filter((order: any) => order.stage === 'DELIVERED').length;
-    const inProgressOrders = activeOrders.filter((order: any) => ['IN_PROGRESS', 'READY_IN_WAREHOUSE'].includes(order.stage)).length;
+    const completedOrders = activeOrders.filter(
+      (order: any) => order.stage === "DELIVERED",
+    ).length;
+    const inProgressOrders = activeOrders.filter((order: any) =>
+      ["IN_PROGRESS", "READY_IN_WAREHOUSE"].includes(order.stage),
+    ).length;
 
     const customers = Array.from(
       new Map(
@@ -176,48 +241,52 @@ export class CollaboratorsService extends BaseService {
               id: order.customer!.id,
               firstName: order.customer!.firstName,
               lastName: order.customer!.lastName,
-              phone: order.customer!.phone
-            }
-          ])
-      ).values()
+              phone: order.customer!.phone,
+            },
+          ]),
+      ).values(),
     );
 
     const invoicePayments = collaboratorInvoices.flatMap((invoice) =>
       Array.isArray(invoice.payments)
         ? invoice.payments.map((payment: any) => ({
             id: `invoice-${payment.id}`,
-            source: 'INVOICE',
+            source: "INVOICE",
             invoiceId: invoice.id,
             invoiceNumber: invoice.invoiceNumber,
             amount: Number(payment.amount ?? 0),
             paidAt: payment.paidAt,
             note: payment.note,
-            createdBy: payment.createdBy
+            createdBy: payment.createdBy,
           }))
-        : []
+        : [],
     );
 
     const collaboratorPayments = directPayments.map((payment: any) => ({
       id: `collaborator-${payment.id}`,
-      source: 'COLLABORATOR',
+      source: "COLLABORATOR",
       collaboratorPaymentId: payment.id,
       amount: Number(payment.amount ?? 0),
       paidAt: payment.paidAt,
       note: payment.note,
-      createdBy: payment.createdBy
+      createdBy: payment.createdBy,
     }));
 
-    const paymentHistory = [...invoicePayments, ...collaboratorPayments].sort((a, b) => {
-      const paidAtDiff = new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime();
-      if (paidAtDiff !== 0) return paidAtDiff;
-      return a.id < b.id ? 1 : -1;
-    });
+    const paymentHistory = [...invoicePayments, ...collaboratorPayments].sort(
+      (a, b) => {
+        const paidAtDiff =
+          new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime();
+        if (paidAtDiff !== 0) return paidAtDiff;
+        return a.id < b.id ? 1 : -1;
+      },
+    );
 
     return {
       ...collaborator,
-      schemaWarning: usedSafeFallback || missingPaymentsSchema
-        ? 'برخی ساختارهای دیتابیس هنوز اعمال نشده‌اند. لطفاً migrationها را کامل اجرا کنید.'
-        : undefined,
+      schemaWarning:
+        usedSafeFallback || missingPaymentsSchema
+          ? "برخی ساختارهای دیتابیس هنوز اعمال نشده‌اند. لطفاً migrationها را کامل اجرا کنید."
+          : undefined,
       summary: {
         totalOrders: activeOrders.length,
         totalOrderAmount: totalInvoiced,
@@ -227,20 +296,22 @@ export class CollaboratorsService extends BaseService {
         totalPaid,
         totalRemaining: Math.max(totalInvoiced - totalPaid, 0),
         completedOrders,
-        inProgressOrders
+        inProgressOrders,
       },
       customers,
       invoices: collaboratorInvoices,
       directPayments,
-      paymentHistory
+      paymentHistory,
     };
   }
 
   async create(actorId: string, dto: CreateCollaboratorDto) {
-    const firstName = dto.firstName?.trim() ?? '';
-    const lastName = dto.lastName?.trim() ?? '';
+    const firstName = dto.firstName?.trim() ?? "";
+    const lastName = dto.lastName?.trim() ?? "";
     if (!firstName && !lastName) {
-      throw new BadRequestException('حداقل نام یا نام خانوادگی همکار الزامی است.');
+      throw new BadRequestException(
+        "حداقل نام یا نام خانوادگی همکار الزامی است.",
+      );
     }
 
     const created = await this.collaboratorsRepository.create({
@@ -249,15 +320,15 @@ export class CollaboratorsService extends BaseService {
       phone: dto.phone?.trim(),
       address: dto.address?.trim(),
       description: dto.description?.trim(),
-      createdById: actorId
+      createdById: actorId,
     });
 
     await this.operationLogsService.log({
       actorId,
-      entityType: 'Collaborator',
+      entityType: "Collaborator",
       entityId: created.id,
-      action: 'CREATE',
-      description: 'ایجاد همکار'
+      action: "CREATE",
+      description: "ایجاد همکار",
     });
 
     return created;
@@ -266,50 +337,63 @@ export class CollaboratorsService extends BaseService {
   async update(actorId: string, id: string, dto: UpdateCollaboratorDto) {
     const existing = await this.collaboratorsRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException('همکار پيدا نشد.');
+      throw new NotFoundException("همکار پيدا نشد.");
     }
 
     const updated = await this.collaboratorsRepository.update(id, {
       firstName: dto.firstName?.trim(),
       lastName: dto.lastName?.trim(),
-      phone: dto.phone === undefined ? undefined : dto.phone?.trim() ?? null,
-      address: dto.address === undefined ? undefined : dto.address?.trim() ?? null,
-      description: dto.description === undefined ? undefined : dto.description?.trim() ?? null
+      phone: dto.phone === undefined ? undefined : (dto.phone?.trim() ?? null),
+      address:
+        dto.address === undefined ? undefined : (dto.address?.trim() ?? null),
+      description:
+        dto.description === undefined
+          ? undefined
+          : (dto.description?.trim() ?? null),
     });
 
     await this.operationLogsService.log({
       actorId,
-      entityType: 'Collaborator',
+      entityType: "Collaborator",
       entityId: updated.id,
-      action: 'UPDATE',
-      description: 'ویرایش همکار'
+      action: "UPDATE",
+      description: "ویرایش همکار",
     });
 
     return updated;
   }
 
-  async addPayment(actorId: string, collaboratorId: string, dto: AddCollaboratorPaymentDto) {
-    const existing = await this.collaboratorsRepository.existsById(collaboratorId);
+  async addPayment(
+    actorId: string,
+    collaboratorId: string,
+    dto: AddCollaboratorPaymentDto,
+  ) {
+    const existing =
+      await this.collaboratorsRepository.existsById(collaboratorId);
     if (!existing) {
-      throw new NotFoundException('همکار پيدا نشد.');
+      throw new NotFoundException("همکار پيدا نشد.");
     }
 
     const paymentAmount = clampMoneyNonNegative(dto.amount ?? 0);
     if (paymentAmount.lessThanOrEqualTo(0)) {
-      throw new BadRequestException('مبلغ پرداخت باید بیشتر از صفر باشد.');
+      throw new BadRequestException("مبلغ پرداخت باید بیشتر از صفر باشد.");
     }
 
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
     if (Number.isNaN(paidAt.getTime())) {
-      throw new BadRequestException('تاریخ پرداخت معتبر نیست.');
+      throw new BadRequestException("تاریخ پرداخت معتبر نیست.");
     }
 
     const balance = await this.getCollaboratorBalance(collaboratorId);
     if (balance.remaining.lessThanOrEqualTo(0)) {
-      throw new BadRequestException('این همکار در حال حاضر بدهی تسویه‌نشده ندارد.');
+      throw new BadRequestException(
+        "این همکار در حال حاضر بدهی تسویه‌نشده ندارد.",
+      );
     }
     if (paymentAmount.greaterThan(balance.remaining)) {
-      throw new BadRequestException(`مبلغ پرداخت از مانده حساب همکار بیشتر است. مانده فعلی: ${toMoneyNumber(balance.remaining)} تومان`);
+      throw new BadRequestException(
+        `مبلغ پرداخت از مانده حساب همکار بیشتر است. مانده فعلی: ${toMoneyNumber(balance.remaining)} تومان`,
+      );
     }
 
     try {
@@ -318,30 +402,35 @@ export class CollaboratorsService extends BaseService {
         amount: toMoneyNumber(paymentAmount),
         paidAt,
         note: dto.note?.trim(),
-        createdById: actorId
+        createdById: actorId,
       });
     } catch (error) {
       if (!this.isMissingCollaboratorPaymentSchemaError(error)) {
         throw error;
       }
-      throw new BadRequestException('ساختار پرداخت همکار در دیتابیس کامل نیست. لطفا migrationها را کامل اجرا کنید.');
+      throw new BadRequestException(
+        "ساختار پرداخت همکار در دیتابیس کامل نیست. لطفا migrationها را کامل اجرا کنید.",
+      );
     }
 
     await this.operationLogsService.log({
       actorId,
-      entityType: 'Collaborator',
+      entityType: "Collaborator",
       entityId: collaboratorId,
-      action: 'UPDATE',
-      description: 'ثبت پرداخت همکار'
+      action: "UPDATE",
+      description: "ثبت پرداخت همکار",
     });
 
     return this.detail(collaboratorId);
   }
 
   async paymentReceiptPdf(collaboratorId: string, paymentId: string) {
-    const payment = await this.collaboratorsRepository.findDirectPaymentById(collaboratorId, paymentId);
+    const payment = await this.collaboratorsRepository.findDirectPaymentById(
+      collaboratorId,
+      paymentId,
+    );
     if (!payment) {
-      throw new NotFoundException('پرداخت همکار پیدا نشد.');
+      throw new NotFoundException("پرداخت همکار پیدا نشد.");
     }
 
     const paymentDate = new Date(payment.paidAt);
@@ -349,13 +438,13 @@ export class CollaboratorsService extends BaseService {
 
     const [beforeBalance, afterBalance] = await Promise.all([
       this.getCollaboratorBalance(collaboratorId, { beforeDate }),
-      this.getCollaboratorBalance(collaboratorId, { beforeDate: paymentDate })
+      this.getCollaboratorBalance(collaboratorId, { beforeDate: paymentDate }),
     ]);
 
     const html = this.renderPaymentReceiptHtml({
       payment,
       beforeRemaining: toMoneyNumber(beforeBalance.remaining),
-      remainingAfterPayment: toMoneyNumber(afterBalance.remaining)
+      remainingAfterPayment: toMoneyNumber(afterBalance.remaining),
     });
     const buffer = await this.renderPdfFromHtml(html);
 
@@ -363,42 +452,55 @@ export class CollaboratorsService extends BaseService {
     return {
       fileName,
       contentDisposition: buildAttachmentContentDisposition(fileName),
-      buffer
+      buffer,
     };
   }
 
   async remove(actorId: string, id: string) {
     const existing = await this.collaboratorsRepository.existsById(id);
     if (!existing) {
-      throw new NotFoundException('همکار پيدا نشد.');
+      throw new NotFoundException("همکار پيدا نشد.");
     }
 
     await this.collaboratorsRepository.softDelete(id);
     await this.operationLogsService.log({
       actorId,
-      entityType: 'Collaborator',
+      entityType: "Collaborator",
       entityId: id,
-      action: 'DELETE',
-      description: 'حذف همکار'
+      action: "DELETE",
+      description: "حذف همکار",
     });
 
     return { success: true };
   }
 
-  async getCollaboratorBalance(collaboratorId: string, options?: { beforeDate?: Date; excludeInvoiceId?: string }) {
+  async getCollaboratorBalance(
+    collaboratorId: string,
+    options?: { beforeDate?: Date; excludeInvoiceId?: string },
+  ) {
     const [invoiceAgg, directPaymentAgg] = await Promise.all([
-      this.collaboratorsRepository.aggregateCollaboratorInvoiceSummary(collaboratorId, {
-        beforeDate: options?.beforeDate,
-        excludeInvoiceId: options?.excludeInvoiceId
-      }),
-      this.collaboratorsRepository.aggregateCollaboratorDirectPayments(collaboratorId, {
-        beforeDate: options?.beforeDate
-      })
+      this.collaboratorsRepository.aggregateCollaboratorInvoiceSummary(
+        collaboratorId,
+        {
+          beforeDate: options?.beforeDate,
+          excludeInvoiceId: options?.excludeInvoiceId,
+        },
+      ),
+      this.collaboratorsRepository.aggregateCollaboratorDirectPayments(
+        collaboratorId,
+        {
+          beforeDate: options?.beforeDate,
+        },
+      ),
     ]);
 
     const totalInvoiced = clampMoneyNonNegative(invoiceAgg._sum.amount ?? 0);
-    const totalInvoicePaid = clampMoneyNonNegative(invoiceAgg._sum.paidAmount ?? 0);
-    const totalDirectPaid = clampMoneyNonNegative(directPaymentAgg._sum.amount ?? 0);
+    const totalInvoicePaid = clampMoneyNonNegative(
+      invoiceAgg._sum.paidAmount ?? 0,
+    );
+    const totalDirectPaid = clampMoneyNonNegative(
+      directPaymentAgg._sum.amount ?? 0,
+    );
     const totalPaid = addMoney(totalInvoicePaid, totalDirectPaid);
     const remaining = maxMoney(subtractMoney(totalInvoiced, totalPaid), 0);
 
@@ -407,14 +509,15 @@ export class CollaboratorsService extends BaseService {
       totalInvoicePaid,
       totalDirectPaid,
       totalPaid,
-      remaining
+      remaining,
     };
   }
 
   private buildPaymentReceiptFileName(payment: any) {
-    const fullName = this.buildFullName(payment?.collaborator) || 'همکار';
-    const datePart = this.formatJalaliDate(payment?.paidAt).replace(/[^\d]/g, '') || 'date';
-    const safeName = this.normalizeFileNameSegment(fullName) || 'hamkar';
+    const fullName = this.buildFullName(payment?.collaborator) || "همکار";
+    const datePart =
+      this.formatJalaliDate(payment?.paidAt).replace(/[^\d]/g, "") || "date";
+    const safeName = this.normalizeFileNameSegment(fullName) || "hamkar";
     return `${safeName}-payment-receipt-${datePart}.pdf`;
   }
 
@@ -424,10 +527,10 @@ export class CollaboratorsService extends BaseService {
     remainingAfterPayment: number;
   }) {
     const { payment, beforeRemaining, remainingAfterPayment } = input;
-    const collaboratorName = this.buildFullName(payment?.collaborator) || '-';
-    const collaboratorPhone = payment?.collaborator?.phone || '-';
+    const collaboratorName = this.buildFullName(payment?.collaborator) || "-";
+    const collaboratorPhone = payment?.collaborator?.phone || "-";
     const paymentAmount = Number(payment?.amount ?? 0);
-    const note = String(payment?.note ?? '').trim() || '-';
+    const note = String(payment?.note ?? "").trim() || "-";
     const fontFace = this.getVazirmatnFontFaceCss();
 
     return `<!DOCTYPE html>
@@ -477,7 +580,7 @@ export class CollaboratorsService extends BaseService {
 
     <div class="table">
       <div class="row">
-        <div class="cell-label">مانده قبل از این (تومان)</div>
+        <div class="cell-label">مانده قبل از رسید (تومان)</div>
         <div class="cell-value">${this.formatMoney(beforeRemaining)}</div>
       </div>
       <div class="row">
@@ -504,70 +607,87 @@ export class CollaboratorsService extends BaseService {
       const browser = await puppeteer.launch(buildPuppeteerLaunchOptions());
       try {
         const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'domcontentloaded' });
+        await page.setContent(html, { waitUntil: "domcontentloaded" });
         const pdf = await page.pdf({
-          format: 'A4',
+          format: "A4",
           printBackground: true,
-          margin: { top: '14mm', right: '12mm', bottom: '14mm', left: '12mm' }
+          margin: { top: "14mm", right: "12mm", bottom: "14mm", left: "12mm" },
         });
         return Buffer.from(pdf);
       } finally {
         await browser.close();
       }
     } catch {
-      throw new BadRequestException('تولید رسید پرداخت در سرور انجام نشد. لطفا دوباره تلاش کنید.');
+      throw new BadRequestException(
+        "تولید رسید پرداخت در سرور انجام نشد. لطفا دوباره تلاش کنید.",
+      );
     }
   }
 
   private getVazirmatnFontFaceCss() {
     const candidates = [
-      path.resolve(__dirname, '../../../common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
-      path.resolve(process.cwd(), 'src/common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
-      path.resolve(process.cwd(), 'dist/common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
-      path.resolve(process.cwd(), '../dashboard/public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2'),
-      path.resolve(process.cwd(), 'public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2')
+      path.resolve(
+        __dirname,
+        "../../../common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2",
+      ),
+      path.resolve(
+        process.cwd(),
+        "src/common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2",
+      ),
+      path.resolve(
+        process.cwd(),
+        "dist/common/assets/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2",
+      ),
+      path.resolve(
+        process.cwd(),
+        "../dashboard/public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2",
+      ),
+      path.resolve(
+        process.cwd(),
+        "public/fonts/vazirmatn/vazirmatn-arabic-wght-normal.woff2",
+      ),
     ];
 
     for (const fontPath of candidates) {
       if (!fs.existsSync(fontPath)) continue;
-      const encoded = fs.readFileSync(fontPath).toString('base64');
+      const encoded = fs.readFileSync(fontPath).toString("base64");
       return `@font-face{font-family:'Vazirmatn';src:url(data:font/woff2;base64,${encoded}) format('woff2');font-weight:100 900;font-style:normal;font-display:swap;}`;
     }
-    return '';
+    return "";
   }
 
   private buildFullName(person: any) {
-    const firstName = String(person?.firstName ?? '').trim();
-    const lastName = String(person?.lastName ?? '').trim();
-    return [firstName, lastName].filter(Boolean).join(' ').trim() || null;
+    const firstName = String(person?.firstName ?? "").trim();
+    const lastName = String(person?.lastName ?? "").trim();
+    return [firstName, lastName].filter(Boolean).join(" ").trim() || null;
   }
 
   private escapeHtml(value: unknown): string {
-    const text = String(value ?? '');
+    const text = String(value ?? "");
     return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   private formatMoney(value: unknown): string {
     const amount = Number(value ?? 0);
-    return new Intl.NumberFormat('fa-IR').format(amount);
+    return new Intl.NumberFormat("fa-IR").format(amount);
   }
 
   private formatJalaliDate(value?: string | Date | null): string {
-    if (!value) return '-';
-    return new Date(value).toLocaleDateString('fa-IR-u-ca-persian');
+    if (!value) return "-";
+    return new Date(value).toLocaleDateString("fa-IR-u-ca-persian");
   }
 
   private normalizeFileNameSegment(value: unknown) {
-    return String(value ?? '')
-      .replace(/[\\/:*?"<>|\r\n]+/g, ' ')
-      .replace(/\s+/g, ' ')
+    return String(value ?? "")
+      .replace(/[\\/:*?"<>|\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
       .trim()
-      .replace(/\s/g, '-')
+      .replace(/\s/g, "-")
       .slice(0, 60);
   }
 }
