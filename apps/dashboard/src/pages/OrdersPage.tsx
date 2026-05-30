@@ -1151,7 +1151,6 @@ export function OrdersPage() {
                                         <TableHead>نوع توری</TableHead>
                                         <TableHead>ابعاد</TableHead>
                                         <TableHead>تعداد</TableHead>
-                                        <TableHead>توضیح</TableHead>
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1174,9 +1173,6 @@ export function OrdersPage() {
                                           </TableCell>
                                           <TableCell>
                                             {Number(item.quantity ?? 0)}
-                                          </TableCell>
-                                          <TableCell className="max-w-[320px] truncate text-xs text-muted-foreground sm:text-sm">
-                                            {item.description || "-"}
                                           </TableCell>
                                         </TableRow>
                                       ))}
