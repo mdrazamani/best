@@ -279,7 +279,12 @@ export class OrdersService extends BaseService {
       if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;
       }
-      throw new BadRequestException('ساخت فایل فشرده لیبل‌ها در سرور انجام نشد. لطفا دوباره تلاش کنید.');
+      const detail = error instanceof Error ? error.message : '';
+      throw new BadRequestException(
+        detail
+          ? `ساخت فایل فشرده لیبل‌ها در سرور انجام نشد: ${detail}`
+          : 'ساخت فایل فشرده لیبل‌ها در سرور انجام نشد. لطفا دوباره تلاش کنید.'
+      );
     }
   }
 
@@ -293,13 +298,12 @@ export class OrdersService extends BaseService {
     const browser = await puppeteer.launch(buildPuppeteerLaunchOptions());
     try {
       const labels: Array<{ fileName: string; buffer: Buffer }> = [];
-
-      for (let index = 0; index < lineItems.length; index += 1) {
-        const item = lineItems[index];
-        const page = await browser.newPage();
-        try {
-          await page.setViewport({ width: widthPx, height: heightPx });
-          await page.emulateMediaType('print');
+      const page = await browser.newPage();
+      try {
+        await page.setViewport({ width: widthPx, height: heightPx });
+        await page.emulateMediaType('print');
+        for (let index = 0; index < lineItems.length; index += 1) {
+          const item = lineItems[index];
           await page.setContent(this.renderLabelHtml(order, item), { waitUntil: 'domcontentloaded' });
           const pdf = await page.pdf({
             printBackground: true,
@@ -314,8 +318,12 @@ export class OrdersService extends BaseService {
             fileName: this.buildLabelFileName(order, item, index),
             buffer: Buffer.from(pdf)
           });
-        } finally {
+        }
+      } finally {
+        try {
           await page.close();
+        } catch {
+          // ignore close failures; browser close in outer finally is enough.
         }
       }
 
