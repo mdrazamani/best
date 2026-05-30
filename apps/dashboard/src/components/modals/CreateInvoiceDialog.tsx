@@ -1,4 +1,5 @@
 ﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { toast } from 'react-toastify';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -149,6 +150,15 @@ export function CreateInvoiceDialog({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const effectiveOrderIds = (lockedOrderIds?.length ? lockedOrderIds : selectedOrderIds).filter(Boolean);
+    if (!effectiveOrderIds.length) {
+      toast.error('برای ثبت فاکتور، انتخاب حداقل یک سفارش الزامی است.');
+      return;
+    }
+    const payerId = lockedPayer?.id ?? form.payerId.trim();
+    if (!payerId) {
+      toast.error('برای ثبت فاکتور، انتخاب همکار الزامی است.');
+      return;
+    }
     const status = deriveInvoiceStatusFromAmounts(form.amount, form.initialPaidAmount);
     setSubmitting(true);
     try {
@@ -160,7 +170,7 @@ export function CreateInvoiceDialog({
         initialPaidAmount: toNumber(form.initialPaidAmount),
         status,
         payerType: 'COLLABORATOR',
-        payerId: lockedPayer?.id ?? (form.payerId || undefined),
+        payerId,
         dueDate: form.dueDate || undefined,
         description: form.description || undefined
       });
@@ -321,3 +331,4 @@ export function CreateInvoiceDialog({
     </Dialog>
   );
 }
+

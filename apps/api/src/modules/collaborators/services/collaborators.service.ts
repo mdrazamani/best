@@ -85,6 +85,7 @@ export class CollaboratorsService extends BaseService {
 
   async detail(id: string) {
     let usedSafeFallback = false;
+    let missingPaymentsSchema = false;
     let collaborator: any;
     try {
       collaborator = await this.collaboratorsRepository.findById(id);
@@ -101,6 +102,18 @@ export class CollaboratorsService extends BaseService {
     }
 
     const activeOrders = collaborator.orders.filter((order: any) => order.stage !== 'CANCELLED');
+    let directPayments: any[] = [];
+    try {
+      directPayments = await this.collaboratorsRepository.listDirectPayments(id);
+    } catch (error) {
+      if (!this.isMissingCollaboratorPaymentSchemaError(error)) {
+        throw error;
+      }
+      missingPaymentsSchema = true;
+      directPayments = [];
+    }
+
+    const payerInvoices = await this.collaboratorsRepository.listInvoicesByCollaboratorPayer(id);
     const invoiceMap = new Map<string, any>();
     for (const order of activeOrders) {
       for (const link of order.invoiceLinks ?? []) {
@@ -118,10 +131,36 @@ export class CollaboratorsService extends BaseService {
         current.orders = Array.isArray(current.orders) ? [...current.orders, order] : [order];
       }
     }
-    const collaboratorInvoices = Array.from(invoiceMap.values()).filter((invoice) => invoice.payerType === 'COLLABORATOR');
+
+    for (const invoice of payerInvoices) {
+      const linkedOrders = Array.isArray(invoice.orders) ? invoice.orders.map((link: any) => link?.order).filter(Boolean) : [];
+      const current = invoiceMap.get(invoice.id);
+      if (!current) {
+        invoiceMap.set(invoice.id, {
+          ...invoice,
+          order: linkedOrders[0] ?? null,
+          orders: linkedOrders
+        });
+        continue;
+      }
+      const mergedOrders = [...(Array.isArray(current.orders) ? current.orders : []), ...linkedOrders];
+      const uniqueOrders = Array.from(new Map(mergedOrders.filter(Boolean).map((item: any) => [item.id, item])).values());
+      current.orders = uniqueOrders;
+      if (!current.order && uniqueOrders.length) {
+        current.order = uniqueOrders[0];
+      }
+      if (!Array.isArray(current.payments) || !current.payments.length) {
+        current.payments = invoice.payments;
+      }
+    }
+
+    const collaboratorInvoices = Array.from(invoiceMap.values()).filter((invoice) => {
+      if (invoice.payerType === 'COLLABORATOR' && invoice.payerId === id) return true;
+      const invoiceOrders = Array.isArray(invoice.orders) ? invoice.orders : invoice.order ? [invoice.order] : [];
+      return invoiceOrders.some((order: any) => order?.collaborator?.id === id);
+    });
     const totalInvoiced = collaboratorInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
     const totalInvoicePaid = collaboratorInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount), 0);
-    const directPayments = Array.isArray(collaborator.payments) ? collaborator.payments : [];
     const totalDirectPaid = directPayments.reduce((sum: number, item: any) => sum + Number(item.amount ?? 0), 0);
     const totalPaid = totalInvoicePaid + totalDirectPaid;
     const completedOrders = activeOrders.filter((order: any) => order.stage === 'DELIVERED').length;
@@ -176,7 +215,7 @@ export class CollaboratorsService extends BaseService {
 
     return {
       ...collaborator,
-      schemaWarning: usedSafeFallback
+      schemaWarning: usedSafeFallback || missingPaymentsSchema
         ? 'برخی ساختارهای دیتابیس هنوز اعمال نشده‌اند. لطفاً migrationها را کامل اجرا کنید.'
         : undefined,
       summary: {
@@ -250,7 +289,7 @@ export class CollaboratorsService extends BaseService {
   }
 
   async addPayment(actorId: string, collaboratorId: string, dto: AddCollaboratorPaymentDto) {
-    const existing = await this.collaboratorsRepository.findById(collaboratorId);
+    const existing = await this.collaboratorsRepository.existsById(collaboratorId);
     if (!existing) {
       throw new NotFoundException('همکار پيدا نشد.');
     }
@@ -273,13 +312,20 @@ export class CollaboratorsService extends BaseService {
       throw new BadRequestException(`مبلغ پرداخت از مانده حساب همکار بیشتر است. مانده فعلی: ${toMoneyNumber(balance.remaining)} تومان`);
     }
 
-    await this.collaboratorsRepository.addDirectPayment({
-      collaboratorId,
-      amount: toMoneyNumber(paymentAmount),
-      paidAt,
-      note: dto.note?.trim(),
-      createdById: actorId
-    });
+    try {
+      await this.collaboratorsRepository.addDirectPayment({
+        collaboratorId,
+        amount: toMoneyNumber(paymentAmount),
+        paidAt,
+        note: dto.note?.trim(),
+        createdById: actorId
+      });
+    } catch (error) {
+      if (!this.isMissingCollaboratorPaymentSchemaError(error)) {
+        throw error;
+      }
+      throw new BadRequestException('ساختار پرداخت همکار در دیتابیس کامل نیست. لطفا migrationها را کامل اجرا کنید.');
+    }
 
     await this.operationLogsService.log({
       actorId,

@@ -36,14 +36,6 @@ export class CollaboratorsRepository extends BaseRepository {
     return this.prisma.collaborator.findFirst({
       where: { id, deletedAt: null },
       include: {
-        payments: {
-          include: {
-            createdBy: {
-              select: { id: true, firstName: true, lastName: true, username: true }
-            }
-          },
-          orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] as any
-        },
         orders: {
           where: {
             deletedAt: null
@@ -121,8 +113,22 @@ export class CollaboratorsRepository extends BaseRepository {
       },
       where: {
         deletedAt: null,
-        payerType: 'COLLABORATOR',
-        payerId: collaboratorId,
+        OR: [
+          {
+            payerType: 'COLLABORATOR',
+            payerId: collaboratorId
+          },
+          {
+            orders: {
+              some: {
+                order: {
+                  collaboratorId,
+                  deletedAt: null
+                }
+              }
+            }
+          }
+        ],
         createdAt: options?.beforeDate ? { lt: options.beforeDate } : undefined,
         id: options?.excludeInvoiceId ? { not: options.excludeInvoiceId } : undefined
       }
@@ -138,11 +144,87 @@ export class CollaboratorsRepository extends BaseRepository {
             deletedAt: null
           },
           include: {
-            customer: true
+            customer: true,
+            invoiceLinks: {
+              where: {
+                invoice: {
+                  deletedAt: null
+                }
+              },
+              include: {
+                invoice: {
+                  include: {
+                    payments: {
+                      include: {
+                        createdBy: {
+                          select: { id: true, firstName: true, lastName: true, username: true }
+                        }
+                      },
+                      orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] as any
+                    }
+                  }
+                }
+              }
+            },
+            lineItems: {
+              include: {
+                meshType: true
+              }
+            }
           },
           orderBy: { createdAt: 'desc' }
         }
       }
+    });
+  }
+
+  listDirectPayments(collaboratorId: string) {
+    return this.prisma.collaboratorPayment.findMany({
+      where: {
+        collaboratorId
+      },
+      include: {
+        createdBy: {
+          select: { id: true, firstName: true, lastName: true, username: true }
+        }
+      },
+      orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] as any
+    });
+  }
+
+  listInvoicesByCollaboratorPayer(collaboratorId: string) {
+    return this.prisma.invoice.findMany({
+      where: {
+        deletedAt: null,
+        payerType: 'COLLABORATOR',
+        payerId: collaboratorId
+      },
+      include: {
+        orders: {
+          include: {
+            order: {
+              include: {
+                customer: true,
+                collaborator: true,
+                lineItems: {
+                  include: {
+                    meshType: true
+                  }
+                }
+              }
+            }
+          }
+        },
+        payments: {
+          include: {
+            createdBy: {
+              select: { id: true, firstName: true, lastName: true, username: true }
+            }
+          },
+          orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] as any
+        }
+      },
+      orderBy: { createdAt: 'desc' }
     });
   }
 
