@@ -259,7 +259,17 @@ export function useBestApp() {
       });
 
       if (!response.ok) {
-        throw new Error('خطا در دریافت فایل');
+        let errorMessage = 'خطا در دریافت فایل';
+        try {
+          const body = await response.json();
+          const apiMessage = body?.error?.message ?? body?.message;
+          if (typeof apiMessage === 'string' && apiMessage.trim()) {
+            errorMessage = apiMessage;
+          }
+        } catch {
+          // ignore JSON parse errors and keep fallback message
+        }
+        throw new Error(errorMessage);
       }
 
       const blob = await response.blob();

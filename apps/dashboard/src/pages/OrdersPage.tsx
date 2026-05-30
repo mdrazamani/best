@@ -1128,8 +1128,10 @@ export function OrdersPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
+                                  disabled={!lineItems.length}
                                   onClick={(event) => {
                                     event.stopPropagation();
+                                    if (!lineItems.length) return;
                                     void downloadProtected(
                                       `/orders/${order.id}/line-items/labels.zip`,
                                       `labels-${order.orderNumber}.zip`,
@@ -1137,7 +1139,9 @@ export function OrdersPage() {
                                   }}
                                 >
                                   <Download className="h-4 w-4" />
-                                  دانلود همه لیبل‌های سفارش
+                                  {lineItems.length
+                                    ? "دانلود همه لیبل‌های سفارش"
+                                    : "این سفارش لیبل ندارد"}
                                 </Button>
                               </div>
                               {lineItems.length ? (
