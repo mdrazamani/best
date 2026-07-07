@@ -1,0 +1,25 @@
+def googleMirror = 'https://maven.aliyun.com/repository/google'
+
+settingsEvaluated { settings ->
+    settings.pluginManagement.repositories {
+        maven { url googleMirror }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+gradle.beforeProject { project ->
+    project.buildscript.repositories {
+        maven { url googleMirror }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+
+    project.repositories {
+        maven { url googleMirror }
+        google()
+        mavenCentral()
+    }
+}
