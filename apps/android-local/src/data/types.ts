@@ -20,6 +20,7 @@ export type Customer = {
   phone: string;
   address: string;
   note: string;
+  referredByCollaboratorId?: string;
   createdAt: string;
 };
 
@@ -54,11 +55,15 @@ export type Order = {
 export type Invoice = {
   id: string;
   orderId: string;
+  orderIds: string[];
   orderTitle: string;
   customerName: string;
+  payerId: string;
+  payerName: string;
   title: string;
   amount: number;
   paid: number;
+  discount: number;
   status: InvoiceStatus;
   dueDate: string;
   note: string;
@@ -142,6 +147,7 @@ export type NewCustomerInput = {
   phone?: string;
   address?: string;
   note?: string;
+  referredByCollaboratorId?: string;
 };
 
 export type NewCollaboratorInput = {
@@ -153,20 +159,25 @@ export type NewCollaboratorInput = {
 
 export type NewOrderInput = {
   customerId: string;
-  collaboratorId?: string;
+  collaboratorId: string;
   title: string;
   workType?: WorkType;
   discount?: number;
+  totalPrice?: number;
+  createInitialInvoice?: boolean;
   lineItems?: Array<Omit<OrderLineItem, 'id' | 'total'>>;
   dueDate?: string;
   note?: string;
 };
 
 export type NewInvoiceInput = {
-  orderId: string;
+  orderId?: string;
+  orderIds?: string[];
   title?: string;
   amount: number;
   paid?: number;
+  discount?: number;
+  payerId?: string;
   dueDate?: string;
   note?: string;
 };

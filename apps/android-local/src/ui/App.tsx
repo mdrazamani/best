@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity,
-  BarChart3,
   Bell,
   Check,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
   Database,
-  FileSpreadsheet,
+  Download,
   Grid2X2,
   LayoutDashboard,
   LogOut,
   Menu,
   Minus,
   PackagePlus,
-  Printer,
   ReceiptText,
   Search,
   ShieldCheck,
@@ -28,12 +26,13 @@ import {
   X
 } from 'lucide-react';
 import { backend } from '../data/backend';
-import type { AppSnapshot, DashboardStats, InvoiceStatus, Order, OrderLineItem, OrderStatus, WorkType } from '../data/types';
+import type { AppSnapshot, DashboardStats, Invoice, InvoiceStatus, Order, OrderLineItem, OrderStatus, WorkType } from '../data/types';
 
 declare global {
   interface Window {
     BestAndroid?: {
       saveTextFile: (filename: string, content: string, mimeType: string) => string;
+      savePdfFile?: (filename: string, title: string, linesJson: string) => string;
     };
   }
 }
@@ -63,8 +62,7 @@ const tabs: Array<{ key: Tab; label: string; icon: typeof LayoutDashboard }> = [
   { key: 'users', label: 'کاربران', icon: ShieldCheck },
   { key: 'backups', label: 'بکاپ', icon: Database },
   { key: 'notifications', label: 'اعلان‌ها', icon: Bell },
-  { key: 'activity', label: 'عملیات', icon: Activity },
-  { key: 'reports', label: 'گزارش', icon: BarChart3 }
+  { key: 'activity', label: 'عملیات', icon: Activity }
 ];
 
 const quickTabs: Tab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers'];
@@ -88,7 +86,26 @@ const invoiceStatusLabels: Record<InvoiceStatus, string> = {
   paid: 'تسویه'
 };
 
+const permissionLabels = [
+  { key: 'dashboard', label: 'داشبورد', assistant: true },
+  { key: 'orders', label: 'سفارشات', assistant: true },
+  { key: 'invoices', label: 'فاکتورها', assistant: true },
+  { key: 'collaborators', label: 'همکاران', assistant: true },
+  { key: 'customers', label: 'مشتریان', assistant: true },
+  { key: 'mesh', label: 'نوع توری', assistant: true },
+  { key: 'warehouse', label: 'انبارداری', assistant: true },
+  { key: 'users', label: 'کاربران', assistant: false },
+  { key: 'backups', label: 'بکاپ', assistant: false },
+  { key: 'activity', label: 'گزارش عملیات', assistant: false }
+];
+
 const money = (value: number) => `${Math.round(value || 0).toLocaleString('fa-IR')} تومان`;
+const numberText = (value: number) => Number(value || 0).toLocaleString('fa-IR', { maximumFractionDigits: 2 });
+const dimensionText = (value: number) => {
+  const rounded = Math.round(Number(value || 0) * 100) / 100;
+  return Number.isFinite(rounded) ? String(rounded) : '0';
+};
+const sizeText = (width: number, height: number) => `${dimensionText(width)} × ${dimensionText(height)} سانتی‌متر`;
 const dateText = (iso?: string) => {
   if (!iso) return '-';
   const date = new Date(iso);
@@ -100,6 +117,18 @@ const addDays = (iso: string, days: number) => {
   const date = iso ? new Date(`${iso}T12:00:00`) : new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+};
+const calculateLineTotal = (width: number, height: number, quantity: number, unitPrice: number) => {
+  const areaMeters = (width * height) / 10000;
+  return areaMeters > 1 ? areaMeters * quantity * unitPrice : quantity * unitPrice;
+};
+const toNumber = (value: string) => {
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const normalizeAmountInput = (value: number) => {
+  const rounded = Math.max(Math.round(value * 100) / 100, 0);
+  return Number.isFinite(rounded) ? String(rounded) : '0';
 };
 
 export function App() {
@@ -146,7 +175,7 @@ export function App() {
     [data]
   );
 
-  const managerOnlyTabs: Tab[] = ['users', 'backups', 'activity', 'reports'];
+  const managerOnlyTabs: Tab[] = ['users', 'backups', 'activity'];
   const availableTabs = useMemo(() => tabs.filter((item) => role === 'manager' || !managerOnlyTabs.includes(item.key)), [role]);
   const activeTabLabel = availableTabs.find((item) => item.key === tab)?.label ?? '';
 
@@ -421,34 +450,76 @@ function Customers({ data, run }: { data: AppSnapshot; run: (action: () => Promi
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [note, setNote] = useState('');
+  const [referredByCollaboratorId, setReferredByCollaboratorId] = useState('');
   const [query, setQuery] = useState('');
+  const [referralFilter, setReferralFilter] = useState('all');
+  const [selectedId, setSelectedId] = useState('');
+  const [detailOrderStatus, setDetailOrderStatus] = useState('all');
+  const [detailInvoiceStatus, setDetailInvoiceStatus] = useState('all');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
-  const filtered = data.customers.filter((item) => (item.name + ' ' + item.phone + ' ' + item.address).toLowerCase().includes(query.trim().toLowerCase()));
-  const reset = () => { setEditingId(''); setName(''); setPhone(''); setAddress(''); setNote(''); };
+  const filtered = data.customers.filter((item) => {
+    const matchesText = (item.name + ' ' + item.phone + ' ' + item.address).toLowerCase().includes(query.trim().toLowerCase());
+    const hasReferrer = Boolean(item.referredByCollaboratorId);
+    const matchesReferral = referralFilter === 'all' || (referralFilter === 'with_referrer' ? hasReferrer : !hasReferrer);
+    return matchesText && matchesReferral;
+  });
+  const reset = () => { setEditingId(''); setName(''); setPhone(''); setAddress(''); setNote(''); setReferredByCollaboratorId(''); };
   const openCreate = () => { reset(); setFormOpen(true); };
-  const openEdit = (item: AppSnapshot['customers'][number]) => { setEditingId(item.id); setName(item.name); setPhone(item.phone); setAddress(item.address); setNote(item.note); setFormOpen(true); };
+  const openEdit = (item: AppSnapshot['customers'][number]) => { setEditingId(item.id); setName(item.name); setPhone(item.phone); setAddress(item.address); setNote(item.note); setReferredByCollaboratorId(item.referredByCollaboratorId ?? ''); setFormOpen(true); };
   const close = () => { reset(); setFormOpen(false); };
+  const selected = data.customers.find((item) => item.id === selectedId);
+  if (selected) {
+    const orders = data.orders.filter((order) => order.customerId === selected.id);
+    const orderIds = new Set(orders.map((order) => order.id));
+    const invoices = data.invoices.filter((invoice) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).some((orderId) => orderIds.has(orderId)));
+    const collaborators = data.collaborators.filter((collaborator) => orders.some((order) => order.collaboratorId === collaborator.id) || selected.referredByCollaboratorId === collaborator.id);
+    const filteredOrders = orders.filter((order) => detailOrderStatus === 'all' || order.status === detailOrderStatus);
+    const filteredInvoices = invoices.filter((invoice) => detailInvoiceStatus === 'all' || invoice.status === detailInvoiceStatus);
+    const remaining = invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
+    return (
+      <section className="stack">
+        <section className="panel section-heading"><div><h2>{selected.name}</h2><p className="muted">{selected.phone || 'بدون موبایل'} {selected.address ? ` / ${selected.address}` : ''}</p></div><button className="secondary" type="button" onClick={() => setSelectedId('')}>بازگشت</button></section>
+        <div className="metrics"><Metric label="سفارش‌ها" value={orders.length.toLocaleString('fa-IR')} /><Metric label="فاکتورها" value={invoices.length.toLocaleString('fa-IR')} /><Metric label="همکاران" value={collaborators.length.toLocaleString('fa-IR')} /><Metric label="مانده" value={money(remaining)} /></div>
+        <div className="filter-grid"><Picker label="فیلتر سفارش‌ها" value={detailOrderStatus} onChange={setDetailOrderStatus} options={[{ value: 'all', label: 'همه سفارش‌ها' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /><Picker label="فیلتر فاکتورها" value={detailInvoiceStatus} onChange={setDetailInvoiceStatus} options={[{ value: 'all', label: 'همه فاکتورها' }, ...Object.entries(invoiceStatusLabels).map(([value, label]) => ({ value, label }))]} /><button className="secondary full-button" type="button" onClick={() => { setDetailOrderStatus('all'); setDetailInvoiceStatus('all'); }}>پاک کردن فیلترها</button></div>
+        <List title="سفارش‌های مشتری">
+          {filteredOrders.map((order) => <OrderCard key={order.id} order={order} onEdit={() => openEdit(selected)} run={run} compact />)}
+          {filteredOrders.length === 0 && <Empty text="سفارشی برای این مشتری پیدا نشد" />}
+        </List>
+        <List title="فاکتورهای مشتری">
+          {filteredInvoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>{invoice.orderTitle}</p><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id)))}><Download size={16} />PDF</button></div></article>)}
+          {filteredInvoices.length === 0 && <Empty text="فاکتوری برای این مشتری پیدا نشد" />}
+        </List>
+        <List title="همکاران مرتبط">
+          {collaborators.map((collaborator) => <article className="row detail-row" key={collaborator.id}><div><h3>{collaborator.name}</h3><p>{collaborator.role} {collaborator.phone ? ` / ${collaborator.phone}` : ''}</p></div><span>{dateText(collaborator.createdAt)}</span></article>)}
+          {collaborators.length === 0 && <Empty text="همکار مرتبطی پیدا نشد" />}
+        </List>
+      </section>
+    );
+  }
   return (
     <section className="stack">
-      <PageActions title="مشتریان" actionLabel="افزودن مشتری" onAction={openCreate}>
-        <button className="secondary" type="button" onClick={() => exportCustomersCsv(filtered)}><FileSpreadsheet size={17} /> CSV</button>
-      </PageActions>
+      <PageActions title="مشتریان" actionLabel="افزودن مشتری" onAction={openCreate} />
       <Modal title={editingId ? 'ویرایش مشتری' : 'افزودن مشتری'} open={formOpen} onClose={close}>
-        <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!name.trim()) throw new Error('نام مشتری لازم است'); if (editingId) await backend.updateCustomer({ id: editingId, name, phone, address, note }); else await backend.addCustomer({ name, phone, address, note }); close(); }, editingId ? 'مشتری ویرایش شد' : 'مشتری ثبت شد'); }}>
-          <label>نام مشتری<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-          <div className="form-grid"><label>موبایل<input value={phone} inputMode="tel" onChange={(event) => setPhone(event.target.value)} /></label><label>آدرس<input value={address} onChange={(event) => setAddress(event.target.value)} /></label></div>
-          <label>توضیحات<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+        <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!name.trim()) throw new Error('نام مشتری لازم است'); if (editingId) await backend.updateCustomer({ id: editingId, name, phone, address, note, referredByCollaboratorId }); else await backend.addCustomer({ name, phone, address, note, referredByCollaboratorId }); close(); }, editingId ? 'مشتری ویرایش شد' : 'مشتری ثبت شد'); }}>
+          <FlowSection title="اطلاعات مشتری">
+            <label>نام مشتری<input value={name} onChange={(event) => setName(event.target.value)} /></label>
+            <div className="form-grid"><label>موبایل<input value={phone} inputMode="tel" onChange={(event) => setPhone(event.target.value)} /></label><label>آدرس<input value={address} onChange={(event) => setAddress(event.target.value)} /></label></div>
+          </FlowSection>
+          <FlowSection title="ارتباط و توضیحات">
+            <Picker label="معرف / همکار" value={referredByCollaboratorId} onChange={setReferredByCollaboratorId} placeholder="بدون معرف" options={data.collaborators.map((item) => ({ value: item.id, label: item.name, helper: item.role }))} />
+            <label>توضیحات<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+          </FlowSection>
           <div className="form-actions"><button className="primary" type="submit"><UserRoundPlus size={18} />{editingId ? 'ویرایش مشتری' : 'ثبت مشتری'}</button><button className="secondary" type="button" onClick={close}>انصراف</button></div>
         </form>
       </Modal>
-      <SearchBox value={query} onChange={setQuery} placeholder="جستجوی مشتری" />
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی مشتری" /><Picker label="فیلتر معرف" value={referralFilter} onChange={setReferralFilter} options={[{ value: 'all', label: 'همه مشتری‌ها' }, { value: 'with_referrer', label: 'دارای معرف' }, { value: 'without_referrer', label: 'بدون معرف' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setReferralFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لیست مشتریان">
         {filtered.map((item) => {
           const orders = data.orders.filter((order) => order.customerId === item.id);
-          const invoices = data.invoices.filter((invoice) => orders.some((order) => order.id === invoice.orderId));
+          const invoices = data.invoices.filter((invoice) => orders.some((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id)));
           const remaining = invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
-          return <article className="row detail-row" key={item.id}><div><h3>{item.name}</h3><p>{item.phone || 'بدون موبایل'} {item.address ? ` / ${item.address}` : ''}</p><p>{orders.length.toLocaleString('fa-IR')} سفارش / مانده {money(remaining)}</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions"><span>{dateText(item.createdAt)}</span><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteCustomer(item.id), 'مشتری حذف شد')}><Trash2 size={16} /></button></div></article>;
+          return <article className="row detail-row" key={item.id}><div><h3>{item.name}</h3><p>{item.phone || 'بدون موبایل'} {item.address ? ` / ${item.address}` : ''}</p><p>{orders.length.toLocaleString('fa-IR')} سفارش / مانده {money(remaining)}</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions"><span>{dateText(item.createdAt)}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteCustomer(item.id), 'مشتری حذف شد')}><Trash2 size={16} /></button></div></article>;
         })}
         {filtered.length === 0 && <Empty text="مشتری پیدا نشد" />}
       </List>
@@ -462,29 +533,95 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
   const [role, setRole] = useState('همکار');
   const [note, setNote] = useState('');
   const [query, setQuery] = useState('');
+  const [ordersFilter, setOrdersFilter] = useState('all');
+  const [balanceFilter, setBalanceFilter] = useState('all');
+  const [selectedId, setSelectedId] = useState('');
+  const [detailOrdersSearch, setDetailOrdersSearch] = useState('');
+  const [detailOrdersStatus, setDetailOrdersStatus] = useState('all');
+  const [detailInvoicesSearch, setDetailInvoicesSearch] = useState('');
+  const [detailInvoicesStatus, setDetailInvoicesStatus] = useState('all');
+  const [detailCustomersSearch, setDetailCustomersSearch] = useState('');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
-  const filtered = data.collaborators.filter((item) => (item.name + ' ' + item.phone + ' ' + item.role).toLowerCase().includes(query.trim().toLowerCase()));
+  const collaboratorStats = (id: string) => {
+    const orders = data.orders.filter((order) => order.collaboratorId === id);
+    const orderIdSet = new Set(orders.map((order) => order.id));
+    const invoices = data.invoices.filter((invoice) => invoice.payerId === id || (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).some((orderId) => orderIdSet.has(orderId)));
+    const remaining = invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
+    const customers = data.customers.filter((customer) => customer.referredByCollaboratorId === id || orders.some((order) => order.customerId === customer.id));
+    return { orders, invoices, customers, remaining };
+  };
+  const filtered = data.collaborators.filter((item) => {
+    const stats = collaboratorStats(item.id);
+    const matchesText = (item.name + ' ' + item.phone + ' ' + item.role).toLowerCase().includes(query.trim().toLowerCase());
+    const matchesOrders = ordersFilter === 'all' || (ordersFilter === 'has_orders' ? stats.orders.length > 0 : stats.orders.length === 0);
+    const matchesBalance = balanceFilter === 'all' || (balanceFilter === 'debtor' ? stats.remaining > 0 : stats.remaining <= 0);
+    return matchesText && matchesOrders && matchesBalance;
+  });
   const reset = () => { setEditingId(''); setName(''); setPhone(''); setRole('همکار'); setNote(''); };
   const openCreate = () => { reset(); setFormOpen(true); };
   const openEdit = (item: AppSnapshot['collaborators'][number]) => { setEditingId(item.id); setName(item.name); setPhone(item.phone); setRole(item.role); setNote(item.note); setFormOpen(true); };
   const close = () => { reset(); setFormOpen(false); };
+  const selected = data.collaborators.find((item) => item.id === selectedId);
+  if (selected) {
+    const stats = collaboratorStats(selected.id);
+    const orderQuery = detailOrdersSearch.trim().toLowerCase();
+    const invoiceQuery = detailInvoicesSearch.trim().toLowerCase();
+    const customerQuery = detailCustomersSearch.trim().toLowerCase();
+    const filteredOrders = stats.orders.filter((order) => {
+      const matchesText = !orderQuery || `${order.title} ${order.customerName}`.toLowerCase().includes(orderQuery);
+      const matchesStatus = detailOrdersStatus === 'all' || order.status === detailOrdersStatus;
+      return matchesText && matchesStatus;
+    });
+    const filteredInvoices = stats.invoices.filter((invoice) => {
+      const matchesText = !invoiceQuery || `${invoice.title} ${invoice.orderTitle} ${invoice.customerName}`.toLowerCase().includes(invoiceQuery);
+      const matchesStatus = detailInvoicesStatus === 'all' || invoice.status === detailInvoicesStatus;
+      return matchesText && matchesStatus;
+    });
+    const filteredCustomers = stats.customers.filter((customer) => !customerQuery || `${customer.name} ${customer.phone} ${customer.address}`.toLowerCase().includes(customerQuery));
+    return (
+      <section className="stack">
+        <section className="panel section-heading"><div><h2>{selected.name}</h2><p className="muted">{selected.role} {selected.phone ? ` / ${selected.phone}` : ''}</p></div><button className="secondary" type="button" onClick={() => setSelectedId('')}>بازگشت</button></section>
+        <div className="metrics"><Metric label="سفارش‌ها" value={stats.orders.length.toLocaleString('fa-IR')} /><Metric label="فاکتورها" value={stats.invoices.length.toLocaleString('fa-IR')} /><Metric label="مشتری‌ها" value={stats.customers.length.toLocaleString('fa-IR')} /><Metric label="مانده" value={money(stats.remaining)} /></div>
+        <div className="filter-grid"><SearchBox value={detailOrdersSearch} onChange={setDetailOrdersSearch} placeholder="جستجوی سفارش‌های همکار" /><Picker label="وضعیت سفارش‌ها" value={detailOrdersStatus} onChange={setDetailOrdersStatus} options={[{ value: 'all', label: 'همه سفارش‌ها' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /><button className="secondary full-button" type="button" onClick={() => { setDetailOrdersSearch(''); setDetailOrdersStatus('all'); }}>پاک کردن فیلترها</button></div>
+        <List title="سفارش‌های همکار">
+          {filteredOrders.map((order) => <article className="card-row order-card" key={order.id}><div><h3>{order.title}</h3><p>{order.customerName} / {workTypeLabels[order.workType]} / تحویل: {dateText(order.dueDate)}</p><strong>{money(order.total)}</strong><LineSummary items={order.lineItems} /></div><div className="side-actions"><span className={`pill ${order.status}`}>{statusLabels[order.status]}</span><button className="secondary mini label-download" type="button" onClick={() => downloadOrderLabelsPdf(order)}><Download size={16} />دانلود لیبل‌ها</button></div></article>)}
+          {filteredOrders.length === 0 && <Empty text="سفارشی برای این همکار ثبت نشده است" />}
+        </List>
+        <div className="filter-grid"><SearchBox value={detailInvoicesSearch} onChange={setDetailInvoicesSearch} placeholder="جستجوی فاکتورهای همکار" /><Picker label="وضعیت فاکتورها" value={detailInvoicesStatus} onChange={setDetailInvoicesStatus} options={[{ value: 'all', label: 'همه فاکتورها' }, ...Object.entries(invoiceStatusLabels).map(([value, label]) => ({ value, label }))]} /><button className="secondary full-button" type="button" onClick={() => { setDetailInvoicesSearch(''); setDetailInvoicesStatus('all'); }}>پاک کردن فیلترها</button></div>
+        <List title="فاکتورهای همکار">
+          {filteredInvoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, data.orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id)))}><Download size={16} />PDF</button></div></article>)}
+          {filteredInvoices.length === 0 && <Empty text="فاکتوری برای این همکار ثبت نشده است" />}
+        </List>
+        <div className="filter-grid"><SearchBox value={detailCustomersSearch} onChange={setDetailCustomersSearch} placeholder="جستجوی مشتری‌های مرتبط" /><button className="secondary full-button" type="button" onClick={() => setDetailCustomersSearch('')}>پاک کردن فیلترها</button></div>
+        <List title="مشتری‌های مرتبط">
+          {filteredCustomers.map((customer) => <article className="row detail-row" key={customer.id}><div><h3>{customer.name}</h3><p>{customer.phone || 'بدون موبایل'} {customer.address ? ` / ${customer.address}` : ''}</p></div><span>{dateText(customer.createdAt)}</span></article>)}
+          {filteredCustomers.length === 0 && <Empty text="مشتری مرتبطی پیدا نشد" />}
+        </List>
+      </section>
+    );
+  }
   return (
     <section className="stack">
       <PageActions title="همکاران" actionLabel="افزودن همکار" onAction={openCreate} />
       <Modal title={editingId ? 'ویرایش همکار' : 'افزودن همکار'} open={formOpen} onClose={close}>
         <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!name.trim()) throw new Error('نام همکار لازم است'); if (editingId) await backend.updateCollaborator({ id: editingId, name, phone, role, note }); else await backend.addCollaborator({ name, phone, role, note }); close(); }, editingId ? 'همکار ویرایش شد' : 'همکار ثبت شد'); }}>
-          <label>نام همکار<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-          <div className="form-grid"><label>موبایل<input value={phone} inputMode="tel" onChange={(event) => setPhone(event.target.value)} /></label><label>نقش<input value={role} onChange={(event) => setRole(event.target.value)} /></label></div>
-          <label>توضیحات<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+          <FlowSection title="اطلاعات همکار">
+            <label>نام همکار<input value={name} onChange={(event) => setName(event.target.value)} /></label>
+            <div className="form-grid"><label>موبایل<input value={phone} inputMode="tel" onChange={(event) => setPhone(event.target.value)} /></label><label>نقش<input value={role} placeholder="مثلا نصاب یا تامین‌کننده" onChange={(event) => setRole(event.target.value)} /></label></div>
+          </FlowSection>
+          <FlowSection title="توضیحات">
+            <label>توضیحات<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+          </FlowSection>
           <div className="form-actions"><button className="primary" type="submit"><UserRoundPlus size={18} />{editingId ? 'ویرایش همکار' : 'ثبت همکار'}</button><button className="secondary" type="button" onClick={close}>انصراف</button></div>
         </form>
       </Modal>
-      <SearchBox value={query} onChange={setQuery} placeholder="جستجوی همکار" />
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی همکار" /><Picker label="فیلتر سفارش" value={ordersFilter} onChange={setOrdersFilter} options={[{ value: 'all', label: 'همه همکارها' }, { value: 'has_orders', label: 'دارای سفارش' }, { value: 'no_orders', label: 'بدون سفارش' }]} /><Picker label="فیلتر مانده" value={balanceFilter} onChange={setBalanceFilter} options={[{ value: 'all', label: 'همه مانده‌ها' }, { value: 'debtor', label: 'دارای مانده' }, { value: 'clear', label: 'تسویه شده' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setOrdersFilter('all'); setBalanceFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لیست همکاران">
         {filtered.map((item) => {
           const orders = data.orders.filter((order) => order.collaboratorId === item.id);
-          return <article className="row detail-row" key={item.id}><div><h3>{item.name}</h3><p>{item.role} {item.phone ? ` / ${item.phone}` : ''}</p><p>{orders.length.toLocaleString('fa-IR')} سفارش مرتبط</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions"><span>{dateText(item.createdAt)}</span><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteCollaborator(item.id), 'همکار حذف شد')}><Trash2 size={16} /></button></div></article>;
+          const stats = collaboratorStats(item.id);
+          return <article className="row detail-row" key={item.id}><div><h3>{item.name}</h3><p>{item.role} {item.phone ? ` / ${item.phone}` : ''}</p><p>{orders.length.toLocaleString('fa-IR')} سفارش مرتبط / مانده {money(stats.remaining)}</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions"><span>{dateText(item.createdAt)}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteCollaborator(item.id), 'همکار حذف شد')}><Trash2 size={16} /></button></div></article>;
         })}
         {filtered.length === 0 && <Empty text="همکاری پیدا نشد" />}
       </List>
@@ -526,7 +663,7 @@ function MeshTypes({ data, run }: { data: AppSnapshot; run: (action: () => Promi
           <div className="form-actions"><button className="primary" type="submit"><Grid2X2 size={18} />{editingId ? 'ویرایش نوع توری' : 'ثبت نوع توری'}</button><button className="secondary" type="button" onClick={close}>انصراف</button></div>
         </form>
       </Modal>
-      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی نوع توری" /><Picker label="فیلتر وضعیت" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه وضعیت‌ها' }, { value: 'active', label: 'فعال' }, { value: 'inactive', label: 'غیرفعال' }]} /></div>
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی نوع توری" /><Picker label="فیلتر وضعیت" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه وضعیت‌ها' }, { value: 'active', label: 'فعال' }, { value: 'inactive', label: 'غیرفعال' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setStatusFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لیست نوع توری">
         {filtered.map((item) => <article className="card-row" key={item.id}><div><h3>{item.title}</h3><p>{money(item.unitPrice)}</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions"><span className={`pill ${item.isDefault ? 'paid' : !item.isActive ? 'warning' : ''}`}>{item.isDefault ? 'پیش‌فرض' : item.isActive ? 'فعال' : 'غیرفعال'}</span>{!item.isDefault && <button className="secondary mini" type="button" onClick={() => void run(() => backend.updateMeshType({ id: item.id, isDefault: true, isActive: true }), 'نوع توری پیش‌فرض شد')}>پیش‌فرض</button>}{!item.isDefault && <button className="secondary mini" type="button" onClick={() => void run(() => backend.updateMeshType({ id: item.id, isActive: !item.isActive }), item.isActive ? 'نوع توری غیرفعال شد' : 'نوع توری فعال شد')}>{item.isActive ? 'غیرفعال' : 'فعال'}</button>}<button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteMeshType(item.id), 'نوع توری حذف شد')}><Trash2 size={16} /></button></div></article>)}
         {filtered.length === 0 && <Empty text="نوع توری پیدا نشد" />}
@@ -536,80 +673,156 @@ function MeshTypes({ data, run }: { data: AppSnapshot; run: (action: () => Promi
 }
 
 
-type LineDraft = { meshTypeId: string; width: string; height: string; quantity: string; unitPrice: string; description: string };
+type LineDraft = { meshTypeId: string; width: string; height: string; quantity: string; unitPrice: string; lineTotalOverride: string; lineTotalManual: boolean; description: string };
 
 function Orders({ data, run }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void> }) {
   const activeMeshTypes = data.meshTypes.filter((mesh) => mesh.isActive);
   const defaultMesh = activeMeshTypes.find((mesh) => mesh.isDefault) ?? activeMeshTypes[0] ?? data.meshTypes[0];
-  const defaultLine = () => ({ meshTypeId: defaultMesh?.id ?? '', width: '1', height: '1', quantity: '1', unitPrice: String(defaultMesh?.unitPrice ?? 0), description: '' });
+  const defaultLine = () => ({ meshTypeId: defaultMesh?.id ?? '', width: '', height: '', quantity: '1', unitPrice: String(defaultMesh?.unitPrice ?? 0), lineTotalOverride: '', lineTotalManual: false, description: '' });
   const [customerId, setCustomerId] = useState(data.customers[0]?.id ?? '');
+  const [quickCustomerName, setQuickCustomerName] = useState('');
+  const [quickCustomerPhone, setQuickCustomerPhone] = useState('');
   const [collaboratorId, setCollaboratorId] = useState('');
+  const [quickCollaboratorName, setQuickCollaboratorName] = useState('');
+  const [quickCollaboratorPhone, setQuickCollaboratorPhone] = useState('');
   const [title, setTitle] = useState('');
   const [workType, setWorkType] = useState<WorkType>('new_construction');
   const [dueDate, setDueDate] = useState(todayInput());
   const [discount, setDiscount] = useState('0');
+  const [finalPrice, setFinalPrice] = useState('');
+  const [finalPriceOverridden, setFinalPriceOverridden] = useState(false);
+  const [createInitialInvoice, setCreateInitialInvoice] = useState(false);
   const [note, setNote] = useState('');
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [workTypeFilter, setWorkTypeFilter] = useState('all');
+  const [collaboratorFilter, setCollaboratorFilter] = useState('all');
+  const [selectedOrderId, setSelectedOrderId] = useState('');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [items, setItems] = useState<LineDraft[]>([defaultLine()]);
-  const filtered = data.orders.filter((item) => `${item.title} ${item.customerName} ${item.collaboratorName}`.toLowerCase().includes(query.trim().toLowerCase()) && (statusFilter === 'all' || item.status === statusFilter));
+  const filtered = data.orders.filter((item) => {
+    const matchesText = `${item.title} ${item.customerName} ${item.collaboratorName}`.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+    const matchesWorkType = workTypeFilter === 'all' || item.workType === workTypeFilter;
+    const matchesCollaborator = collaboratorFilter === 'all' || item.collaboratorId === collaboratorFilter;
+    return matchesText && matchesStatus && matchesWorkType && matchesCollaborator;
+  });
 
   useEffect(() => { if (!customerId && data.customers[0]) setCustomerId(data.customers[0].id); }, [customerId, data.customers]);
 
-  const reset = () => { setEditingId(''); setTitle(''); setCollaboratorId(''); setWorkType('new_construction'); setDueDate(todayInput()); setDiscount('0'); setNote(''); setItems([defaultLine()]); };
+  const reset = () => { setEditingId(''); setTitle(''); setQuickCustomerName(''); setQuickCustomerPhone(''); setCollaboratorId(''); setQuickCollaboratorName(''); setQuickCollaboratorPhone(''); setWorkType('new_construction'); setDueDate(todayInput()); setDiscount('0'); setFinalPrice(''); setFinalPriceOverridden(false); setCreateInitialInvoice(false); setNote(''); setItems([defaultLine()]); };
   const close = () => { reset(); setFormOpen(false); };
   const openCreate = () => { reset(); setFormOpen(true); };
   const fillOrder = (order: Order) => {
     setEditingId(order.id);
     setCustomerId(order.customerId);
+    setQuickCustomerName('');
+    setQuickCustomerPhone('');
     setCollaboratorId(order.collaboratorId);
+    setQuickCollaboratorName('');
+    setQuickCollaboratorPhone('');
     setTitle(order.title);
     setWorkType(order.workType);
     setDueDate(order.dueDate || todayInput());
     setDiscount(String(order.discount ?? 0));
     setNote(order.note);
-    setItems(order.lineItems.length ? order.lineItems.map((item) => ({ meshTypeId: item.meshTypeId, width: String(item.width), height: String(item.height), quantity: String(item.quantity), unitPrice: String(item.unitPrice), description: item.description })) : [defaultLine()]);
+    const orderSubtotal = order.lineItems.reduce((sum, item) => sum + calculateLineTotal(Number(item.width), Number(item.height), Number(item.quantity), Number(item.unitPrice)), 0);
+    const expectedTotal = Math.max(orderSubtotal - Number(order.discount ?? 0), 0);
+    setFinalPrice(String(order.total ?? expectedTotal));
+    setFinalPriceOverridden(Math.abs(Number(order.total ?? expectedTotal) - expectedTotal) > 0.01);
+    setItems(order.lineItems.length ? order.lineItems.map((item) => ({ meshTypeId: item.meshTypeId, width: String(item.width), height: String(item.height), quantity: String(item.quantity), unitPrice: String(item.unitPrice), lineTotalOverride: '', lineTotalManual: false, description: item.description })) : [defaultLine()]);
     setFormOpen(true);
+  };
+  const linePricing = (item: LineDraft) => {
+    const width = toNumber(item.width);
+    const height = toNumber(item.height);
+    const quantity = toNumber(item.quantity);
+    const unitPrice = toNumber(item.unitPrice);
+    const calculated = calculateLineTotal(width, height, quantity, unitPrice);
+    const areaMeters = (width * height) / 10000;
+    const factor = areaMeters > 1 ? areaMeters * quantity : quantity;
+    const hasManualOverride = item.lineTotalManual && item.lineTotalOverride.trim() !== '';
+    const effectiveTotal = hasManualOverride ? Math.max(toNumber(item.lineTotalOverride), 0) : calculated;
+    const effectiveUnitPrice = factor > 0 ? effectiveTotal / factor : unitPrice;
+    return { width, height, quantity, unitPrice, calculated, effectiveTotal, effectiveUnitPrice };
   };
   const buildLines = () => items.map((item) => {
     const mesh = data.meshTypes.find((meshType) => meshType.id === item.meshTypeId);
-    return { meshTypeId: item.meshTypeId, meshTitle: mesh?.title ?? 'آیتم', width: Number(item.width), height: Number(item.height), quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), description: item.description };
-  });
-  const subtotal = items.reduce((sum, item) => sum + Math.max(Number(item.width), 0) * Math.max(Number(item.height), 0) * Math.max(Number(item.quantity), 0) * Math.max(Number(item.unitPrice), 0), 0);
+    const pricing = linePricing(item);
+    return { meshTypeId: item.meshTypeId, meshTitle: mesh?.title ?? 'آیتم', width: pricing.width, height: pricing.height, quantity: pricing.quantity, unitPrice: pricing.effectiveUnitPrice, description: item.description };
+  }).filter((item) => item.meshTypeId && item.width > 0 && item.height > 0 && item.quantity > 0 && item.unitPrice >= 0);
+  const subtotal = items.reduce((sum, item) => sum + linePricing(item).effectiveTotal, 0);
+  const adjustedTotal = Math.max(subtotal - Math.max(toNumber(discount), 0), 0);
+  useEffect(() => {
+    if (!formOpen || finalPriceOverridden) return;
+    setFinalPrice(adjustedTotal ? normalizeAmountInput(adjustedTotal) : '');
+  }, [adjustedTotal, finalPriceOverridden, formOpen]);
+  const selectedOrder = data.orders.find((order) => order.id === selectedOrderId);
+  if (selectedOrder) {
+    const invoices = data.invoices.filter((invoice) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(selectedOrder.id));
+    return (
+      <section className="stack">
+        <section className="panel section-heading"><div><h2>{selectedOrder.title}</h2><p className="muted">{selectedOrder.customerName}{selectedOrder.collaboratorName ? ` / ${selectedOrder.collaboratorName}` : ''}</p></div><button className="secondary" type="button" onClick={() => setSelectedOrderId('')}>بازگشت</button></section>
+        <div className="metrics"><Metric label="جمع سفارش" value={money(selectedOrder.total)} /><Metric label="آیتم‌ها" value={selectedOrder.lineItems.length.toLocaleString('fa-IR')} /><Metric label="وضعیت" value={statusLabels[selectedOrder.status]} /><Metric label="تحویل" value={dateText(selectedOrder.dueDate)} /></div>
+        <section className="panel"><div className="side-actions inline-actions"><button className="secondary" type="button" onClick={() => downloadOrderLabelsPdf(selectedOrder)}><Download size={17} />دانلود همه لیبل‌ها</button><button className="secondary" type="button" disabled={invoices.length > 0} onClick={() => void run(() => backend.addInvoice({ orderIds: [selectedOrder.id], title: `فاکتور ${selectedOrder.title}`, amount: selectedOrder.total, paid: 0, discount: selectedOrder.discount, payerId: selectedOrder.collaboratorId, dueDate: selectedOrder.dueDate, note: '' }), 'فاکتور سفارش ثبت شد')}>افزودن فاکتور</button><button className="secondary" type="button" onClick={() => fillOrder(selectedOrder)}>ویرایش سفارش</button></div></section>
+        <List title="آیتم‌های سفارش">
+          {selectedOrder.lineItems.map((item) => <article className="line-detail" key={item.id}><h3>{item.meshTitle}</h3><p>ابعاد: {sizeText(item.width, item.height)} / تعداد: {numberText(item.quantity)} عدد</p><p>قیمت واحد: {money(item.unitPrice)} / جمع: {money(item.total)}</p>{item.description && <p>{item.description}</p>}</article>)}
+        </List>
+        <List title="فاکتورهای سفارش">
+          {invoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, [selectedOrder])}><Download size={16} />PDF</button></div></article>)}
+          {invoices.length === 0 && <Empty text="برای این سفارش هنوز فاکتور ثبت نشده است" />}
+        </List>
+      </section>
+    );
+  }
 
   return (
     <section className="stack">
-      <PageActions title="سفارشات" actionLabel="افزودن سفارش" onAction={openCreate}>
-        <button className="secondary" type="button" onClick={() => exportOrdersCsv(filtered)}><FileSpreadsheet size={17} /> CSV</button>
-      </PageActions>
+      <PageActions title="سفارشات" actionLabel="افزودن سفارش" onAction={openCreate} />
       <Modal title={editingId ? 'ویرایش سفارش' : 'افزودن سفارش'} open={formOpen} onClose={close}>
-        <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!customerId) throw new Error('اول یک مشتری ثبت کنید'); if (!title.trim()) throw new Error('عنوان سفارش لازم است'); const payload = { customerId, collaboratorId, title, workType, dueDate, discount: Number(discount), note, lineItems: buildLines() }; if (editingId) await backend.updateOrder({ id: editingId, ...payload }); else await backend.addOrder(payload); close(); }, editingId ? 'سفارش ویرایش شد' : 'سفارش ثبت شد'); }}>
-          <Picker label="مشتری" value={customerId} onChange={setCustomerId} placeholder="اول مشتری ثبت کنید" options={data.customers.map((customer) => ({ value: customer.id, label: customer.name, helper: customer.phone }))} />
-          <Picker label="همکار" value={collaboratorId} onChange={setCollaboratorId} placeholder="بدون همکار" options={[{ value: '', label: 'بدون همکار' }, ...data.collaborators.map((item) => ({ value: item.id, label: item.name, helper: item.role }))]} />
-          <label>عنوان سفارش<input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-          <div className="form-grid">
-            <Picker label="نوع کار" value={workType} onChange={(value) => setWorkType(value as WorkType)} options={Object.entries(workTypeLabels).map(([value, label]) => ({ value, label }))} />
-            <PersianDatePicker label="تاریخ تحویل" value={dueDate} onChange={setDueDate} />
-          </div>
-          {items.map((item, index) => <div className="line-item-editor" key={index}><Picker label="نوع توری" value={item.meshTypeId} placeholder="نوع توری را انتخاب کنید" options={(item.meshTypeId && !activeMeshTypes.some((mesh) => mesh.id === item.meshTypeId) ? [...activeMeshTypes, data.meshTypes.find((mesh) => mesh.id === item.meshTypeId)!].filter(Boolean) : activeMeshTypes).map((mesh) => ({ value: mesh.id, label: mesh.title, helper: money(mesh.unitPrice) }))} onChange={(nextValue) => { const mesh = data.meshTypes.find((meshType) => meshType.id === nextValue); setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, meshTypeId: nextValue, unitPrice: String(mesh?.unitPrice ?? row.unitPrice) } : row)); }} /><div className="form-grid four"><input aria-label="عرض" placeholder="عرض" value={item.width} inputMode="decimal" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, width: event.target.value } : row))} /><input aria-label="ارتفاع" placeholder="ارتفاع" value={item.height} inputMode="decimal" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, height: event.target.value } : row))} /><input aria-label="تعداد" placeholder="تعداد" value={item.quantity} inputMode="decimal" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row))} /><input aria-label="قیمت" placeholder="قیمت" value={item.unitPrice} inputMode="numeric" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, unitPrice: event.target.value } : row))} /></div><input aria-label="توضیح آیتم" placeholder="توضیح آیتم" value={item.description} onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, description: event.target.value } : row))} />{items.length > 1 && <button className="secondary danger-text" type="button" onClick={() => setItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}>حذف آیتم</button>}</div>)}
-          <button className="secondary" type="button" onClick={() => setItems((prev) => [...prev, defaultLine()])}>افزودن آیتم</button>
-          <div className="form-grid"><label>تخفیف<input value={discount} inputMode="numeric" onChange={(event) => setDiscount(event.target.value)} /></label><label>جمع سفارش<input value={money(Math.max(subtotal - Number(discount || 0), 0))} readOnly /></label></div>
-          <label>توضیحات<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+        <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { const lines = buildLines(); if (!lines.length) throw new Error('حداقل یک ردیف معتبر سفارش لازم است'); let effectiveCustomerId = customerId; let effectiveCollaboratorId = collaboratorId; let effectiveCustomerName = data.customers.find((item) => item.id === customerId)?.name ?? ''; if (quickCustomerName.trim()) { const created = await backend.addCustomer({ name: quickCustomerName, phone: quickCustomerPhone }); effectiveCustomerId = created.id; effectiveCustomerName = created.name; } if (quickCollaboratorName.trim()) { const created = await backend.addCollaborator({ name: quickCollaboratorName, phone: quickCollaboratorPhone }); effectiveCollaboratorId = created.id; } if (!effectiveCustomerId) throw new Error('مشتری را انتخاب یا همان‌جا ثبت کنید'); if (!effectiveCollaboratorId) throw new Error('همکار را انتخاب یا همان‌جا ثبت کنید'); const payloadTotal = finalPrice.trim() ? toNumber(finalPrice) : adjustedTotal; const payload = { customerId: effectiveCustomerId, collaboratorId: effectiveCollaboratorId, title: title.trim() || `سفارش ${effectiveCustomerName || todayInput()}`, workType, dueDate, discount: Math.max(toNumber(discount), 0), totalPrice: Number.isFinite(payloadTotal) ? Math.max(payloadTotal, 0) : 0, createInitialInvoice, note, lineItems: lines }; if (editingId) await backend.updateOrder({ id: editingId, ...payload }); else await backend.addOrder(payload); close(); }, editingId ? 'سفارش ویرایش شد' : 'سفارش ثبت شد'); }}>
+          <FlowSection title="مشتری">
+            <Picker label="انتخاب مشتری" value={customerId} onChange={setCustomerId} placeholder="مشتری را انتخاب کنید" options={data.customers.map((customer) => ({ value: customer.id, label: customer.name, helper: customer.phone }))} />
+            <div className="quick-create"><label>ثبت سریع مشتری<input value={quickCustomerName} placeholder="نام مشتری جدید" onChange={(event) => setQuickCustomerName(event.target.value)} /></label><label>موبایل<input value={quickCustomerPhone} inputMode="tel" onChange={(event) => setQuickCustomerPhone(event.target.value)} /></label></div>
+          </FlowSection>
+          <FlowSection title="همکار">
+            <Picker label="انتخاب همکار" value={collaboratorId} onChange={setCollaboratorId} placeholder="همکار را انتخاب کنید" options={data.collaborators.map((item) => ({ value: item.id, label: item.name, helper: item.role }))} />
+            <div className="quick-create"><label>ثبت سریع همکار<input value={quickCollaboratorName} placeholder="نام همکار جدید" onChange={(event) => setQuickCollaboratorName(event.target.value)} /></label><label>موبایل<input value={quickCollaboratorPhone} inputMode="tel" onChange={(event) => setQuickCollaboratorPhone(event.target.value)} /></label></div>
+          </FlowSection>
+          <FlowSection title="جزئیات سفارش">
+            <label>عنوان سفارش<input value={title} placeholder="مثلا نصب توری پذیرایی" onChange={(event) => setTitle(event.target.value)} /></label>
+            <div className="form-grid">
+              <Picker label="نوع کار" value={workType} onChange={(value) => setWorkType(value as WorkType)} options={Object.entries(workTypeLabels).map(([value, label]) => ({ value, label }))} />
+              <PersianDatePicker label="تاریخ تحویل" value={dueDate} onChange={setDueDate} />
+            </div>
+          </FlowSection>
+          <FlowSection title={`آیتم‌ها (${items.length.toLocaleString('fa-IR')})`}>
+            {items.map((item, index) => {
+              const pricing = linePricing(item);
+              return <div className="line-item-editor" key={index}><div className="line-item-head"><strong>آیتم {index + 1}</strong><span>{money(pricing.effectiveTotal)}</span></div><Picker label="نوع توری" value={item.meshTypeId} placeholder="نوع توری را انتخاب کنید" options={(item.meshTypeId && !activeMeshTypes.some((mesh) => mesh.id === item.meshTypeId) ? [...activeMeshTypes, data.meshTypes.find((mesh) => mesh.id === item.meshTypeId)!].filter(Boolean) : activeMeshTypes).map((mesh) => ({ value: mesh.id, label: mesh.title, helper: money(mesh.unitPrice) }))} onChange={(nextValue) => { const mesh = data.meshTypes.find((meshType) => meshType.id === nextValue); setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, meshTypeId: nextValue, unitPrice: String(mesh?.unitPrice ?? row.unitPrice) } : row)); }} /><div className="form-grid four"><label>عرض<input aria-label="عرض" placeholder="cm" value={item.width} inputMode="decimal" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, width: event.target.value } : row))} /></label><label>ارتفاع<input aria-label="ارتفاع" placeholder="cm" value={item.height} inputMode="decimal" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, height: event.target.value } : row))} /></label><label>تعداد<input aria-label="تعداد" placeholder="عدد" value={item.quantity} inputMode="decimal" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row))} /></label><label>قیمت<input aria-label="قیمت" placeholder="تومان" value={item.unitPrice} inputMode="numeric" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, unitPrice: event.target.value } : row))} /></label></div><label>مبلغ نهایی ردیف<input aria-label="مبلغ نهایی ردیف" placeholder="اختیاری، تومان" value={item.lineTotalOverride} inputMode="numeric" onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, lineTotalOverride: event.target.value, lineTotalManual: true } : row))} onBlur={() => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index && !row.lineTotalOverride.trim() ? { ...row, lineTotalManual: false } : row))} /></label><p className="muted tiny-text">جمع محاسباتی ردیف: {money(pricing.calculated)}</p><input aria-label="توضیح آیتم" placeholder="توضیح آیتم" value={item.description} onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, description: event.target.value } : row))} />{items.length > 1 && <button className="secondary danger-text" type="button" onClick={() => setItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}>حذف آیتم</button>}</div>;
+            })}
+            <button className="secondary full-button" type="button" onClick={() => setItems((prev) => [...prev, defaultLine()])}>افزودن آیتم</button>
+          </FlowSection>
+          <FlowSection title="جمع و فاکتور">
+            <div className="form-grid"><label>جمع ردیف‌ها<input value={money(subtotal)} readOnly /></label><label>تخفیف<input value={discount} inputMode="numeric" onChange={(event) => setDiscount(event.target.value)} /></label></div>
+            <label>مبلغ نهایی کل<input value={finalPrice} inputMode="numeric" placeholder={money(adjustedTotal)} onChange={(event) => { setFinalPrice(event.target.value); setFinalPriceOverridden(true); }} /></label>
+            {!editingId && <label className="check-row prominent-check"><input type="checkbox" checked={createInitialInvoice} onChange={(event) => setCreateInitialInvoice(event.target.checked)} /> ساخت فاکتور اولیه بعد از ثبت سفارش</label>}
+            <label>توضیحات<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+          </FlowSection>
           <div className="form-actions"><button className="primary" type="submit"><PackagePlus size={18} />{editingId ? 'ویرایش سفارش' : 'ثبت سفارش'}</button><button className="secondary" type="button" onClick={close}>انصراف</button></div>
         </form>
       </Modal>
-      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی سفارش" /><Picker label="فیلتر وضعیت" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه وضعیت‌ها' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /></div>
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی سفارش" /><Picker label="فیلتر وضعیت" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه وضعیت‌ها' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /><Picker label="فیلتر نوع کار" value={workTypeFilter} onChange={setWorkTypeFilter} options={[{ value: 'all', label: 'همه نوع کارها' }, ...Object.entries(workTypeLabels).map(([value, label]) => ({ value, label }))]} /><Picker label="فیلتر همکار" value={collaboratorFilter} onChange={setCollaboratorFilter} options={[{ value: 'all', label: 'همه همکارها' }, ...data.collaborators.map((item) => ({ value: item.id, label: item.name, helper: item.role }))]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setStatusFilter('all'); setWorkTypeFilter('all'); setCollaboratorFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لیست سفارش‌ها">
-        {filtered.map((order) => <OrderCard key={order.id} order={order} onEdit={() => fillOrder(order)} run={run} />)}
+        {filtered.map((order) => <OrderCard key={order.id} order={order} onEdit={() => fillOrder(order)} onOpen={() => setSelectedOrderId(order.id)} run={run} />)}
         {filtered.length === 0 && <Empty text="سفارشی پیدا نشد" />}
       </List>
     </section>
   );
 }
 
-function OrderCard({ order, onEdit, run }: { order: Order; onEdit: () => void; run: (action: () => Promise<void>, done?: string) => Promise<void> }) {
+function OrderCard({ order, onEdit, onOpen, run, compact = false }: { order: Order; onEdit: () => void; onOpen?: () => void; run: (action: () => Promise<void>, done?: string) => Promise<void>; compact?: boolean }) {
   return (
     <article className="card-row order-card">
       <div>
@@ -617,23 +830,46 @@ function OrderCard({ order, onEdit, run }: { order: Order; onEdit: () => void; r
         <p>{order.customerName}{order.collaboratorName ? ` / ${order.collaboratorName}` : ''}</p>
         <p>{workTypeLabels[order.workType]} / {order.lineItems.length.toLocaleString('fa-IR')} آیتم / تحویل: {dateText(order.dueDate)}</p>
         <strong>{money(order.total)}</strong>
-        <div className="line-summary">{order.lineItems.map((item: OrderLineItem) => <span key={item.id}>{item.meshTitle}: {item.width}×{item.height}، {item.quantity} عدد</span>)}</div>
+        <LineSummary items={order.lineItems} />
         {order.note && <p>{order.note}</p>}
       </div>
       <div className="side-actions">
-        <Picker label="وضعیت سفارش" value={order.status} options={Object.entries(statusLabels).map(([key, label]) => ({ value: key, label }))} onChange={(nextValue) => void run(() => backend.setOrderStatus(order.id, nextValue as OrderStatus), 'وضعیت تغییر کرد')} />
-        <button className="secondary mini" type="button" onClick={onEdit}>ویرایش</button>
-        <button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteOrder(order.id), 'سفارش حذف شد')}><Trash2 size={16} /></button>
+        {compact ? <span className={`pill ${order.status}`}>{statusLabels[order.status]}</span> : <Picker label="وضعیت سفارش" value={order.status} options={Object.entries(statusLabels).map(([key, label]) => ({ value: key, label }))} onChange={(nextValue) => void run(() => backend.setOrderStatus(order.id, nextValue as OrderStatus), 'وضعیت تغییر کرد')} />}
+        <button className="secondary mini label-download" type="button" onClick={() => downloadOrderLabelsPdf(order)}><Download size={16} />دانلود لیبل‌ها</button>
+        {onOpen && <button className="secondary mini" type="button" onClick={onOpen}>جزئیات</button>}
+        {!compact && <button className="secondary mini" type="button" onClick={onEdit}>ویرایش</button>}
+        {!compact && <button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteOrder(order.id), 'سفارش حذف شد')}><Trash2 size={16} /></button>}
       </div>
     </article>
   );
 }
 
+function LineSummary({ items }: { items: OrderLineItem[] }) {
+  return (
+    <div className="line-summary" role="table" aria-label="آیتم‌های سفارش">
+      <div className="line-table-row line-table-head" role="row">
+        <span role="columnheader">نام</span>
+        <span role="columnheader">ابعاد</span>
+        <span role="columnheader">تعداد</span>
+      </div>
+      {items.map((item) => (
+        <div className="line-table-row" key={item.id} role="row">
+          <strong role="cell">{item.meshTitle}</strong>
+          <span role="cell" dir="ltr">{dimensionText(item.width)} × {dimensionText(item.height)}</span>
+          <span role="cell">{item.quantity.toLocaleString('fa-IR')}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Invoices({ data, run }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void> }) {
-  const [orderId, setOrderId] = useState(data.orders[0]?.id ?? '');
+  const [orderIds, setOrderIds] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('0');
   const [paid, setPaid] = useState('0');
+  const [discount, setDiscount] = useState('0');
+  const [payerId, setPayerId] = useState('');
   const [dueDate, setDueDate] = useState(todayInput());
   const [note, setNote] = useState('');
   const [editingId, setEditingId] = useState('');
@@ -641,46 +877,88 @@ function Invoices({ data, run }: { data: AppSnapshot; run: (action: () => Promis
   const [payments, setPayments] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const filtered = data.invoices.filter((item) => `${item.title} ${item.customerName} ${item.orderTitle}`.toLowerCase().includes(query.trim().toLowerCase()) && (statusFilter === 'all' || item.status === statusFilter));
-  const reset = () => { setEditingId(''); setOrderId(data.orders[0]?.id ?? ''); setTitle(''); setAmount('0'); setPaid('0'); setDueDate(todayInput()); setNote(''); };
+  const [payerFilter, setPayerFilter] = useState('all');
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
+  const filtered = data.invoices.filter((item) => {
+    const matchesText = `${item.title} ${item.customerName} ${item.orderTitle} ${item.payerName}`.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+    const matchesPayer = payerFilter === 'all' || item.payerId === payerFilter;
+    return matchesText && matchesStatus && matchesPayer;
+  });
+  const reset = () => { setEditingId(''); setOrderIds([]); setTitle(''); setAmount('0'); setPaid('0'); setDiscount('0'); setPayerId(''); setDueDate(todayInput()); setNote(''); };
   const close = () => { reset(); setFormOpen(false); };
   const openCreate = () => { reset(); setFormOpen(true); };
-  const fillInvoice = (invoice: AppSnapshot['invoices'][number]) => { setEditingId(invoice.id); setOrderId(invoice.orderId); setTitle(invoice.title); setAmount(String(invoice.amount)); setPaid(String(invoice.paid)); setDueDate(invoice.dueDate || todayInput()); setNote(invoice.note); setFormOpen(true); };
-  const selectedOrder = data.orders.find((order) => order.id === orderId);
+  const fillInvoice = (invoice: AppSnapshot['invoices'][number]) => { setEditingId(invoice.id); setOrderIds(invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]); setTitle(invoice.title); setAmount(String(invoice.amount)); setPaid(String(invoice.paid)); setDiscount(String(invoice.discount ?? 0)); setPayerId(invoice.payerId ?? ''); setDueDate(invoice.dueDate || todayInput()); setNote(invoice.note); setFormOpen(true); };
+  const selectedOrders = orderIds.map((id) => data.orders.find((order) => order.id === id)).filter(Boolean) as Order[];
+  const selectedAmount = selectedOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
+  const selectedDiscount = selectedOrders.reduce((sum, order) => sum + Number(order.discount ?? 0), 0);
+  const invoicedOrderIds = new Set(data.invoices.filter((invoice) => invoice.id !== editingId).flatMap((invoice) => invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]));
+  const orderOptions = data.orders.filter((order) => order.status !== 'cancelled' && (!invoicedOrderIds.has(order.id) || orderIds.includes(order.id)));
+  const payerOptions = Array.from(new Map(selectedOrders.filter((order) => order.collaboratorId).map((order) => [order.collaboratorId, { value: order.collaboratorId, label: order.collaboratorName, helper: 'همکار سفارش' }])).values());
 
-  useEffect(() => { if (!orderId && data.orders[0]) setOrderId(data.orders[0].id); }, [orderId, data.orders]);
-  useEffect(() => { if (!editingId && selectedOrder && Number(amount) === 0) setAmount(String(selectedOrder.total)); }, [selectedOrder, editingId, amount]);
+  useEffect(() => { if (!editingId) setAmount(String(selectedAmount || 0)); }, [editingId, selectedAmount]);
+  useEffect(() => { if (!editingId) setDiscount(String(selectedDiscount || 0)); }, [editingId, selectedDiscount]);
+  useEffect(() => {
+    if (!payerOptions.some((item) => item.value === payerId)) setPayerId(payerOptions[0]?.value ?? '');
+  }, [payerId, payerOptions]);
 
-  function exportCsv() {
-    const rows = [['customer', 'order', 'title', 'amount', 'paid', 'remaining', 'status'], ...filtered.map((item) => [item.customerName, item.orderTitle, item.title, item.amount, item.paid, item.amount - item.paid, item.status])];
-    downloadText('best-invoices.csv', csv(rows), 'text/csv;charset=utf-8');
+  function toggleOrder(orderId: string) {
+    setOrderIds((prev) => prev.includes(orderId) ? prev.filter((item) => item !== orderId) : [...prev, orderId]);
   }
-  function printInvoices() {
-    const html = filtered.map((item) => `<tr><td>${item.title}</td><td>${item.customerName}</td><td>${item.amount}</td><td>${item.paid}</td><td>${invoiceStatusLabels[item.status]}</td></tr>`).join('');
-    printHtml(`<h1>فاکتورها</h1><table border="1" cellspacing="0" cellpadding="8">${html}</table>`);
+  const selectedInvoice = data.invoices.find((invoice) => invoice.id === selectedInvoiceId);
+  if (selectedInvoice) {
+    const invoiceOrders = data.orders.filter((order) => (selectedInvoice.orderIds?.length ? selectedInvoice.orderIds : [selectedInvoice.orderId]).includes(order.id));
+    const remain = Math.max(selectedInvoice.amount - selectedInvoice.paid, 0);
+    return (
+      <section className="stack">
+        <section className="panel section-heading"><div><h2>{selectedInvoice.title || selectedInvoice.orderTitle}</h2><p className="muted">{selectedInvoice.customerName} / {selectedInvoice.payerName || '-'}</p></div><button className="secondary" type="button" onClick={() => setSelectedInvoiceId('')}>بازگشت</button></section>
+        <div className="metrics"><Metric label="مبلغ" value={money(selectedInvoice.amount)} /><Metric label="پرداخت" value={money(selectedInvoice.paid)} /><Metric label="مانده" value={money(remain)} /><Metric label="وضعیت" value={invoiceStatusLabels[selectedInvoice.status]} /></div>
+        <section className="panel"><div className="side-actions inline-actions"><button className="secondary" type="button" onClick={() => downloadInvoicePdf(selectedInvoice, invoiceOrders)}><Download size={17} />دانلود PDF فاکتور</button><button className="secondary" type="button" onClick={() => fillInvoice(selectedInvoice)}>ویرایش فاکتور</button></div><div className="payment-inline detail-payment"><input aria-label="مبلغ پرداخت" placeholder="مبلغ پرداخت" inputMode="numeric" value={payments[selectedInvoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [selectedInvoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(selectedInvoice.id, Number(payments[selectedInvoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت پرداخت</button></div></section>
+        <List title="سفارش‌های فاکتور">
+          {invoiceOrders.map((order) => <article className="card-row order-card" key={order.id}><div><h3>{order.title}</h3><p>{order.customerName}{order.collaboratorName ? ` / ${order.collaboratorName}` : ''}</p><strong>{money(order.total)}</strong><LineSummary items={order.lineItems} /></div><div className="side-actions"><span className={`pill ${order.status}`}>{statusLabels[order.status]}</span><button className="secondary mini label-download" type="button" onClick={() => downloadOrderLabelsPdf(order)}><Download size={16} />دانلود لیبل‌ها</button></div></article>)}
+          {invoiceOrders.length === 0 && <Empty text="سفارش مرتبطی پیدا نشد" />}
+        </List>
+        {selectedInvoice.note && <section className="panel"><h2>توضیحات</h2><p>{selectedInvoice.note}</p></section>}
+      </section>
+    );
   }
 
   return (
     <section className="stack">
-      <PageActions title="فاکتورها" actionLabel="افزودن فاکتور" onAction={openCreate}>
-        <button className="secondary" type="button" onClick={exportCsv}><FileSpreadsheet size={17} /> CSV</button>
-        <button className="secondary" type="button" onClick={printInvoices}><Printer size={17} /> چاپ</button>
-      </PageActions>
+      <PageActions title="فاکتورها" actionLabel="افزودن فاکتور" onAction={openCreate} />
       <Modal title={editingId ? 'ویرایش فاکتور' : 'افزودن فاکتور'} open={formOpen} onClose={close}>
-        <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!orderId) throw new Error('اول سفارش ثبت کنید'); const payload = { orderId, title, amount: Number(amount), paid: Number(paid), dueDate, note }; if (editingId) await backend.updateInvoice({ id: editingId, ...payload }); else await backend.addInvoice(payload); close(); }, editingId ? 'فاکتور ویرایش شد' : 'فاکتور ثبت شد'); }}>
-          <Picker label="سفارش" value={orderId} onChange={setOrderId} placeholder="اول سفارش ثبت کنید" options={data.orders.map((order) => ({ value: order.id, label: order.title, helper: `${order.customerName} - ${money(order.total)}` }))} />
-          <label>عنوان فاکتور<input value={title} placeholder={selectedOrder ? `فاکتور ${selectedOrder.title}` : ''} onChange={(event) => setTitle(event.target.value)} /></label>
-          <div className="form-grid"><label>مبلغ فاکتور<input value={amount} inputMode="numeric" onChange={(event) => setAmount(event.target.value)} /></label><label>پرداخت اولیه<input value={paid} inputMode="numeric" onChange={(event) => setPaid(event.target.value)} /></label></div>
-          <PersianDatePicker label="تاریخ سررسید" value={dueDate} onChange={setDueDate} />
-          <label>توضیحات<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+        <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!orderIds.length) throw new Error('حداقل یک سفارش انتخاب کنید'); if (!payerId) throw new Error('همکار بدهکار را انتخاب کنید'); const payload = { orderIds, title, amount: Number(amount), paid: Number(paid), discount: Number(discount), payerId, dueDate, note }; if (editingId) await backend.updateInvoice({ id: editingId, ...payload }); else await backend.addInvoice(payload); close(); }, editingId ? 'فاکتور ویرایش شد' : 'فاکتور ثبت شد'); }}>
+          <FlowSection title="سفارش‌های فاکتور">
+            <div className="multi-select">
+              <strong>{orderIds.length.toLocaleString('fa-IR')} سفارش انتخاب شده</strong>
+              {selectedOrders.length > 0 && <p>{selectedOrders.map((order) => `${order.title} (${money(order.total)})`).join('، ')}</p>}
+              <div>
+                {orderOptions.map((order) => <label className="check-row" key={order.id}><input type="checkbox" checked={orderIds.includes(order.id)} onChange={() => toggleOrder(order.id)} /> {order.title} - {order.customerName} - {money(order.total)}</label>)}
+                {orderOptions.length === 0 && <p className="empty">سفارش آزاد برای فاکتور وجود ندارد</p>}
+              </div>
+            </div>
+          </FlowSection>
+          <FlowSection title="همکار بدهکار">
+            <Picker label="همکار بدهکار" value={payerId} onChange={setPayerId} placeholder="بعد از انتخاب سفارش" options={payerOptions} />
+            <label>عنوان فاکتور<input value={title} placeholder={selectedOrders.length ? `فاکتور ${selectedOrders.map((order) => order.title).join('، ')}` : ''} onChange={(event) => setTitle(event.target.value)} /></label>
+          </FlowSection>
+          <FlowSection title="مبلغ و پرداخت">
+            <div className="form-grid"><label>مبلغ فاکتور<input value={amount} inputMode="numeric" onChange={(event) => setAmount(event.target.value)} /></label><label>تخفیف<input value={discount} inputMode="numeric" onChange={(event) => setDiscount(event.target.value)} /></label></div>
+            <label>پرداخت اولیه<input value={paid} inputMode="numeric" onChange={(event) => setPaid(event.target.value)} /></label>
+            <PersianDatePicker label="تاریخ سررسید" value={dueDate} onChange={setDueDate} />
+          </FlowSection>
+          <FlowSection title="یادداشت">
+            <label>توضیحات<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+          </FlowSection>
           <div className="form-actions"><button className="primary" type="submit"><ReceiptText size={18} />{editingId ? 'ویرایش فاکتور' : 'ثبت فاکتور'}</button><button className="secondary" type="button" onClick={close}>انصراف</button></div>
         </form>
       </Modal>
-      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی فاکتور" /><Picker label="فیلتر پرداخت" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه فاکتورها' }, ...Object.entries(invoiceStatusLabels).map(([value, label]) => ({ value, label }))]} /></div>
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی فاکتور" /><Picker label="فیلتر پرداخت" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه فاکتورها' }, ...Object.entries(invoiceStatusLabels).map(([value, label]) => ({ value, label }))]} /><Picker label="فیلتر همکار بدهکار" value={payerFilter} onChange={setPayerFilter} options={[{ value: 'all', label: 'همه همکارها' }, ...data.collaborators.map((item) => ({ value: item.id, label: item.name, helper: item.role }))]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setStatusFilter('all'); setPayerFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لیست فاکتورها">
         {filtered.map((invoice) => {
           const remain = Math.max(invoice.amount - invoice.paid, 0);
-          return <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.customerName}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>پرداخت شده: {money(invoice.paid)} / {money(invoice.amount)}</p><p>سررسید: {dateText(invoice.dueDate)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span>{invoice.note && <p>{invoice.note}</p>}</div><div className="side-actions"><button className="secondary" type="button" disabled={remain <= 0} onClick={() => void run(() => backend.addInvoicePayment(invoice.id, remain), 'پرداخت ثبت شد')}><CheckCircle2 size={17} />تسویه</button><div className="payment-inline"><input aria-label="مبلغ پرداخت" placeholder="مبلغ" inputMode="numeric" value={payments[invoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [invoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(invoice.id, Number(payments[invoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت</button></div><button className="secondary mini" type="button" onClick={() => fillInvoice(invoice)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteInvoice(invoice.id), 'فاکتور حذف شد')}><Trash2 size={16} /></button></div></article>;
+          const invoiceOrders = data.orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id));
+          return <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.customerName}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>همکار بدهکار: {invoice.payerName || '-'}</p><p>پرداخت شده: {money(invoice.paid)} / {money(invoice.amount)}</p><p>تخفیف: {money(invoice.discount ?? 0)} / سررسید: {dateText(invoice.dueDate)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span>{invoice.note && <p>{invoice.note}</p>}</div><div className="side-actions"><button className="secondary" type="button" disabled={remain <= 0} onClick={() => void run(() => backend.addInvoicePayment(invoice.id, remain), 'پرداخت ثبت شد')}><CheckCircle2 size={17} />تسویه</button><div className="payment-inline"><input aria-label="مبلغ پرداخت" placeholder="مبلغ" inputMode="numeric" value={payments[invoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [invoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(invoice.id, Number(payments[invoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت</button></div><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, invoiceOrders)}><Download size={16} />PDF</button><button className="secondary mini" type="button" onClick={() => setSelectedInvoiceId(invoice.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => fillInvoice(invoice)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteInvoice(invoice.id), 'فاکتور حذف شد')}><Trash2 size={16} /></button></div></article>;
         })}
         {filtered.length === 0 && <Empty text="فاکتوری پیدا نشد" />}
       </List>
@@ -694,17 +972,32 @@ function Inventory({ data, run }: { data: AppSnapshot; run: (action: () => Promi
   const [unit, setUnit] = useState('عدد');
   const [minQuantity, setMinQuantity] = useState('0');
   const [note, setNote] = useState('');
+  const [query, setQuery] = useState('');
+  const [stockFilter, setStockFilter] = useState('all');
+  const [adjustItemId, setAdjustItemId] = useState('');
+  const [adjustType, setAdjustType] = useState<'increase' | 'decrease'>('increase');
+  const [adjustAmount, setAdjustAmount] = useState('1');
+  const [adjustNote, setAdjustNote] = useState('');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const reset = () => { setEditingId(''); setName(''); setQuantity('0'); setUnit('عدد'); setMinQuantity('0'); setNote(''); };
   const close = () => { reset(); setFormOpen(false); };
   const openCreate = () => { reset(); setFormOpen(true); };
   const openEdit = (item: AppSnapshot['inventory'][number]) => { setEditingId(item.id); setName(item.name); setQuantity(String(item.quantity)); setUnit(item.unit); setMinQuantity(String(item.minQuantity)); setNote(item.note); setFormOpen(true); };
+  const filtered = data.inventory.filter((item) => {
+    const matchesText = `${item.name} ${item.unit} ${item.note}`.toLowerCase().includes(query.trim().toLowerCase());
+    const isLow = item.quantity <= item.minQuantity;
+    const matchesStock = stockFilter === 'all' || (stockFilter === 'low' ? isLow : !isLow);
+    return matchesText && matchesStock;
+  });
+  const totalQuantity = data.inventory.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const lowStock = data.inventory.filter((item) => item.quantity <= item.minQuantity).length;
+  const adjustItem = data.inventory.find((item) => item.id === adjustItemId);
+  const openAdjust = (item: AppSnapshot['inventory'][number]) => { setAdjustItemId(item.id); setAdjustType('increase'); setAdjustAmount('1'); setAdjustNote(''); };
+  const closeAdjust = () => { setAdjustItemId(''); setAdjustAmount('1'); setAdjustNote(''); };
   return (
     <section className="stack">
-      <PageActions title="انبار" actionLabel="افزودن کالا" onAction={openCreate}>
-        <button className="secondary" type="button" onClick={() => exportInventoryCsv(data.inventory)}><FileSpreadsheet size={17} /> CSV</button>
-      </PageActions>
+      <PageActions title="انبار" actionLabel="افزودن کالا" onAction={openCreate} />
       <Modal title={editingId ? 'ویرایش کالا' : 'افزودن کالا'} open={formOpen} onClose={close}>
         <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!name.trim()) throw new Error('نام کالا لازم است'); if (editingId) await backend.updateInventoryItem({ id: editingId, name, quantity: Number(quantity), unit, minQuantity: Number(minQuantity), note }); else await backend.addInventoryItem({ name, quantity: Number(quantity), unit, minQuantity: Number(minQuantity), note }); close(); }, editingId ? 'کالا ویرایش شد' : 'کالا ثبت شد'); }}>
           <label>نام کالا<input value={name} onChange={(event) => setName(event.target.value)} /></label>
@@ -714,8 +1007,20 @@ function Inventory({ data, run }: { data: AppSnapshot; run: (action: () => Promi
           <div className="form-actions"><button className="primary" type="submit"><PackagePlus size={18} />{editingId ? 'ویرایش کالا' : 'ثبت کالا'}</button><button className="secondary" type="button" onClick={close}>انصراف</button></div>
         </form>
       </Modal>
+      <Modal title={`انبارگردانی ${adjustItem?.name ?? ''}`} open={Boolean(adjustItem)} onClose={closeAdjust}>
+        {adjustItem && <form className="compact-form" onSubmit={(event) => { event.preventDefault(); const amount = Math.max(Number(adjustAmount || 0), 0); const delta = adjustType === 'increase' ? amount : -amount; void run(async () => { await backend.adjustInventory(adjustItem.id, delta); closeAdjust(); }, adjustNote.trim() ? `موجودی تغییر کرد - ${adjustNote.trim()}` : 'موجودی تغییر کرد'); }}>
+          <p className="muted">موجودی فعلی: {adjustItem.quantity.toLocaleString('fa-IR')} {adjustItem.unit}</p>
+          <div className="segmented"><button type="button" className={adjustType === 'increase' ? 'active' : ''} onClick={() => setAdjustType('increase')}>افزایش</button><button type="button" className={adjustType === 'decrease' ? 'active' : ''} onClick={() => setAdjustType('decrease')}>کاهش</button></div>
+          <label>مقدار<input value={adjustAmount} inputMode="numeric" onChange={(event) => setAdjustAmount(event.target.value)} /></label>
+          <label>توضیح تغییر<textarea value={adjustNote} onChange={(event) => setAdjustNote(event.target.value)} /></label>
+          <div className="form-actions"><button className="primary" type="submit">ثبت تغییر</button><button className="secondary" type="button" onClick={closeAdjust}>انصراف</button></div>
+        </form>}
+      </Modal>
+      <div className="metrics"><Metric label="کل اقلام" value={data.inventory.length.toLocaleString('fa-IR')} /><Metric label="کل موجودی" value={totalQuantity.toLocaleString('fa-IR')} /><Metric label="کم‌موجودی" value={lowStock.toLocaleString('fa-IR')} /></div>
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی کالا" /><Picker label="فیلتر موجودی" value={stockFilter} onChange={setStockFilter} options={[{ value: 'all', label: 'همه کالاها' }, { value: 'low', label: 'کم‌موجودی' }, { value: 'normal', label: 'موجودی کافی' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setStockFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لیست انبار">
-        {data.inventory.map((item) => <article className="card-row" key={item.id}><div><h3>{item.name}</h3><p>{item.quantity.toLocaleString('fa-IR')} {item.unit}</p>{item.quantity <= item.minQuantity && <span className="pill warning">کمبود</span>}{item.note && <p>{item.note}</p>}</div><div className="stepper"><button type="button" className="wide-step" onClick={() => openEdit(item)}>ویرایش</button><button type="button" onClick={() => void run(() => backend.adjustInventory(item.id, -1), 'موجودی کم شد')}><Minus size={18} /></button><button type="button" onClick={() => void run(() => backend.adjustInventory(item.id, 1), 'موجودی زیاد شد')}>+</button><button type="button" className="danger-mini" onClick={() => void run(() => backend.deleteInventoryItem(item.id), 'کالا حذف شد')}><Trash2 size={16} /></button></div></article>)}
+        {filtered.map((item) => <article className="card-row" key={item.id}><div><h3>{item.name}</h3><p>{item.quantity.toLocaleString('fa-IR')} {item.unit} / حد هشدار {item.minQuantity.toLocaleString('fa-IR')}</p>{item.quantity <= item.minQuantity && <span className="pill warning">کمبود</span>}{item.note && <p>{item.note}</p>}</div><div className="stepper"><button type="button" className="wide-step" onClick={() => openAdjust(item)}>انبارگردانی</button><button type="button" className="wide-step" onClick={() => openEdit(item)}>ویرایش</button><button type="button" onClick={() => void run(() => backend.adjustInventory(item.id, -1), 'موجودی کم شد')}><Minus size={18} /></button><button type="button" onClick={() => void run(() => backend.adjustInventory(item.id, 1), 'موجودی زیاد شد')}>+</button><button type="button" className="danger-mini" onClick={() => void run(() => backend.deleteInventoryItem(item.id), 'کالا حذف شد')}><Trash2 size={16} /></button></div></article>)}
+        {filtered.length === 0 && <Empty text="کالایی پیدا نشد" />}
       </List>
     </section>
   );
@@ -726,12 +1031,24 @@ function UsersPage({ data, run }: { data: AppSnapshot; run: (action: () => Promi
   const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [role, setRole] = useState('assistant');
+  const [query, setQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedId, setSelectedId] = useState('');
+  const [selectedRole, setSelectedRole] = useState('assistant');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const reset = () => { setEditingId(''); setUsername(''); setName(''); setPin(''); setRole('assistant'); };
   const close = () => { reset(); setFormOpen(false); };
   const openCreate = () => { reset(); setFormOpen(true); };
   const openEdit = (item: AppSnapshot['users'][number]) => { setEditingId(item.id); setUsername(item.username); setName(item.name); setPin(''); setRole(item.role); setFormOpen(true); };
+  const filtered = data.users.filter((item) => {
+    const matchesText = `${item.name} ${item.username}`.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesRole = roleFilter === 'all' || item.role === roleFilter;
+    const matchesStatus = statusFilter === 'all' || statusFilter === 'active';
+    return matchesText && matchesRole && matchesStatus;
+  });
+  const selectedUser = data.users.find((item) => item.id === selectedId);
   return (
     <section className="stack">
       <PageActions title="کاربران" actionLabel="افزودن کاربر" onAction={openCreate} />
@@ -742,31 +1059,60 @@ function UsersPage({ data, run }: { data: AppSnapshot; run: (action: () => Promi
           <div className="form-actions"><button className="primary" type="submit"><ShieldCheck size={18} />{editingId ? 'ویرایش کاربر' : 'ثبت کاربر'}</button><button className="secondary" type="button" onClick={close}>انصراف</button></div>
         </form>
       </Modal>
+      <Modal title="جزئیات کاربر" open={Boolean(selectedUser)} onClose={() => setSelectedId('')}>
+        {selectedUser && <div className="stack"><div className="metrics"><Metric label="نام" value={selectedUser.name} /><Metric label="نقش" value={selectedUser.role === 'manager' ? 'مدیر' : 'دستیار'} /></div><p dir="ltr">{selectedUser.username}</p><p className="muted">همه کاربران لوکال فعلا فعال هستند و حذف کاربر تنها وضعیت غیرفعال واقعی سایت را جایگزین می‌کند.</p></div>}
+      </Modal>
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی نام یا نام کاربری" /><Picker label="فیلتر نقش" value={roleFilter} onChange={setRoleFilter} options={[{ value: 'all', label: 'همه نقش‌ها' }, { value: 'manager', label: 'مدیر' }, { value: 'assistant', label: 'دستیار' }]} /><Picker label="فیلتر وضعیت" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه وضعیت‌ها' }, { value: 'active', label: 'فعال' }, { value: 'disabled', label: 'غیرفعال' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setRoleFilter('all'); setStatusFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لیست کاربران">
-        {data.users.map((item) => <article className="row" key={item.id}><div><h3>{item.name}</h3><p dir="ltr">{item.username}</p></div><div className="row-actions"><span className="pill">{item.role === 'manager' ? 'مدیر' : 'دستیار'}</span><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteUser(item.id), 'کاربر حذف شد')}><Trash2 size={16} /></button></div></article>)}
+        {filtered.map((item) => <article className="row" key={item.id}><div><h3>{item.name}</h3><p dir="ltr">{item.username}</p><p className="muted">وضعیت: فعال</p></div><div className="row-actions"><span className="pill">{item.role === 'manager' ? 'مدیر' : 'دستیار'}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteUser(item.id), 'کاربر حذف شد')}><Trash2 size={16} /></button></div></article>)}
+        {filtered.length === 0 && <Empty text="کاربری پیدا نشد" />}
       </List>
+      <section className="panel"><h2>دسترسی نقش‌ها</h2><Picker label="نقش" value={selectedRole} onChange={setSelectedRole} options={[{ value: 'assistant', label: 'دستیار' }, { value: 'manager', label: 'مدیر' }]} /><div className="permission-grid">{permissionLabels.map((item) => <label className="check-row" key={item.key}><input type="checkbox" checked={selectedRole === 'manager' || item.assistant} readOnly />{item.label}</label>)}</div><button className="secondary" type="button" onClick={() => undefined}>ذخیره دسترسی‌ها</button></section>
     </section>
   );
 }
 
 
 function Notifications({ data, run }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void> }) {
+  const [query, setQuery] = useState('');
+  const [levelFilter, setLevelFilter] = useState('all');
+  const [dismissed, setDismissed] = useState<string[]>([]);
   const generated = dueNotifications(data);
-  const unseen = data.notifications.filter((item) => !item.seen).length + generated.length;
+  const allNotifications = [
+    ...generated.map((item) => ({ ...item, seen: 0, generated: true })),
+    ...data.notifications.map((item) => ({ ...item, level: item.seen ? 'info' : 'warning', generated: false }))
+  ].filter((item) => !dismissed.includes(item.id));
+  const filtered = allNotifications.filter((item) => {
+    const matchesText = `${item.title} ${item.body}`.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesLevel = levelFilter === 'all' || item.level === levelFilter;
+    return matchesText && matchesLevel;
+  });
+  const unseen = allNotifications.filter((item) => !item.seen).length;
   return (
     <section className="stack">
       <section className="panel section-heading"><div><h2>اعلان‌ها</h2><p className="muted">{unseen.toLocaleString('fa-IR')} اعلان خوانده نشده</p></div><button className="secondary" type="button" onClick={() => void run(() => backend.markNotificationsSeen(), 'اعلان‌ها خوانده شد')}>تایید همه</button></section>
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجو در اعلان‌ها" /><Picker label="سطح اعلان" value={levelFilter} onChange={setLevelFilter} options={[{ value: 'all', label: 'همه اعلان‌ها' }, { value: 'critical', label: 'بحرانی' }, { value: 'warning', label: 'هشدار' }, { value: 'info', label: 'اطلاع‌رسانی' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setLevelFilter('all'); }}>پاک کردن فیلترها</button></div>
       <div className="list">
-        {generated.map((item) => <article className="row notification-row" key={item.id}><div><h3>{item.title}</h3><p>{item.body}</p></div><span className="dot" /></article>)}
-        {data.notifications.map((item) => <article className="row notification-row" key={item.id}><div><h3>{item.title}</h3><p>{item.body}</p></div>{!item.seen && <span className="dot" />}</article>)}
-        {generated.length === 0 && data.notifications.length === 0 && <Empty text="اعلانی وجود ندارد" />}
+        {filtered.map((item) => <article className="row notification-row" key={item.id}><div><h3>{item.title}</h3><p>{item.body}</p><p className="muted">{item.level === 'critical' ? 'بحرانی' : item.level === 'warning' ? 'هشدار' : 'اطلاع‌رسانی'}</p></div><div className="row-actions">{!item.seen && <span className="dot" />}<button className="secondary mini" type="button" onClick={() => setDismissed((prev) => [...prev, item.id])}>تایید</button></div></article>)}
+        {filtered.length === 0 && <Empty text="اعلانی وجود ندارد" />}
       </div>
     </section>
   );
 }
 
 function ActivityLog({ data }: { data: AppSnapshot }) {
-  return <List title="گزارش عملیات">{data.activities.map((item) => <article className="row" key={item.id}><div><h3>{item.title}</h3><p>{item.body}</p></div><span>{dateText(item.createdAt)}</span></article>)}{data.activities.length === 0 && <Empty text="هنوز عملیاتی ثبت نشده است" />}</List>;
+  const [query, setQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [actionFilter, setActionFilter] = useState('all');
+  const types = Array.from(new Set(data.activities.map((item) => item.type))).filter(Boolean);
+  const actions = Array.from(new Set(data.activities.map((item) => item.title))).filter(Boolean);
+  const filtered = data.activities.filter((item) => {
+    const matchesText = `${item.type} ${item.title} ${item.body}`.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesType = typeFilter === 'all' || item.type === typeFilter;
+    const matchesAction = actionFilter === 'all' || item.title === actionFilter;
+    return matchesText && matchesType && matchesAction;
+  });
+  return <section className="stack"><div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجو: کاربر، نوع، عملیات، شرح" /><Picker label="نوع موجودیت" value={typeFilter} onChange={setTypeFilter} options={[{ value: 'all', label: 'همه نوع‌ها' }, ...types.map((value) => ({ value, label: activityTypeLabel(value) }))]} /><Picker label="عملیات" value={actionFilter} onChange={setActionFilter} options={[{ value: 'all', label: 'همه عملیات‌ها' }, ...actions.map((value) => ({ value, label: value }))]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setTypeFilter('all'); setActionFilter('all'); }}>پاک کردن فیلترها</button></div><List title="گزارش عملیات">{filtered.map((item) => <article className="row" key={item.id}><div><h3>{item.title}</h3><p>{item.body}</p><p className="muted">{activityTypeLabel(item.type)}</p></div><span>{dateText(item.createdAt)}</span></article>)}{filtered.length === 0 && <Empty text="هنوز عملیاتی ثبت نشده است" />}</List></section>;
 }
 
 function Reports({ data }: { data: AppSnapshot }) {
@@ -786,9 +1132,18 @@ function Reports({ data }: { data: AppSnapshot }) {
 
 function Backup({ data, run, reload }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void>; reload: () => Promise<void> }) {
   const json = useMemo(() => JSON.stringify(data, null, 2), [data]);
+  const [intervalInput, setIntervalInput] = useState('1440');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   function download() {
     downloadText(`best-mobile-backup-${new Date().toISOString().slice(0, 10)}.json`, json, 'application/json;charset=utf-8');
   }
+  const backupRows = data.activities.filter((item) => item.type === 'backup').map((item) => ({ ...item, status: item.title.includes('بازیابی') ? 'SUCCESS' : 'SUCCESS' }));
+  const filteredBackups = backupRows.filter((item) => {
+    const matchesText = `${item.id} ${item.title} ${item.body} ${dateText(item.createdAt)}`.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+    return matchesText && matchesStatus;
+  });
   async function importFile(file?: File) {
     if (!file) return;
     const text = await file.text();
@@ -797,7 +1152,12 @@ function Backup({ data, run, reload }: { data: AppSnapshot; run: (action: () => 
   }
   return (
     <section className="stack">
-      <section className="panel"><h2>پشتیبان داده‌ها</h2><p className="muted">همه داده‌ها داخل SQLite گوشی ذخیره می‌شود. خروجی JSON برای انتقال دستی یا نگهداری امن است و با آپدیت APK پاک نمی‌شود.</p><button className="primary" type="button" onClick={download}><Database size={18} />خروجی JSON</button><label className="upload-button"><Upload size={18} />ریستور JSON<input type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} /></label></section>
+      <section className="panel"><h2>پشتیبان داده‌ها</h2><p className="muted">همه داده‌ها داخل SQLite گوشی ذخیره می‌شود. خروجی JSON برای انتقال دستی یا نگهداری امن است و با آپدیت APK پاک نمی‌شود.</p><div className="form-grid"><label>فاصله بکاپ خودکار (دقیقه)<input value={intervalInput} inputMode="numeric" onChange={(event) => setIntervalInput(event.target.value)} /></label><button className="secondary" type="button" onClick={() => undefined}>ذخیره تنظیمات</button></div><button className="primary" type="button" onClick={download}><Database size={18} />اجرای بکاپ و دانلود</button><label className="upload-button"><Upload size={18} />ریستور JSON<input type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} /></label></section>
+      <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجو: شناسه بکاپ، تاریخ، فایل" /><Picker label="وضعیت بکاپ" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه وضعیت‌ها' }, { value: 'SUCCESS', label: 'موفق' }, { value: 'FAILED', label: 'ناموفق' }, { value: 'PENDING', label: 'در انتظار' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setStatusFilter('all'); }}>پاک کردن فیلترها</button></div>
+      <List title="لاگ بکاپ‌ها">
+        {filteredBackups.map((item) => <article className="row detail-row" key={item.id}><div><h3>{item.title}</h3><p>{item.body}</p><p className="muted">{dateText(item.createdAt)}</p></div><div className="row-actions"><span className="pill paid">موفق</span><button className="secondary mini" type="button" onClick={download}><Download size={16} />دانلود JSON</button></div></article>)}
+        {filteredBackups.length === 0 && <Empty text="لاگ بکاپی پیدا نشد" />}
+      </List>
       <pre className="backup-preview">{json}</pre>
     </section>
   );
@@ -815,6 +1175,10 @@ function List({ title, children }: { title: string; children: ReactNode }) {
   return <section className="section"><h2>{title}</h2><div className="list">{children}</div></section>;
 }
 
+function FlowSection({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="flow-section"><h3>{title}</h3>{children}</section>;
+}
+
 function Empty({ text }: { text: string }) {
   return <p className="empty">{text}</p>;
 }
@@ -822,9 +1186,75 @@ function Empty({ text }: { text: string }) {
 function dueNotifications(data: AppSnapshot) {
   const nowDate = new Date();
   const soon = new Date(nowDate.getTime() + 3 * 24 * 60 * 60 * 1000);
-  const orders = data.orders.filter((order) => order.dueDate && !['delivered', 'cancelled'].includes(order.status) && new Date(order.dueDate) <= soon).map((order) => ({ id: `order-${order.id}`, title: `موعد سفارش ${order.title}`, body: `تاریخ تحویل: ${dateText(order.dueDate)}` }));
-  const invoices = data.invoices.filter((invoice) => invoice.status !== 'paid' && invoice.dueDate && new Date(invoice.dueDate) <= soon).map((invoice) => ({ id: `invoice-${invoice.id}`, title: `سررسید فاکتور ${invoice.title}`, body: `${invoice.customerName} - مانده ${money(invoice.amount - invoice.paid)}` }));
+  const orders = data.orders.filter((order) => order.dueDate && !['delivered', 'cancelled'].includes(order.status) && new Date(order.dueDate) <= soon).map((order) => ({ id: `order-${order.id}`, title: `موعد سفارش ${order.title}`, body: `تاریخ تحویل: ${dateText(order.dueDate)}`, level: new Date(order.dueDate) < nowDate ? 'critical' : 'warning' }));
+  const invoices = data.invoices.filter((invoice) => invoice.status !== 'paid' && invoice.dueDate && new Date(invoice.dueDate) <= soon).map((invoice) => ({ id: `invoice-${invoice.id}`, title: `سررسید فاکتور ${invoice.title}`, body: `${invoice.customerName} - مانده ${money(invoice.amount - invoice.paid)}`, level: new Date(invoice.dueDate) < nowDate ? 'critical' : 'warning' }));
   return [...orders, ...invoices];
+}
+
+function activityTypeLabel(value: string) {
+  const labels: Record<string, string> = {
+    order: 'سفارش',
+    invoice: 'فاکتور',
+    customer: 'مشتری',
+    collaborator: 'همکار',
+    inventory: 'انبار',
+    mesh: 'نوع توری',
+    user: 'کاربر',
+    backup: 'بکاپ'
+  };
+  return labels[value] ?? value;
+}
+
+function safeFilePart(value: string) {
+  return (value || 'best').replace(/[\\/:*?"<>|\r\n]+/g, '_').trim().slice(0, 80) || 'best';
+}
+function downloadPdf(filename: string, title: string, lines: string[]) {
+  if (window.BestAndroid?.savePdfFile) {
+    window.BestAndroid.savePdfFile(filename, title, JSON.stringify(lines));
+    return;
+  }
+
+  const rows = lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
+  downloadText(filename.replace(/\.pdf$/i, '.html'), `<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>body{font-family:Tahoma,Arial,sans-serif;margin:32px;color:#172033}h1{color:#174f91}li{margin:10px 0;padding:12px;border:1px solid #cbd5e1;border-radius:12px;list-style:none;background:#f8fafc}</style><h1>${escapeHtml(title)}</h1><ul>${rows}</ul></html>`, 'text/html;charset=utf-8');
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char);
+}
+
+function downloadOrderLabelsPdf(order: Order) {
+  const lines = [
+    `سفارش: ${order.title}`,
+    `مشتری: ${order.customerName || '-'}`,
+    `همکار: ${order.collaboratorName || '-'}`,
+    `نوع کار: ${workTypeLabels[order.workType]}`,
+    `تحویل: ${dateText(order.dueDate)}`,
+    ...order.lineItems.flatMap((item, index) => [
+      `لیبل ${index + 1}: ${item.meshTitle}`,
+      `ابعاد: ${sizeText(item.width, item.height)} / تعداد: ${numberText(item.quantity)} عدد`,
+      `قیمت: ${money(item.total)}${item.description ? ` / ${item.description}` : ''}`
+    ])
+  ];
+  downloadPdf(`best-labels-${safeFilePart(order.title)}.pdf`, `لیبل‌های سفارش ${order.title}`, lines);
+}
+
+function downloadInvoicePdf(invoice: Invoice, orders: Order[] = []) {
+  const remaining = Math.max(invoice.amount - invoice.paid, 0);
+  const orderTitles = orders.length ? orders.map((order) => order.title).join('، ') : invoice.orderTitle;
+  const lines = [
+    `فاکتور: ${invoice.title || invoice.orderTitle || invoice.id}`,
+    `سفارش‌ها: ${orderTitles || '-'}`,
+    `مشتری: ${invoice.customerName || '-'}`,
+    `همکار بدهکار: ${invoice.payerName || '-'}`,
+    `مبلغ کل: ${money(invoice.amount)}`,
+    `پرداخت شده: ${money(invoice.paid)}`,
+    `مانده: ${money(remaining)}`,
+    `تخفیف: ${money(invoice.discount ?? 0)}`,
+    `وضعیت: ${invoiceStatusLabels[invoice.status]}`,
+    `سررسید: ${dateText(invoice.dueDate)}`,
+    invoice.note ? `توضیحات: ${invoice.note}` : ''
+  ].filter(Boolean);
+  downloadPdf(`best-invoice-${safeFilePart(invoice.title || invoice.orderTitle || invoice.id)}.pdf`, `فاکتور ${invoice.title || invoice.orderTitle || invoice.id}`, lines);
 }
 
 function downloadText(filename: string, content: string, type: string) {
@@ -840,28 +1270,4 @@ function downloadText(filename: string, content: string, type: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function printHtml(body: string) {
-  const win = window.open('', '_blank');
-  if (!win) return;
-  win.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>BEST</title></head><body>${body}</body></html>`);
-  win.document.close();
-  win.print();
-}
-
-function csv(rows: Array<Array<string | number>>) {
-  return rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
-}
-
-function exportCustomersCsv(items: AppSnapshot['customers']) {
-  downloadText('best-customers.csv', csv([['name', 'phone', 'address', 'note'], ...items.map((item) => [item.name, item.phone, item.address, item.note])]), 'text/csv;charset=utf-8');
-}
-
-function exportOrdersCsv(items: AppSnapshot['orders']) {
-  downloadText('best-orders.csv', csv([['title', 'customer', 'collaborator', 'status', 'workType', 'total', 'dueDate'], ...items.map((item) => [item.title, item.customerName, item.collaboratorName, statusLabels[item.status], workTypeLabels[item.workType], item.total, item.dueDate])]), 'text/csv;charset=utf-8');
-}
-
-function exportInventoryCsv(items: AppSnapshot['inventory']) {
-  downloadText('best-inventory.csv', csv([['name', 'quantity', 'unit', 'minQuantity', 'note'], ...items.map((item) => [item.name, item.quantity, item.unit, item.minQuantity, item.note])]), 'text/csv;charset=utf-8');
 }

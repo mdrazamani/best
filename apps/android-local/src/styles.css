@@ -169,6 +169,11 @@ button {
   color: var(--muted);
 }
 
+.tiny-text {
+  margin: 0;
+  font-size: 12px;
+}
+
 .metric strong {
   font-size: 19px;
   line-height: 1.25;
@@ -189,13 +194,13 @@ button {
 
 .compact-form {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 .form-grid.four {
@@ -213,7 +218,8 @@ button {
 
 .form-actions {
   justify-content: flex-start;
-  padding-top: 4px;
+  margin-top: 4px;
+  padding-top: 10px;
 }
 
 .page-actions {
@@ -236,16 +242,97 @@ button {
 
 .line-item-editor {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 12px;
+  padding: 12px;
   border: 1px dashed var(--line);
   border-radius: 10px;
   background: rgba(248, 250, 252, 0.8);
 }
 
+.flow-section {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.flow-section h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.quick-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
+  gap: 10px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.line-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.line-item-head strong,
+.line-item-head span {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.line-item-head span {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.full-button {
+  width: 100%;
+}
+
+.prominent-check {
+  padding: 10px;
+  border: 1px solid rgba(23, 79, 145, 0.22);
+  border-radius: 10px;
+  background: rgba(23, 79, 145, 0.06);
+}
+
+.multi-select {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.8);
+}
+
+.multi-select strong {
+  font-size: 14px;
+}
+
+.multi-select p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.multi-select > div {
+  display: grid;
+  gap: 10px;
+  max-height: 220px;
+  overflow: auto;
+}
+
 label {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   color: var(--muted);
   font-size: 13px;
 }
@@ -271,7 +358,7 @@ textarea {
 
 .picker-field {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   color: var(--muted);
   font-size: 13px;
 }
@@ -457,15 +544,21 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: -12px -12px 12px;
-  padding: 12px;
+  margin: -12px -12px 18px;
+  padding: 14px 12px 12px;
   background: rgba(255, 255, 255, 0.98);
   border-bottom: 1px solid rgba(203, 213, 225, 0.8);
+  box-shadow: 0 10px 0 var(--surface);
 }
 
 .modal-head h2 {
   margin: 0;
   font-size: 18px;
+}
+
+.modal-panel > .compact-form,
+.modal-panel > .stack {
+  padding-top: 4px;
 }
 
 input:focus,
@@ -663,6 +756,10 @@ textarea:focus {
 .filter-grid {
   display: grid;
   gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .detail-row {
@@ -674,25 +771,135 @@ textarea:focus {
 }
 
 .line-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  display: grid;
+  overflow: hidden;
+  margin-top: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 12px;
+  background: #fff;
 }
 
-.line-summary span {
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: var(--muted);
-  background: #fff;
+.line-table-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) minmax(104px, 1.05fr) minmax(42px, 0.42fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.line-table-row:first-child {
+  border-top: 0;
+}
+
+.line-table-head {
+  background: rgba(248, 250, 252, 0.92);
+  min-height: 34px;
+}
+
+.line-table-head span {
+  color: var(--primary);
   font-size: 11px;
-  white-space: normal;
+  font-weight: 800;
+}
+
+.line-table-row strong,
+.line-table-row span {
+  min-width: 0;
+  padding: 0 6px;
+  text-align: right;
+  line-height: 1.55;
+}
+
+.line-table-row > *:not(:last-child) {
+  border-left: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.line-table-row strong {
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.line-table-row span {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.line-table-row span:nth-child(2),
+.line-table-row span:nth-child(3) {
+  white-space: nowrap;
+}
+
+.line-table-row span:nth-child(2) {
+  direction: ltr;
+  text-align: center;
+}
+
+.line-table-row span:nth-child(3) {
+  text-align: center;
+}
+
+.label-download {
+  color: #fff;
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.label-download:hover {
+  background: #174f91;
+}
+
+.line-detail {
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+  display: grid;
+  gap: 5px;
+}
+
+.line-detail h3 {
+  margin: 0;
 }
 
 .side-actions {
   flex-direction: column;
   align-items: flex-end;
+}
+
+.inline-actions {
+  align-items: stretch;
+  width: 100%;
+}
+
+.detail-payment {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.segmented button {
+  min-height: 42px;
+  color: var(--muted);
+  background: rgba(226, 232, 240, 0.75);
+}
+
+.segmented button.active {
+  color: #fff;
+  background: var(--primary);
+}
+
+.permission-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .toolbar {
@@ -893,6 +1100,23 @@ textarea:focus {
   padding: 22px;
 }
 
+.login-screen .panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.login-screen .primary {
+  min-width: 112px;
+  margin-top: 6px;
+  justify-self: start;
+}
+
+.compact-form > .primary,
+.compact-form > .secondary {
+  margin-top: 2px;
+}
+
 .brand-mark {
   width: 64px;
   height: 64px;
@@ -932,6 +1156,10 @@ textarea:focus {
 
   .form-grid.four {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quick-create {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .card-row,
@@ -1057,7 +1285,7 @@ textarea:focus {
   }
 
   .modal-head {
-    margin: -16px -16px 16px;
+    margin: -16px -16px 20px;
     padding: 14px 16px;
   }
 
