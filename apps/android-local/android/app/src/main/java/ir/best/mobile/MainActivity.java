@@ -4,6 +4,7 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -16,6 +17,10 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextPaint;
+import android.text.TextUtils;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -30,6 +35,7 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -63,6 +69,19 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public String saveLabelPdfFile(String filename, String labelsJson, boolean openAfterSave) {
+            try {
+                JSONArray labels = new JSONArray(labelsJson == null ? "[]" : labelsJson);
+                byte[] bytes = createLabelPdf(labels);
+                String safeName = sanitizeFilename(filename == null || filename.trim().isEmpty() ? "best-labels.pdf" : filename);
+                if (!safeName.toLowerCase().endsWith(".pdf")) safeName = safeName + ".pdf";
+                return saveBytesFile(safeName, bytes, "application/pdf", openAfterSave);
+            } catch (Exception error) {
+                throw new RuntimeException("Could not save labels PDF: " + error.getMessage(), error);
+            }
+        }
+
+        @JavascriptInterface
         public String saveHtmlPdfFile(String filename, String html, int widthMm, int heightMm, boolean openAfterSave) {
             String safeName = sanitizeFilename(filename == null || filename.trim().isEmpty() ? "best.pdf" : filename);
             if (!safeName.toLowerCase().endsWith(".pdf")) safeName = safeName + ".pdf";
@@ -87,6 +106,9 @@ public class MainActivity extends BridgeActivity {
         webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
         webView.getSettings().setJavaScriptEnabled(false);
         webView.getSettings().setLoadsImagesAutomatically(true);
+        webView.getSettings().setUseWideViewPort(false);
+        webView.getSettings().setLoadWithOverviewMode(false);
+        webView.setInitialScale(100);
         webView.setWebViewClient(new WebViewClient() {
             private boolean printed = false;
 
@@ -164,14 +186,27 @@ public class MainActivity extends BridgeActivity {
         webView.setTranslationX(0f);
         webView.setTranslationY(0f);
         try {
+            int outputPageNumber = 1;
             for (int pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
-                PdfDocument.Page page = document.startPage(new PdfDocument.PageInfo.Builder(pageWidthPoints, pageHeightPoints, pageIndex + 1).create());
+                Bitmap pageBitmap = Bitmap.createBitmap(viewWidthPx, viewPageHeightPx, Bitmap.Config.ARGB_8888);
+                Canvas bitmapCanvas = new Canvas(pageBitmap);
+                bitmapCanvas.drawColor(Color.WHITE);
+                bitmapCanvas.translate(0, -pageIndex * viewPageHeightPx);
+                webView.draw(bitmapCanvas);
+
+                if (pageIndex > 0 && isBlankBitmap(pageBitmap)) {
+                    pageBitmap.recycle();
+                    continue;
+                }
+
+                PdfDocument.Page page = document.startPage(new PdfDocument.PageInfo.Builder(pageWidthPoints, pageHeightPoints, outputPageNumber).create());
                 Canvas canvas = page.getCanvas();
                 canvas.drawColor(Color.WHITE);
-                canvas.scale(pageWidthPoints / (float) viewWidthPx, pageHeightPoints / (float) viewPageHeightPx);
-                canvas.translate(0, -pageIndex * viewPageHeightPx);
-                webView.draw(canvas);
+                RectF target = labelPageTargetRect(pageWidthMm, pageHeightMm, pageWidthPoints, pageHeightPoints);
+                canvas.drawBitmap(pageBitmap, null, target, null);
                 document.finishPage(page);
+                pageBitmap.recycle();
+                outputPageNumber += 1;
             }
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             document.writeTo(output);
@@ -183,8 +218,138 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private boolean isBlankBitmap(Bitmap bitmap) {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int step = Math.max(4, Math.min(width, height) / 90);
+        int nonWhite = 0;
+        int sampled = 0;
+
+        for (int y = 0; y < height; y += step) {
+            for (int x = 0; x < width; x += step) {
+                int color = bitmap.getPixel(x, y);
+                sampled += 1;
+                if (Color.red(color) < 248 || Color.green(color) < 248 || Color.blue(color) < 248) {
+                    nonWhite += 1;
+                    if (nonWhite > Math.max(8, sampled / 350)) return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private RectF labelPageTargetRect(int widthMm, int heightMm, int pageWidthPoints, int pageHeightPoints) {
+        if (widthMm == 34 && heightMm == 24) {
+            float leftInsetPoints = 0.4f * 72f / 25.4f;
+            float rightInsetPoints = 0.13f * 72f / 25.4f;
+            return new RectF(leftInsetPoints, 0f, pageWidthPoints - rightInsetPoints, pageHeightPoints);
+        }
+
+        return new RectF(0f, 0f, pageWidthPoints, pageHeightPoints);
+    }
+
     private int mmToPx(int mm) {
-        return Math.max(Math.round(mm * getResources().getDisplayMetrics().xdpi / 25.4f), 1);
+        return Math.max(Math.round(mm * 96f / 25.4f), 1);
+    }
+
+    private byte[] createLabelPdf(JSONArray labels) throws Exception {
+        PdfDocument document = new PdfDocument();
+        int width = Math.max(1, Math.round(34f * 72f / 25.4f));
+        int height = Math.max(1, Math.round(24f * 72f / 25.4f));
+        int count = Math.max(labels.length(), 1);
+
+        try {
+            for (int index = 0; index < count; index += 1) {
+                JSONObject label = index < labels.length() ? labels.optJSONObject(index) : null;
+                String dimensions = label == null ? "-" : label.optString("dimensions", "-");
+                String customerName = label == null ? "-" : label.optString("customerName", "-");
+                String contact = label == null ? "-" : label.optString("contact", "-");
+
+                PdfDocument.Page page = document.startPage(new PdfDocument.PageInfo.Builder(width, height, index + 1).create());
+                Canvas canvas = page.getCanvas();
+                drawLabelPage(canvas, width, height, dimensions, customerName, contact);
+                document.finishPage(page);
+            }
+
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            document.writeTo(output);
+            return output.toByteArray();
+        } finally {
+            document.close();
+        }
+    }
+
+    private void drawLabelPage(Canvas canvas, int width, int height, String dimensions, String customerName, String contact) {
+        canvas.drawColor(Color.WHITE);
+
+        Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        borderPaint.setStyle(Paint.Style.STROKE);
+        borderPaint.setStrokeWidth(0.9f);
+        borderPaint.setColor(Color.rgb(203, 213, 225));
+        RectF border = new RectF(2.5f, 2.5f, width - 2.5f, height - 2.5f);
+        canvas.drawRoundRect(border, 4.5f, 4.5f, borderPaint);
+
+        TextPaint dimensionPaint = createLabelTextPaint(18.5f, true);
+        TextPaint customerPaint = createLabelTextPaint(pickLabelTextSize(customerName, 8.9f, 6.3f), true);
+        TextPaint contactPaint = createLabelTextPaint(pickLabelTextSize(contact, 8.2f, 6.2f), true);
+        contactPaint.setLetterSpacing(0.04f);
+
+        drawCenteredLabelText(canvas, dimensions, dimensionPaint, 7.4f, width, 22);
+        drawCenteredLabelText(canvas, customerName, customerPaint, 31.8f, width, 16);
+        drawCenteredLabelText(canvas, contact, contactPaint, 46.4f, width, 14);
+    }
+
+    private TextPaint createLabelTextPaint(float size, boolean bold) {
+        TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        paint.setColor(Color.rgb(15, 23, 42));
+        paint.setTextSize(size);
+        paint.setTypeface(Typeface.create(Typeface.SANS_SERIF, bold ? Typeface.BOLD : Typeface.NORMAL));
+        paint.setTextAlign(Paint.Align.LEFT);
+        return paint;
+    }
+
+    private float pickLabelTextSize(String value, float baseSize, float minSize) {
+        int length = value == null ? 0 : value.trim().length();
+        if (length <= 14) return baseSize;
+        if (length <= 20) return Math.max(baseSize - 1.0f, minSize);
+        if (length <= 28) return Math.max(baseSize - 1.8f, minSize);
+        return minSize;
+    }
+
+    private void drawCenteredLabelText(Canvas canvas, String value, TextPaint paint, float top, int pageWidth, int boxHeight) {
+        String text = value == null || value.trim().isEmpty() ? "-" : value.trim();
+        int availableWidth = Math.max(1, pageWidth - 12);
+        fitLabelTextSize(text, paint, availableWidth);
+        StaticLayout layout = createSingleLineLayout(text, paint, availableWidth);
+
+        canvas.save();
+        canvas.translate(6, top + Math.max(0, (boxHeight - layout.getHeight()) / 2f));
+        layout.draw(canvas);
+        canvas.restore();
+    }
+
+    private void fitLabelTextSize(String text, TextPaint paint, int availableWidth) {
+        float minSize = paint.getTextSize() >= 16f ? 12f : 5.1f;
+        while (paint.measureText(text) > availableWidth && paint.getTextSize() > minSize) {
+            paint.setTextSize(Math.max(minSize, paint.getTextSize() - 0.35f));
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private StaticLayout createSingleLineLayout(String text, TextPaint paint, int availableWidth) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return StaticLayout.Builder
+                .obtain(text, 0, text.length(), paint, availableWidth)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setMaxLines(1)
+                .setEllipsize(TextUtils.TruncateAt.END)
+                .setIncludePad(false)
+                .build();
+        }
+
+        CharSequence ellipsized = TextUtils.ellipsize(text, paint, availableWidth, TextUtils.TruncateAt.END);
+        return new StaticLayout(ellipsized, paint, availableWidth, Layout.Alignment.ALIGN_CENTER, 1f, 0f, false);
     }
 
     private byte[] createSimplePdf(String title, JSONArray lines) throws Exception {

@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Database,
   Download,
+  Factory,
   Grid2X2,
   LayoutDashboard,
   LogOut,
@@ -17,6 +18,7 @@ import {
   PackagePlus,
   ReceiptText,
   Search,
+  Settings,
   ShieldCheck,
   Trash2,
   Upload,
@@ -29,12 +31,17 @@ import {
 import { backend } from '../data/backend';
 import type { AppSnapshot, DashboardStats, Invoice, InvoiceStatus, Order, OrderLineItem, OrderStatus, WorkType } from '../data/types';
 import torbestLogoUrl from '../assets/torbest-logo.png';
+import vazirmatnArabic400Url from '@fontsource/vazirmatn/files/vazirmatn-arabic-400-normal.woff2?url';
+import vazirmatnArabic600Url from '@fontsource/vazirmatn/files/vazirmatn-arabic-600-normal.woff2?url';
+import vazirmatnArabic700Url from '@fontsource/vazirmatn/files/vazirmatn-arabic-700-normal.woff2?url';
+import vazirmatnArabic900Url from '@fontsource/vazirmatn/files/vazirmatn-arabic-900-normal.woff2?url';
 
 declare global {
   interface Window {
     BestAndroid?: {
       saveTextFile: (filename: string, content: string, mimeType: string) => string;
       savePdfFile?: (filename: string, title: string, linesJson: string) => string;
+      saveLabelPdfFile?: (filename: string, labelsJson: string, openAfterSave: boolean) => string;
       saveHtmlPdfFile?: (filename: string, html: string, widthMm: number, heightMm: number, openAfterSave: boolean) => string;
     };
   }
@@ -70,6 +77,11 @@ const tabs: Array<{ key: Tab; label: string; icon: typeof LayoutDashboard }> = [
   { key: 'reports', label: 'گزارش‌ها', icon: BarChart3 },
   { key: 'notifications', label: 'اعلان‌ها', icon: Bell },
   { key: 'activity', label: 'عملیات', icon: Activity }
+];
+
+const unavailableTabs: Array<{ key: 'production' | 'settings'; label: string; icon: typeof LayoutDashboard }> = [
+  { key: 'production', label: '\u062a\u0648\u0644\u06cc\u062f', icon: Factory },
+  { key: 'settings', label: '\u062a\u0646\u0638\u06cc\u0645\u0627\u062a', icon: Settings }
 ];
 
 const quickTabs: Tab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers'];
@@ -237,6 +249,11 @@ export function App() {
     closeMenu();
   }
 
+  function showUnavailableTab(label: string) {
+    setMessage(`\u0628\u062e\u0634 ${label} \u062f\u0631 \u0646\u0633\u062e\u0647 \u0641\u0639\u0644\u06cc \u0641\u0639\u0627\u0644 \u0646\u06cc\u0633\u062a`);
+    setTimeout(() => setMessage(''), 2200);
+  }
+
   function openOrderIntent(intent: Omit<OrderIntent, 'key'>) {
     setOrderIntent({ ...intent, key: Date.now() });
     setTab('orders');
@@ -302,6 +319,15 @@ export function App() {
                     </button>
                   );
                 })}
+                {unavailableTabs.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button key={item.key} type="button" className="disabled-nav" aria-disabled="true" onClick={() => showUnavailableTab(item.label)}>
+                      <Icon size={20} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
               <button className="drawer-logout" type="button" onClick={() => { backend.logout(); setAuthed(false); closeMenu(); }}>
                 <LogOut size={19} />
@@ -322,6 +348,15 @@ export function App() {
             const Icon = item.icon;
             return (
               <button key={item.key} type="button" className={tab === item.key ? 'active' : ''} onClick={() => goTo(item.key)}>
+                <Icon size={20} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+          {unavailableTabs.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button key={item.key} type="button" className="disabled-nav" aria-disabled="true" onClick={() => showUnavailableTab(item.label)}>
                 <Icon size={20} />
                 <span>{item.label}</span>
               </button>
@@ -1592,8 +1627,17 @@ function escapeHtml(value: string) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char);
 }
 
-function downloadOrderLabelsPdf(order: Order) {
-  downloadHtmlPdf(`best-labels-${safeFilePart(order.title)}.pdf`, renderLabelsHtml(order), 34, 24);
+async function downloadOrderLabelsPdf(order: Order) {
+  const labelItems = order.lineItems.length ? order.lineItems : [{ id: 'empty', width: 0, height: 0, quantity: 1, meshTitle: '', meshTypeId: '', unitPrice: 0, total: 0, description: '' }];
+  const fontFaceCss = await getLabelFontFaceCss();
+  if (window.BestAndroid?.saveHtmlPdfFile) {
+    labelItems.forEach((item, index) => {
+      window.BestAndroid?.saveHtmlPdfFile(buildDashboardLabelFileName(order, item, index), renderDashboardLabelHtml(order, item, fontFaceCss), 34, 24, index === 0);
+    });
+    return;
+  }
+
+  downloadHtmlPdf(buildDashboardLabelFileName(order, labelItems[0], 0), renderDashboardLabelHtml(order, labelItems[0], fontFaceCss), 34, 24);
 }
 
 async function downloadInvoicePdf(invoice: Invoice, orders: Order[] = [], data?: AppSnapshot) {
@@ -1621,32 +1665,143 @@ function getTorbestLogoDataUri() {
   return torbestLogoDataUriPromise;
 }
 
-function renderLabelsHtml(order: Order) {
-  const labels = order.lineItems.length ? order.lineItems : [{ id: 'empty', width: 0, height: 0, quantity: 1, meshTitle: '', meshTypeId: '', unitPrice: 0, total: 0, description: '' }];
-  const pages = labels.map((item) => {
-    const dimensions = `${dimensionText(item.width)}×${dimensionText(item.height)}`;
-    const customerName = order.customerName || '-';
-    const collaboratorContact = order.collaboratorPhone || order.collaboratorName || '-';
-    const dimensionFontSize = pickLabelFontSize(dimensions, 18.4, 13.2);
-    const customerFontSize = pickLabelFontSize(customerName, 12.6, 8.8);
-    const contactFontSize = pickLabelFontSize(collaboratorContact, 10.8, 7.8);
-    return `<section class="label-page"><div class="label"><div class="rotated-content"><div class="line line-1" style="font-size:${dimensionFontSize}px">${escapeHtml(dimensions)}</div><div class="line line-2" style="font-size:${customerFontSize}px">${escapeHtml(customerName)}</div><div class="line line-3" style="font-size:${contactFontSize}px">${escapeHtml(collaboratorContact)}</div></div></div></section>`;
-  }).join('');
+let labelFontFaceCssPromise: Promise<string> | null = null;
 
-  return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8" /><style>
-@page{size:34mm 24mm;margin:0}
+function getLabelFontFaceCss() {
+  labelFontFaceCssPromise ??= Promise
+    .all([
+      fontFaceRule('Vazirmatn', 400, vazirmatnArabic400Url),
+      fontFaceRule('Vazirmatn', 600, vazirmatnArabic600Url),
+      fontFaceRule('Vazirmatn', 700, vazirmatnArabic700Url),
+      fontFaceRule('Vazirmatn', 900, vazirmatnArabic900Url)
+    ])
+    .then((rules) => rules.join(''))
+    .catch(() => '');
+  return labelFontFaceCssPromise;
+}
+
+async function fontFaceRule(family: string, weight: number, url: string) {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const dataUri = await blobToDataUri(blob);
+  return `@font-face{font-family:'${family}';src:url(${dataUri}) format('woff2');font-weight:${weight};font-style:normal;font-display:swap;}`;
+}
+
+function blobToDataUri(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function renderDashboardLabelHtml(order: Order, item: OrderLineItem, fontFaceCss = '') {
+  const dimensions = `${dimensionText(item.width)}\u00d7${dimensionText(item.height)}`;
+  const customerName = order.customerName || '-';
+  const collaboratorPhone = order.collaboratorPhone || '-';
+  const dimensionFontSize = pickLabelFontSize(dimensions, 18.4, 13.2);
+  const customerFontSize = pickLabelFontSize(customerName, 12.6, 8.8);
+  const phoneFontSize = pickLabelFontSize(collaboratorPhone, 10.8, 7.8);
+
+  return `<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<style>
+${fontFaceCss}
+@page{
+  size:34mm 24mm;
+  margin:0;
+}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;width:34mm;min-height:24mm}
-body{font-family:Vazirmatn,Tahoma,sans-serif;direction:rtl;color:#0f172a;background:#fff}
-.label-page{width:34mm;height:24mm;display:flex;justify-content:center;align-items:center;page-break-after:always;break-after:page;overflow:hidden}
-.label-page:last-child{page-break-after:auto;break-after:auto}
-.label{width:33mm;height:23mm;border:1px solid #cbd5e1;border-radius:1.5mm;display:flex;justify-content:center;align-items:center;background:#fff;overflow:hidden}
-.rotated-content{transform:rotate(-90deg) translateY(-8mm);transform-origin:center;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.7mm}
-.line{text-align:center;line-height:1.12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.line-1{font-weight:900;letter-spacing:.32mm}
-.line-2{transform:translateY(2mm);font-weight:700}
-.line-3{transform:translateY(5mm);font-weight:600;letter-spacing:.32mm;direction:ltr;unicode-bidi:plaintext;font-variant-numeric:tabular-nums}
-</style></head><body>${pages}</body></html>`;
+html,body{
+  margin:0;
+  padding:0;
+  width:34mm;
+  height:24mm;
+}
+body{
+  font-family:Vazirmatn,Tahoma,sans-serif;
+  direction:rtl;
+  color:#0f172a;
+  background:#fff;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  overflow:hidden;
+}
+.label{
+  width:33mm;
+  height:23mm;
+  border:1px solid #cbd5e1;
+  border-radius:1.5mm;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  box-sizing:border-box;
+  background:#fff;
+}
+.rotated-content{
+  transform:rotate(-90deg) translateY(-8mm);
+  transform-origin:center;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  gap:0.7mm;
+}
+.line{
+  text-align:center;
+  line-height:1.12;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.line-1{
+  font-weight:900;
+  letter-spacing:0.32mm;
+}
+.line-2{
+  transform:translateY(2mm);
+  font-weight:700
+}
+.line-3{
+  transform:translateY(5mm);
+  font-weight:600;
+  letter-spacing:0.32mm;
+  direction:ltr;
+  unicode-bidi:plaintext;
+  font-variant-numeric:tabular-nums;
+}
+</style>
+</head>
+<body>
+  <div class="label">
+    <div class="rotated-content">
+      <div class="line line-1" style="font-size:${dimensionFontSize}px">${escapeHtml(dimensions)}</div>
+      <div class="line line-2" style="font-size:${customerFontSize}px">${escapeHtml(customerName)}</div>
+      <div class="line line-3" style="font-size:${phoneFontSize}px">${escapeHtml(collaboratorPhone)}</div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function buildDashboardLabelFileName(order: Order, item: OrderLineItem, index: number) {
+  const customerName = normalizeLabelFileNamePart(order.customerName || 'بدون-مشتری');
+  const collaboratorName = normalizeLabelFileNamePart(order.collaboratorName || order.collaboratorPhone || 'بدون-همکار');
+  const dimensions = `${dimensionText(item.width)}x${dimensionText(item.height)}`;
+  return `لیبل-${customerName}-${collaboratorName}-${dimensions}-${index + 1}.pdf`;
+}
+
+function normalizeLabelFileNamePart(value: string) {
+  return (value || '')
+    .replace(/[\\/:*?"<>|\r\n]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .trim() || 'بدون-نام';
 }
 
 function pickLabelFontSize(value: string, baseSize: number, minSize: number) {
@@ -1687,9 +1842,9 @@ function renderInvoiceHtml(invoice: Invoice, orders: Order[], logoDataUri: strin
 @page{size:A4;margin:12mm 10mm}
 :root{--text:#111827;--muted:#6b7280;--border:#d6d9df;--soft:#f8fafc;--heading:#0f172a}
 *{box-sizing:border-box}
-html,body{width:100%;min-height:100%}
+html,body{width:100%;min-height:0}
 body{margin:0;padding:12mm 10mm;box-sizing:border-box;color:var(--text);background:#fff;font-family:Vazirmatn,Tahoma,sans-serif;font-size:12.5px;line-height:1.65;direction:rtl}
-.invoice{width:100%;max-width:820px;margin:0 auto;padding:0}
+.invoice{width:100%;margin:0 auto;padding:0}
 .header{display:grid;grid-template-columns:1.05fr 1.2fr .65fr;gap:14px;align-items:stretch;margin-bottom:14px}
 .meta{border-left:1px solid var(--border);padding-left:10px;align-content:center}
 .meta-grid,.party-info{display:grid;grid-template-columns:auto auto 1fr;row-gap:6px;column-gap:8px;font-size:12.5px}
@@ -1749,7 +1904,7 @@ function calculatePreviousRemaining(invoice: Invoice, data: AppSnapshot) {
 }
 
 function renderPaymentReceiptHtml(payment: AppSnapshot['collaboratorPayments'][number], collaborator: AppSnapshot['collaborators'][number], remainingBefore: number, remainingAfter: number) {
-  return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8" /><style>@page{size:A4;margin:14mm 12mm}html,body{width:100%;min-height:100%}body{margin:0;padding:14mm 12mm;box-sizing:border-box;font-family:Vazirmatn,Tahoma,sans-serif;color:#0f172a;font-size:13px;line-height:1.65}.wrap{border:1px solid #dbe2ea;border-radius:14px;padding:16px}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.title{font-size:24px;font-weight:800;margin:0}.sub{color:#64748b;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.card{border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;background:#fff}.label{color:#64748b;font-size:12px}.value{font-size:15px;font-weight:700;margin-top:3px}.table{border:1px solid #dbe2ea;border-radius:10px;overflow:hidden;margin-top:8px}.row{display:flex;border-bottom:1px solid #e2e8f0;min-height:42px;align-items:center}.row:last-child{border-bottom:0}.cell-label{flex:1;padding:0 12px;font-weight:600}.cell-value{width:260px;border-right:1px solid #e2e8f0;padding:0 12px;text-align:left;direction:ltr;unicode-bidi:plaintext;font-weight:700}.final{background:#f8fafc;font-size:15px}.note{margin-top:12px;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;background:#fcfcfd}</style></head><body><div class="wrap"><div class="head"><div><h1 class="title">رسید پرداخت</h1></div><div class="sub">${escapeHtml(dateText(payment.paidAt))}</div></div><div class="grid"><div class="card"><div class="label">نام</div><div class="value">${escapeHtml(collaborator.name)}</div></div><div class="card"><div class="label">شماره تماس</div><div class="value">${escapeHtml(collaborator.phone || '-')}</div></div></div><div class="table"><div class="row"><div class="cell-label">مانده قبل از رسید (تومان)</div><div class="cell-value">${formatPdfMoney(remainingBefore)}</div></div><div class="row"><div class="cell-label">مبلغ رسید (تومان)</div><div class="cell-value">${formatPdfMoney(payment.amount)}</div></div><div class="row final"><div class="cell-label">مانده بعد از رسید (تومان)</div><div class="cell-value">${formatPdfMoney(remainingAfter)}</div></div></div><div class="note"><span class="label">توضیح پرداخت:</span><div class="value">${escapeHtml(payment.note || '-')}</div></div></div></body></html>`;
+  return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8" /><style>@page{size:A4;margin:14mm 12mm}html,body{width:100%;min-height:0}body{margin:0;padding:14mm 12mm;box-sizing:border-box;font-family:Vazirmatn,Tahoma,sans-serif;color:#0f172a;font-size:13px;line-height:1.65}.wrap{border:1px solid #dbe2ea;border-radius:14px;padding:16px}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.title{font-size:24px;font-weight:800;margin:0}.sub{color:#64748b;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.card{border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;background:#fff}.label{color:#64748b;font-size:12px}.value{font-size:15px;font-weight:700;margin-top:3px}.table{border:1px solid #dbe2ea;border-radius:10px;overflow:hidden;margin-top:8px}.row{display:flex;border-bottom:1px solid #e2e8f0;min-height:42px;align-items:center}.row:last-child{border-bottom:0}.cell-label{flex:1;padding:0 12px;font-weight:600}.cell-value{width:260px;border-right:1px solid #e2e8f0;padding:0 12px;text-align:left;direction:ltr;unicode-bidi:plaintext;font-weight:700}.final{background:#f8fafc;font-size:15px}.note{margin-top:12px;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;background:#fcfcfd}</style></head><body><div class="wrap"><div class="head"><div><h1 class="title">رسید پرداخت</h1></div><div class="sub">${escapeHtml(dateText(payment.paidAt))}</div></div><div class="grid"><div class="card"><div class="label">نام</div><div class="value">${escapeHtml(collaborator.name)}</div></div><div class="card"><div class="label">شماره تماس</div><div class="value">${escapeHtml(collaborator.phone || '-')}</div></div></div><div class="table"><div class="row"><div class="cell-label">مانده قبل از رسید (تومان)</div><div class="cell-value">${formatPdfMoney(remainingBefore)}</div></div><div class="row"><div class="cell-label">مبلغ رسید (تومان)</div><div class="cell-value">${formatPdfMoney(payment.amount)}</div></div><div class="row final"><div class="cell-label">مانده بعد از رسید (تومان)</div><div class="cell-value">${formatPdfMoney(remainingAfter)}</div></div></div><div class="note"><span class="label">توضیح پرداخت:</span><div class="value">${escapeHtml(payment.note || '-')}</div></div></div></body></html>`;
 }
 
 function formatPdfMoney(value: number) {
