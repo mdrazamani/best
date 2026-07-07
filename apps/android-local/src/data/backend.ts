@@ -54,6 +54,16 @@ const addIsoDays = (days: number) => {
 };
 const id = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const normalizeNumber = (value: number) => (Number.isFinite(value) ? value : 0);
+const jalaliDateCode = (dateIso = now()) =>
+  new Intl.DateTimeFormat('en-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(dateIso))
+    .replace(/[^0-9]/g, '');
+const generateInvoiceNumber = (dateIso = now()) => {
+  const shortDate = jalaliDateCode(dateIso).slice(-4);
+  const randomPart = id().replace(/-/g, '').slice(0, 5).toUpperCase();
+  return `IN-${shortDate}-${randomPart}`;
+};
+const fallbackInvoiceNumber = (invoiceId: string, createdAt?: string) => `IN-${jalaliDateCode(createdAt).slice(-4)}-${invoiceId.replace(/-/g, '').slice(0, 5).toUpperCase()}`;
 const invoiceStatus = (amount: number, paid: number): InvoiceStatus => {
   if (paid <= 0) return 'unpaid';
   if (paid >= amount) return 'paid';
@@ -419,14 +429,14 @@ class BrowserBackend extends BaseBackend {
 
   async updateCollaborator(input: UpdateCollaboratorInput) {
     this.data.collaborators = this.data.collaborators.map((item) => (item.id === input.id ? { ...item, ...input } : item));
-    this.data.orders = this.data.orders.map((order) => order.collaboratorId === input.id ? { ...order, collaboratorName: input.name ?? order.collaboratorName } : order);
+    this.data.orders = this.data.orders.map((order) => order.collaboratorId === input.id ? { ...order, collaboratorName: input.name ?? order.collaboratorName, collaboratorPhone: input.phone ?? order.collaboratorPhone } : order);
     this.log('collaborator', 'همکار ویرایش شد', input.name ?? input.id);
     await this.persist();
   }
 
   async deleteCollaborator(collaboratorId: string) {
     this.data.collaborators = this.data.collaborators.filter((item) => item.id !== collaboratorId);
-    this.data.orders = this.data.orders.map((order) => order.collaboratorId === collaboratorId ? { ...order, collaboratorId: '', collaboratorName: '' } : order);
+    this.data.orders = this.data.orders.map((order) => order.collaboratorId === collaboratorId ? { ...order, collaboratorId: '', collaboratorName: '', collaboratorPhone: '' } : order);
     this.log('collaborator', 'همکار حذف شد', collaboratorId);
     await this.persist();
   }
@@ -446,6 +456,7 @@ class BrowserBackend extends BaseBackend {
       customerName: customer.name,
       collaboratorId: collaborator.id,
       collaboratorName: collaborator.name,
+      collaboratorPhone: collaborator.phone,
       title: input.title.trim(),
       status: 'received',
       workType: input.workType ?? 'new_construction',
@@ -460,7 +471,9 @@ class BrowserBackend extends BaseBackend {
     };
     this.data.orders.unshift(order);
     if (input.createInitialInvoice) {
-      this.data.invoices.unshift({ id: id(), orderId: order.id, orderIds: [order.id], orderTitle: order.title, customerName: order.customerName, payerId: order.collaboratorId, payerName: order.collaboratorName, title: `فاکتور ${order.title}`, amount: total, paid: 0, discount: order.discount, status: total > 0 ? 'unpaid' : 'paid', dueDate: order.dueDate, note: '', createdAt: now() });
+      const invoiceId = id();
+      const invoiceCreatedAt = now();
+      this.data.invoices.unshift({ id: invoiceId, invoiceNumber: generateInvoiceNumber(invoiceCreatedAt), orderId: order.id, orderIds: [order.id], orderTitle: order.title, customerName: order.customerName, payerId: order.collaboratorId, payerName: order.collaboratorName, title: `فاکتور ${order.title}`, amount: total, paid: 0, discount: order.discount, status: total > 0 ? 'unpaid' : 'paid', dueDate: order.dueDate, note: '', createdAt: invoiceCreatedAt });
     }
     this.log('order', 'سفارش ثبت شد', `${order.title} برای ${order.customerName}`);
     await this.persist();
@@ -481,6 +494,7 @@ class BrowserBackend extends BaseBackend {
         customerName: customer?.name ?? order.customerName,
         collaboratorId: input.collaboratorId === '' ? '' : collaborator?.id ?? order.collaboratorId,
         collaboratorName: input.collaboratorId === '' ? '' : collaborator?.name ?? order.collaboratorName,
+        collaboratorPhone: input.collaboratorId === '' ? '' : collaborator?.phone ?? order.collaboratorPhone,
         title: input.title?.trim() ?? order.title,
         workType: input.workType ?? order.workType,
         discount,
@@ -526,7 +540,9 @@ class BrowserBackend extends BaseBackend {
     const payer = input.payerId ? this.data.collaborators.find((item) => item.id === input.payerId) : this.data.collaborators.find((item) => item.id === orders[0]?.collaboratorId);
     const orderTitle = orders.map((item) => item.title).join('، ');
     const customerName = Array.from(new Set(orders.map((item) => item.customerName).filter(Boolean))).join('، ');
-    this.data.invoices.unshift({ id: id(), orderId: orders[0].id, orderIds: orders.map((item) => item.id), orderTitle, customerName, payerId: payer?.id ?? '', payerName: payer?.name ?? '', title: input.title?.trim() || `فاکتور ${orderTitle}`, amount, paid, discount: normalizeNumber(input.discount ?? 0), status: invoiceStatus(amount, paid), dueDate: input.dueDate ?? orders[0]?.dueDate ?? '', note: input.note?.trim() ?? '', createdAt: now() });
+    const invoiceId = id();
+    const invoiceCreatedAt = now();
+    this.data.invoices.unshift({ id: invoiceId, invoiceNumber: generateInvoiceNumber(invoiceCreatedAt), orderId: orders[0].id, orderIds: orders.map((item) => item.id), orderTitle, customerName, payerId: payer?.id ?? '', payerName: payer?.name ?? '', title: input.title?.trim() || `فاکتور ${orderTitle}`, amount, paid, discount: normalizeNumber(input.discount ?? 0), status: invoiceStatus(amount, paid), dueDate: input.dueDate ?? orders[0]?.dueDate ?? '', note: input.note?.trim() ?? '', createdAt: invoiceCreatedAt });
     this.log('invoice', 'فاکتور ثبت شد', orderTitle);
     await this.persist();
   }
@@ -764,7 +780,7 @@ class SqliteBackend extends BaseBackend {
           orders.note, orders.created_at as createdAt
          FROM orders JOIN customers ON customers.id = orders.customer_id ORDER BY orders.created_at DESC`
       ),
-      this.all<Invoice>('SELECT id, order_id as orderId, order_ids as orderIds, order_title as orderTitle, customer_name as customerName, payer_id as payerId, payer_name as payerName, title, amount, paid, discount, status, due_date as dueDate, note, created_at as createdAt FROM invoices ORDER BY created_at DESC'),
+      this.all<Invoice>('SELECT id, invoice_number as invoiceNumber, order_id as orderId, order_ids as orderIds, order_title as orderTitle, customer_name as customerName, payer_id as payerId, payer_name as payerName, title, amount, paid, discount, status, due_date as dueDate, note, created_at as createdAt FROM invoices ORDER BY created_at DESC'),
       this.all<CollaboratorPayment>('SELECT collaborator_payments.id, collaborator_id as collaboratorId, collaborators.name as collaboratorName, amount, paid_at as paidAt, collaborator_payments.note, collaborator_payments.created_at as createdAt FROM collaborator_payments JOIN collaborators ON collaborators.id = collaborator_payments.collaborator_id ORDER BY paid_at DESC, collaborator_payments.created_at DESC'),
       this.all<InventoryItem>('SELECT id, name, quantity, unit, min_quantity as minQuantity, note FROM inventory ORDER BY name'),
       this.all<Collaborator>('SELECT id, name, phone, role, note, created_at as createdAt FROM collaborators ORDER BY created_at DESC'),
@@ -773,7 +789,9 @@ class SqliteBackend extends BaseBackend {
       this.all<NotificationItem>('SELECT id, title, body, seen, created_at as createdAt FROM notifications ORDER BY created_at DESC LIMIT 100'),
       this.all<Activity>('SELECT id, type, title, body, created_at as createdAt FROM activities ORDER BY created_at DESC LIMIT 100')
     ]);
-    return { customers, orders: orders.map((order) => ({ ...order, lineItems: parseLineItems(order.lineItems) })), invoices: invoices.map((invoice) => normalizeInvoice(invoice, orders)), collaboratorPayments, inventory, collaborators, meshTypes, users, notifications, activities };
+    const collaboratorById = new Map(collaborators.map((item) => [item.id, item]));
+    const normalizedOrders = orders.map((order) => ({ ...order, collaboratorPhone: collaboratorById.get(order.collaboratorId)?.phone ?? order.collaboratorPhone ?? '', lineItems: parseLineItems(order.lineItems) }));
+    return { customers, orders: normalizedOrders, invoices: invoices.map((invoice) => normalizeInvoice(invoice, normalizedOrders)), collaboratorPayments, inventory, collaborators, meshTypes, users, notifications, activities };
   }
 
   async addCustomer(input: NewCustomerInput) {
@@ -831,7 +849,9 @@ class SqliteBackend extends BaseBackend {
       [orderId, customer.id, customer.name, collaborator.id, collaborator.name, input.title.trim(), 'received', input.workType ?? 'new_construction', lineItems.reduce((sum, item) => sum + item.quantity, 0), lineItems[0]?.unitPrice ?? 0, discount, total, JSON.stringify(lineItems), input.dueDate ?? '', input.note?.trim() ?? '', now()]
     );
     if (input.createInitialInvoice) {
-      await this.run('INSERT INTO invoices (id, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id(), orderId, JSON.stringify([orderId]), input.title.trim(), customer.name, collaborator.id, collaborator.name, `فاکتور ${input.title.trim()}`, total, 0, discount, total > 0 ? 'unpaid' : 'paid', input.dueDate ?? '', '', now()]);
+      const invoiceId = id();
+      const invoiceCreatedAt = now();
+      await this.run('INSERT INTO invoices (id, invoice_number, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, generateInvoiceNumber(invoiceCreatedAt), orderId, JSON.stringify([orderId]), input.title.trim(), customer.name, collaborator.id, collaborator.name, `فاکتور ${input.title.trim()}`, total, 0, discount, total > 0 ? 'unpaid' : 'paid', input.dueDate ?? '', '', invoiceCreatedAt]);
     }
     await this.log('order', 'سفارش ثبت شد', `${input.title} برای ${customer.name}`);
   }
@@ -877,7 +897,9 @@ class SqliteBackend extends BaseBackend {
     const [payer] = input.payerId ? await this.all<Collaborator>('SELECT id, name FROM collaborators WHERE id = ?', [input.payerId]) : await this.all<Collaborator>('SELECT id, name FROM collaborators WHERE id = ?', [orders[0]?.collaboratorId]);
     const orderTitle = orders.map((item) => item.title).join('، ');
     const customerName = Array.from(new Set(orders.map((item) => item.customerName).filter(Boolean))).join('، ');
-    await this.run('INSERT INTO invoices (id, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id(), orders[0].id, JSON.stringify(orders.map((item) => item.id)), orderTitle, customerName, payer?.id ?? '', payer?.name ?? '', input.title?.trim() || `فاکتور ${orderTitle}`, amount, paid, normalizeNumber(input.discount ?? 0), invoiceStatus(amount, paid), input.dueDate ?? orders[0]?.dueDate ?? '', input.note?.trim() ?? '', now()]);
+    const invoiceId = id();
+    const invoiceCreatedAt = now();
+    await this.run('INSERT INTO invoices (id, invoice_number, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, generateInvoiceNumber(invoiceCreatedAt), orders[0].id, JSON.stringify(orders.map((item) => item.id)), orderTitle, customerName, payer?.id ?? '', payer?.name ?? '', input.title?.trim() || `فاکتور ${orderTitle}`, amount, paid, normalizeNumber(input.discount ?? 0), invoiceStatus(amount, paid), input.dueDate ?? orders[0]?.dueDate ?? '', input.note?.trim() ?? '', invoiceCreatedAt]);
     await this.log('invoice', 'فاکتور ثبت شد', orderTitle);
   }
 
@@ -980,7 +1002,7 @@ class SqliteBackend extends BaseBackend {
     for (const item of snapshot.customers) await this.run('INSERT INTO customers (id, name, phone, address, note, referred_by_collaborator_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [item.id, item.name, item.phone, item.address, item.note, item.referredByCollaboratorId ?? '', item.createdAt]);
     for (const item of snapshot.collaborators) await this.run('INSERT INTO collaborators (id, name, phone, role, note, created_at) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.name, item.phone, item.role, item.note, item.createdAt]);
     for (const item of snapshot.orders) await this.run('INSERT INTO orders (id, customer_id, customer_name, collaborator_id, collaborator_name, title, status, work_type, quantity, unit_price, discount, total, line_items, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [item.id, item.customerId, item.customerName, item.collaboratorId, item.collaboratorName, item.title, item.status, item.workType, item.quantity, item.unitPrice, item.discount, item.total, JSON.stringify(item.lineItems ?? []), item.dueDate, item.note, item.createdAt]);
-    for (const item of snapshot.invoices.map((invoice) => normalizeInvoice(invoice, snapshot.orders))) await this.run('INSERT INTO invoices (id, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [item.id, item.orderId, JSON.stringify(item.orderIds ?? [item.orderId]), item.orderTitle, item.customerName, item.payerId, item.payerName, item.title, item.amount, item.paid, item.discount, item.status, item.dueDate, item.note, item.createdAt]);
+    for (const item of snapshot.invoices.map((invoice) => normalizeInvoice(invoice, snapshot.orders))) await this.run('INSERT INTO invoices (id, invoice_number, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [item.id, item.invoiceNumber ?? fallbackInvoiceNumber(item.id, item.createdAt), item.orderId, JSON.stringify(item.orderIds ?? [item.orderId]), item.orderTitle, item.customerName, item.payerId, item.payerName, item.title, item.amount, item.paid, item.discount, item.status, item.dueDate, item.note, item.createdAt]);
     for (const item of snapshot.collaboratorPayments ?? []) await this.run('INSERT INTO collaborator_payments (id, collaborator_id, amount, paid_at, note, created_at) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.collaboratorId, item.amount, item.paidAt, item.note, item.createdAt]);
     for (const item of snapshot.inventory) await this.run('INSERT INTO inventory (id, name, quantity, unit, min_quantity, note) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.name, item.quantity, item.unit, item.minQuantity, item.note]);
     for (const item of snapshot.meshTypes) await this.run('INSERT INTO mesh_types (id, title, unit_price, is_active, is_default, note) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.title, item.unitPrice, item.isActive, item.isDefault, item.note]);
@@ -1024,12 +1046,17 @@ class SqliteBackend extends BaseBackend {
     await this.ensureColumn('invoices', 'title', "TEXT NOT NULL DEFAULT ''");
     await this.ensureColumn('invoices', 'due_date', "TEXT NOT NULL DEFAULT ''");
     await this.ensureColumn('invoices', 'note', "TEXT NOT NULL DEFAULT ''");
+    await this.ensureColumn('invoices', 'invoice_number', "TEXT NOT NULL DEFAULT ''");
     await this.run("UPDATE orders SET customer_name = (SELECT name FROM customers WHERE customers.id = orders.customer_id) WHERE customer_name = ''");
     await this.run("UPDATE invoices SET order_title = (SELECT title FROM orders WHERE orders.id = invoices.order_id) WHERE order_title = ''");
     await this.run(`UPDATE invoices SET order_ids = '["' || order_id || '"]' WHERE order_ids = '[]' OR order_ids = ''`);
     await this.run("UPDATE invoices SET payer_id = COALESCE((SELECT collaborator_id FROM orders WHERE orders.id = invoices.order_id), '') WHERE payer_id = ''");
     await this.run("UPDATE invoices SET payer_name = COALESCE((SELECT collaborator_name FROM orders WHERE orders.id = invoices.order_id), '') WHERE payer_name = ''");
     await this.run("UPDATE invoices SET title = 'فاکتور ' || order_title WHERE title = ''");
+    const invoicesWithoutNumber = await this.all<{ id: string; created_at: string }>("SELECT id, created_at FROM invoices WHERE invoice_number = ''");
+    for (const invoice of invoicesWithoutNumber) {
+      await this.run('UPDATE invoices SET invoice_number = ? WHERE id = ?', [fallbackInvoiceNumber(invoice.id, invoice.created_at), invoice.id]);
+    }
     await this.run('INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)', ['schema_version', '6']);
   }
 
@@ -1087,7 +1114,7 @@ class SqliteBackend extends BaseBackend {
         title, status, work_type as workType, quantity, unit_price as unitPrice, discount, total, line_items as lineItems, due_date as dueDate,
         note, created_at as createdAt FROM orders`
     );
-    const rawInvoices = await this.all<Invoice>('SELECT id, order_id as orderId, order_ids as orderIds, order_title as orderTitle, customer_name as customerName, payer_id as payerId, payer_name as payerName, title, amount, paid, discount, status, due_date as dueDate, note, created_at as createdAt FROM invoices');
+    const rawInvoices = await this.all<Invoice>('SELECT id, invoice_number as invoiceNumber, order_id as orderId, order_ids as orderIds, order_title as orderTitle, customer_name as customerName, payer_id as payerId, payer_name as payerName, title, amount, paid, discount, status, due_date as dueDate, note, created_at as createdAt FROM invoices');
     const invoices = rawInvoices.map((invoice) => normalizeInvoice(invoice, orders));
     const collaboratorPayments = await this.all<CollaboratorPayment>('SELECT collaborator_payments.id, collaborator_id as collaboratorId, collaborators.name as collaboratorName, amount, paid_at as paidAt, collaborator_payments.note, collaborator_payments.created_at as createdAt FROM collaborator_payments JOIN collaborators ON collaborators.id = collaborator_payments.collaborator_id');
     const inventory = await this.all<InventoryItem>('SELECT id, name, quantity FROM inventory');
@@ -1185,7 +1212,7 @@ class SqliteBackend extends BaseBackend {
       await db.run(
         `INSERT INTO "Invoice" (id, invoiceNumber, title, createdById, amount, discountAmount, paidAmount, status, payerType, payerId, dueDate, paidAt, description, createdAt, updatedAt, deletedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [invoice.id, `I-${invoice.id.slice(0, 8)}`, invoice.title || null, createdById, invoice.amount, invoice.discount ?? 0, invoice.paid, toPrismaInvoiceStatus(invoice.status), 'COLLABORATOR', invoice.payerId || null, invoice.dueDate || null, invoice.status === 'paid' ? current : null, invoice.note || null, invoice.createdAt, current, null]
+        [invoice.id, invoice.invoiceNumber ?? fallbackInvoiceNumber(invoice.id, invoice.createdAt), invoice.title || null, createdById, invoice.amount, invoice.discount ?? 0, invoice.paid, toPrismaInvoiceStatus(invoice.status), 'COLLABORATOR', invoice.payerId || null, invoice.dueDate || null, invoice.status === 'paid' ? current : null, invoice.note || null, invoice.createdAt, current, null]
       );
       const invoiceOrderIds = invoice.orderIds?.length ? invoice.orderIds : invoice.orderId ? [invoice.orderId] : [];
       for (const orderId of invoiceOrderIds) {
@@ -1218,12 +1245,13 @@ function normalizeOrder(order: Partial<Order>, customers: Customer[], collaborat
   const lineItems = parseLineItems(order.lineItems);
   const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
   const discount = normalizeNumber(order.discount ?? 0);
-  return {
+    return {
     id: order.id ?? id(),
     customerId: order.customerId ?? customer?.id ?? '',
     customerName: order.customerName ?? customer?.name ?? '',
     collaboratorId: order.collaboratorId ?? collaborator?.id ?? '',
-    collaboratorName: order.collaboratorName ?? collaborator?.name ?? '',
+      collaboratorName: order.collaboratorName ?? collaborator?.name ?? '',
+      collaboratorPhone: order.collaboratorPhone ?? collaborator?.phone ?? '',
     title: order.title ?? 'سفارش',
     status: order.status ?? 'received',
     workType: order.workType ?? 'new_construction',
@@ -1256,6 +1284,7 @@ function normalizeInvoice(invoice: Partial<Invoice>, orders: Order[]): Invoice {
   const payerName = invoice.payerName ?? linkedOrders.find((item) => item.collaboratorName)?.collaboratorName ?? order?.collaboratorName ?? '';
   return {
     id: invoice.id ?? id(),
+    invoiceNumber: invoice.invoiceNumber ?? fallbackInvoiceNumber(invoice.id ?? id(), invoice.createdAt),
     orderId: invoice.orderId ?? order?.id ?? safeOrderIds[0] ?? '',
     orderIds: safeOrderIds,
     orderTitle,
@@ -1697,6 +1726,7 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 CREATE TABLE IF NOT EXISTS invoices (
   id TEXT PRIMARY KEY,
+  invoice_number TEXT NOT NULL DEFAULT '',
   order_id TEXT NOT NULL,
   order_ids TEXT NOT NULL DEFAULT '[]',
   order_title TEXT NOT NULL DEFAULT '',

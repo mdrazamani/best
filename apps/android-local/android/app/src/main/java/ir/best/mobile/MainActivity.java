@@ -17,6 +17,11 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 import com.getcapacitor.BridgeActivity;
 import java.io.File;
@@ -56,6 +61,130 @@ public class MainActivity extends BridgeActivity {
                 throw new RuntimeException("Could not save PDF: " + error.getMessage(), error);
             }
         }
+
+        @JavascriptInterface
+        public String saveHtmlPdfFile(String filename, String html, int widthMm, int heightMm, boolean openAfterSave) {
+            String safeName = sanitizeFilename(filename == null || filename.trim().isEmpty() ? "best.pdf" : filename);
+            if (!safeName.toLowerCase().endsWith(".pdf")) safeName = safeName + ".pdf";
+            String htmlContent = html == null ? "" : html;
+            String finalSafeName = safeName;
+            runOnUiThread(() -> renderHtmlPdfToDownloads(finalSafeName, htmlContent, widthMm, heightMm, openAfterSave));
+            return "queued:" + safeName;
+        }
+    }
+
+    private void renderHtmlPdfToDownloads(String safeName, String html, int widthMm, int heightMm, boolean openAfterSave) {
+        WebView webView = new WebView(MainActivity.this);
+        int pageWidthMm = widthMm > 0 ? widthMm : 210;
+        int pageHeightMm = heightMm > 0 ? heightMm : 297;
+        int viewWidthPx = mmToPx(pageWidthMm);
+        int viewPageHeightPx = mmToPx(pageHeightMm);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(viewWidthPx, viewPageHeightPx);
+        webView.setTranslationX(-viewWidthPx - 32);
+        webView.setTranslationY(-viewPageHeightPx - 32);
+        addContentView(webView, params);
+        webView.setBackgroundColor(Color.WHITE);
+        webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        webView.getSettings().setJavaScriptEnabled(false);
+        webView.getSettings().setLoadsImagesAutomatically(true);
+        webView.setWebViewClient(new WebViewClient() {
+            private boolean printed = false;
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (printed) return;
+                printed = true;
+                waitForWebViewAndRender(webView, safeName, widthMm, heightMm, openAfterSave, 0, -1);
+            }
+        });
+        webView.loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null);
+    }
+
+    private void waitForWebViewAndRender(
+        WebView webView,
+        String safeName,
+        int widthMm,
+        int heightMm,
+        boolean openAfterSave,
+        int attempt,
+        int lastHeightPx
+    ) {
+        int currentHeightPx = Math.round(webView.getContentHeight() * webView.getScale());
+        boolean hasContent = currentHeightPx > 0;
+        boolean stable = hasContent && lastHeightPx > 0 && Math.abs(currentHeightPx - lastHeightPx) <= 2;
+        boolean timedOut = attempt >= 24;
+
+        if (!timedOut && (!hasContent || !stable || attempt < 3)) {
+            webView.postDelayed(
+                () -> waitForWebViewAndRender(webView, safeName, widthMm, heightMm, openAfterSave, attempt + 1, currentHeightPx),
+                150
+            );
+            return;
+        }
+
+        try {
+            byte[] bytes = renderWebViewToPdfBytes(webView, widthMm, heightMm);
+            saveBytesFile(safeName, bytes, "application/pdf", openAfterSave);
+        } catch (Exception error) {
+            Toast.makeText(MainActivity.this, "Could not create PDF.", Toast.LENGTH_LONG).show();
+        } finally {
+            removeTemporaryWebView(webView);
+            webView.destroy();
+        }
+    }
+
+    private void removeTemporaryWebView(WebView webView) {
+        try {
+            if (webView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) webView.getParent()).removeView(webView);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private byte[] renderWebViewToPdfBytes(WebView webView, int widthMm, int heightMm) throws Exception {
+        int pageWidthMm = widthMm > 0 ? widthMm : 210;
+        int pageHeightMm = heightMm > 0 ? heightMm : 297;
+        int pageWidthPoints = Math.max(1, Math.round(pageWidthMm * 72f / 25.4f));
+        int pageHeightPoints = Math.max(1, Math.round(pageHeightMm * 72f / 25.4f));
+        int viewWidthPx = mmToPx(pageWidthMm);
+        int viewPageHeightPx = mmToPx(pageHeightMm);
+        int contentHeightPx = Math.max(viewPageHeightPx, Math.round(webView.getContentHeight() * webView.getScale()));
+
+        webView.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(viewWidthPx, android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(contentHeightPx, android.view.View.MeasureSpec.EXACTLY)
+        );
+        webView.layout(0, 0, viewWidthPx, contentHeightPx);
+
+        int pageCount = Math.max(1, (int) Math.ceil(contentHeightPx / (float) viewPageHeightPx));
+        PdfDocument document = new PdfDocument();
+        float translationX = webView.getTranslationX();
+        float translationY = webView.getTranslationY();
+        webView.setTranslationX(0f);
+        webView.setTranslationY(0f);
+        try {
+            for (int pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+                PdfDocument.Page page = document.startPage(new PdfDocument.PageInfo.Builder(pageWidthPoints, pageHeightPoints, pageIndex + 1).create());
+                Canvas canvas = page.getCanvas();
+                canvas.drawColor(Color.WHITE);
+                canvas.scale(pageWidthPoints / (float) viewWidthPx, pageHeightPoints / (float) viewPageHeightPx);
+                canvas.translate(0, -pageIndex * viewPageHeightPx);
+                webView.draw(canvas);
+                document.finishPage(page);
+            }
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            document.writeTo(output);
+            return output.toByteArray();
+        } finally {
+            webView.setTranslationX(translationX);
+            webView.setTranslationY(translationY);
+            document.close();
+        }
+    }
+
+    private int mmToPx(int mm) {
+        return Math.max(Math.round(mm * getResources().getDisplayMetrics().xdpi / 25.4f), 1);
     }
 
     private byte[] createSimplePdf(String title, JSONArray lines) throws Exception {

@@ -39,6 +39,7 @@ export type Order = {
   customerName: string;
   collaboratorId: string;
   collaboratorName: string;
+  collaboratorPhone?: string;
   title: string;
   status: OrderStatus;
   workType: WorkType;
@@ -54,6 +55,7 @@ export type Order = {
 
 export type Invoice = {
   id: string;
+  invoiceNumber?: string;
   orderId: string;
   orderIds: string[];
   orderTitle: string;

@@ -28,12 +28,14 @@ import {
 } from 'lucide-react';
 import { backend } from '../data/backend';
 import type { AppSnapshot, DashboardStats, Invoice, InvoiceStatus, Order, OrderLineItem, OrderStatus, WorkType } from '../data/types';
+import torbestLogoUrl from '../assets/torbest-logo.png';
 
 declare global {
   interface Window {
     BestAndroid?: {
       saveTextFile: (filename: string, content: string, mimeType: string) => string;
       savePdfFile?: (filename: string, title: string, linesJson: string) => string;
+      saveHtmlPdfFile?: (filename: string, html: string, widthMm: number, heightMm: number, openAfterSave: boolean) => string;
     };
   }
 }
@@ -125,6 +127,10 @@ const addDays = (iso: string, days: number) => {
   const date = iso ? new Date(`${iso}T12:00:00`) : new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+};
+const moneyNumber = (value: unknown) => {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? Math.max(Math.round(parsed), 0) : 0;
 };
 const calculateLineTotal = (width: number, height: number, quantity: number, unitPrice: number) => {
   const areaMeters = (width * height) / 10000;
@@ -600,7 +606,7 @@ function Customers({
           {filteredOrders.length === 0 && <Empty text="سفارشی برای این مشتری پیدا نشد" />}
         </List>
         <List title="فاکتورهای مشتری">
-          {filteredInvoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>{invoice.orderTitle}</p><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id)))}><Download size={16} />PDF</button></div></article>)}
+          {filteredInvoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>{invoice.orderTitle}</p><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id)), data)}><Download size={16} />PDF</button></div></article>)}
           {filteredInvoices.length === 0 && <Empty text="فاکتوری برای این مشتری پیدا نشد" />}
         </List>
         <List title="همکاران مرتبط">
@@ -914,7 +920,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
         </List>
         <div className="filter-grid"><SearchBox value={detailInvoicesSearch} onChange={setDetailInvoicesSearch} placeholder="جستجوی فاکتورهای همکار" /><Picker label="وضعیت فاکتورها" value={detailInvoicesStatus} onChange={setDetailInvoicesStatus} options={[{ value: 'all', label: 'همه فاکتورها' }, ...Object.entries(invoiceStatusLabels).map(([value, label]) => ({ value, label }))]} /><button className="secondary full-button" type="button" onClick={() => { setDetailInvoicesSearch(''); setDetailInvoicesStatus('all'); }}>پاک کردن فیلترها</button></div>
         <List title="فاکتورهای همکار">
-          {filteredInvoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, data.orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id)))}><Download size={16} />PDF</button></div></article>)}
+          {filteredInvoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, data.orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id)), data)}><Download size={16} />PDF</button></div></article>)}
           {filteredInvoices.length === 0 && <Empty text="فاکتوری برای این همکار ثبت نشده است" />}
         </List>
         <div className="filter-grid"><SearchBox value={detailCustomersSearch} onChange={setDetailCustomersSearch} placeholder="جستجوی مشتری‌های مرتبط" /><button className="secondary full-button" type="button" onClick={() => setDetailCustomersSearch('')}>پاک کردن فیلترها</button></div>
@@ -1112,7 +1118,7 @@ function Orders({
           {selectedOrder.lineItems.map((item) => <article className="line-detail" key={item.id}><h3>{item.meshTitle}</h3><p>ابعاد: {sizeText(item.width, item.height)} / تعداد: {numberText(item.quantity)} عدد</p><p>قیمت واحد: {money(item.unitPrice)} / جمع: {money(item.total)}</p>{item.description && <p>{item.description}</p>}</article>)}
         </List>
         <List title="فاکتورهای سفارش">
-          {invoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, [selectedOrder])}><Download size={16} />PDF</button></div></article>)}
+          {invoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, [selectedOrder], data)}><Download size={16} />PDF</button></div></article>)}
           {invoices.length === 0 && <Empty text="برای این سفارش هنوز فاکتور ثبت نشده است" />}
         </List>
       </section>
@@ -1273,7 +1279,7 @@ function Invoices({
       <section className="stack">
         <section className="panel section-heading"><div><h2>{selectedInvoice.title || selectedInvoice.orderTitle}</h2><p className="muted">{selectedInvoice.customerName} / {selectedInvoice.payerName || '-'}</p></div><button className="secondary" type="button" onClick={() => setSelectedInvoiceId('')}>بازگشت</button></section>
         <div className="metrics"><Metric label="مبلغ" value={money(selectedInvoice.amount)} /><Metric label="پرداخت" value={money(selectedInvoice.paid)} /><Metric label="مانده" value={money(remain)} /><Metric label="وضعیت" value={invoiceStatusLabels[selectedInvoice.status]} /></div>
-        <section className="panel"><div className="side-actions inline-actions"><button className="secondary" type="button" onClick={() => downloadInvoicePdf(selectedInvoice, invoiceOrders)}><Download size={17} />دانلود PDF فاکتور</button><button className="secondary" type="button" onClick={() => fillInvoice(selectedInvoice)}>ویرایش فاکتور</button></div><div className="payment-inline detail-payment"><input aria-label="مبلغ پرداخت" placeholder="مبلغ پرداخت" inputMode="numeric" value={payments[selectedInvoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [selectedInvoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(selectedInvoice.id, Number(payments[selectedInvoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت پرداخت</button></div></section>
+        <section className="panel"><div className="side-actions inline-actions"><button className="secondary" type="button" onClick={() => downloadInvoicePdf(selectedInvoice, invoiceOrders, data)}><Download size={17} />دانلود PDF فاکتور</button><button className="secondary" type="button" onClick={() => fillInvoice(selectedInvoice)}>ویرایش فاکتور</button></div><div className="payment-inline detail-payment"><input aria-label="مبلغ پرداخت" placeholder="مبلغ پرداخت" inputMode="numeric" value={payments[selectedInvoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [selectedInvoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(selectedInvoice.id, Number(payments[selectedInvoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت پرداخت</button></div></section>
         <List title="سفارش‌های فاکتور">
           {invoiceOrders.map((order) => <article className="card-row order-card" key={order.id}><div><h3>{order.title}</h3><p>{order.customerName}{order.collaboratorName ? ` / ${order.collaboratorName}` : ''}</p><strong>{money(order.total)}</strong><LineSummary items={order.lineItems} /></div><div className="side-actions"><span className={`pill ${order.status}`}>{statusLabels[order.status]}</span><button className="secondary mini label-download" type="button" onClick={() => downloadOrderLabelsPdf(order)}><Download size={16} />دانلود لیبل‌ها</button></div></article>)}
           {invoiceOrders.length === 0 && <Empty text="سفارش مرتبطی پیدا نشد" />}
@@ -1318,7 +1324,7 @@ function Invoices({
         {filtered.map((invoice) => {
           const remain = Math.max(invoice.amount - invoice.paid, 0);
           const invoiceOrders = data.orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id));
-          return <article className="card-row clickable-row" key={invoice.id} role="button" tabIndex={0} onClick={() => setSelectedInvoiceId(invoice.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedInvoiceId(invoice.id); }}><div><h3>{invoice.title || invoice.customerName}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>همکار بدهکار: {invoice.payerName || '-'}</p><p>پرداخت شده: {money(invoice.paid)} / {money(invoice.amount)}</p><p>تخفیف: {money(invoice.discount ?? 0)} / سررسید: {dateText(invoice.dueDate)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span>{invoice.note && <p>{invoice.note}</p>}</div><div className="side-actions" onClick={(event) => event.stopPropagation()}><button className="secondary" type="button" disabled={remain <= 0} onClick={() => void run(() => backend.addInvoicePayment(invoice.id, remain), 'پرداخت ثبت شد')}><CheckCircle2 size={17} />تسویه</button><div className="payment-inline"><input aria-label="مبلغ پرداخت" placeholder="مبلغ" inputMode="numeric" value={payments[invoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [invoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(invoice.id, Number(payments[invoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت</button></div><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, invoiceOrders)}><Download size={16} />PDF</button><button className="secondary mini" type="button" onClick={() => setSelectedInvoiceId(invoice.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => fillInvoice(invoice)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteInvoice(invoice.id), 'فاکتور حذف شد')}><Trash2 size={16} /></button></div></article>;
+          return <article className="card-row clickable-row" key={invoice.id} role="button" tabIndex={0} onClick={() => setSelectedInvoiceId(invoice.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedInvoiceId(invoice.id); }}><div><h3>{invoice.title || invoice.customerName}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>همکار بدهکار: {invoice.payerName || '-'}</p><p>پرداخت شده: {money(invoice.paid)} / {money(invoice.amount)}</p><p>تخفیف: {money(invoice.discount ?? 0)} / سررسید: {dateText(invoice.dueDate)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span>{invoice.note && <p>{invoice.note}</p>}</div><div className="side-actions" onClick={(event) => event.stopPropagation()}><button className="secondary" type="button" disabled={remain <= 0} onClick={() => void run(() => backend.addInvoicePayment(invoice.id, remain), 'پرداخت ثبت شد')}><CheckCircle2 size={17} />تسویه</button><div className="payment-inline"><input aria-label="مبلغ پرداخت" placeholder="مبلغ" inputMode="numeric" value={payments[invoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [invoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(invoice.id, Number(payments[invoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت</button></div><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, invoiceOrders, data)}><Download size={16} />PDF</button><button className="secondary mini" type="button" onClick={() => setSelectedInvoiceId(invoice.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => fillInvoice(invoice)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteInvoice(invoice.id), 'فاکتور حذف شد')}><Trash2 size={16} /></button></div></article>;
         })}
         {filtered.length === 0 && <Empty text="فاکتوری پیدا نشد" />}
       </List>
@@ -1573,67 +1579,188 @@ function activityTypeLabel(value: string) {
 function safeFilePart(value: string) {
   return (value || 'best').replace(/[\\/:*?"<>|\r\n]+/g, '_').trim().slice(0, 80) || 'best';
 }
-function downloadPdf(filename: string, title: string, lines: string[]) {
-  if (window.BestAndroid?.savePdfFile) {
-    window.BestAndroid.savePdfFile(filename, title, JSON.stringify(lines));
+function downloadHtmlPdf(filename: string, html: string, widthMm = 0, heightMm = 0, openAfterSave = true) {
+  if (window.BestAndroid?.saveHtmlPdfFile) {
+    window.BestAndroid.saveHtmlPdfFile(filename, html, widthMm, heightMm, openAfterSave);
     return;
   }
 
-  const rows = lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
-  downloadText(filename.replace(/\.pdf$/i, '.html'), `<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>body{font-family:Tahoma,Arial,sans-serif;margin:32px;color:#172033}h1{color:#174f91}li{margin:10px 0;padding:12px;border:1px solid #cbd5e1;border-radius:12px;list-style:none;background:#f8fafc}</style><h1>${escapeHtml(title)}</h1><ul>${rows}</ul></html>`, 'text/html;charset=utf-8');
+  downloadText(filename.replace(/\.pdf$/i, '.html'), html, 'text/html;charset=utf-8');
 }
 
 function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char);
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char);
 }
 
 function downloadOrderLabelsPdf(order: Order) {
-  const lines = [
-    `سفارش: ${order.title}`,
-    `مشتری: ${order.customerName || '-'}`,
-    `همکار: ${order.collaboratorName || '-'}`,
-    `نوع کار: ${workTypeLabels[order.workType]}`,
-    `تحویل: ${dateText(order.dueDate)}`,
-    ...order.lineItems.flatMap((item, index) => [
-      `لیبل ${index + 1}: ${item.meshTitle}`,
-      `ابعاد: ${sizeText(item.width, item.height)} / تعداد: ${numberText(item.quantity)} عدد`,
-      `قیمت: ${money(item.total)}${item.description ? ` / ${item.description}` : ''}`
-    ])
-  ];
-  downloadPdf(`best-labels-${safeFilePart(order.title)}.pdf`, `لیبل‌های سفارش ${order.title}`, lines);
+  downloadHtmlPdf(`best-labels-${safeFilePart(order.title)}.pdf`, renderLabelsHtml(order), 34, 24);
 }
 
-function downloadInvoicePdf(invoice: Invoice, orders: Order[] = []) {
-  const remaining = Math.max(invoice.amount - invoice.paid, 0);
-  const orderTitles = orders.length ? orders.map((order) => order.title).join('، ') : invoice.orderTitle;
-  const lines = [
-    `فاکتور: ${invoice.title || invoice.orderTitle || invoice.id}`,
-    `سفارش‌ها: ${orderTitles || '-'}`,
-    `مشتری: ${invoice.customerName || '-'}`,
-    `همکار بدهکار: ${invoice.payerName || '-'}`,
-    `مبلغ کل: ${money(invoice.amount)}`,
-    `پرداخت شده: ${money(invoice.paid)}`,
-    `مانده: ${money(remaining)}`,
-    `تخفیف: ${money(invoice.discount ?? 0)}`,
-    `وضعیت: ${invoiceStatusLabels[invoice.status]}`,
-    `سررسید: ${dateText(invoice.dueDate)}`,
-    invoice.note ? `توضیحات: ${invoice.note}` : ''
-  ].filter(Boolean);
-  downloadPdf(`best-invoice-${safeFilePart(invoice.title || invoice.orderTitle || invoice.id)}.pdf`, `فاکتور ${invoice.title || invoice.orderTitle || invoice.id}`, lines);
+async function downloadInvoicePdf(invoice: Invoice, orders: Order[] = [], data?: AppSnapshot) {
+  const logoDataUri = await getTorbestLogoDataUri();
+  downloadHtmlPdf(`best-invoice-${safeFilePart(invoice.invoiceNumber || invoice.title || invoice.orderTitle || invoice.id)}.pdf`, renderInvoiceHtml(invoice, orders, logoDataUri, data));
 }
 
 function downloadCollaboratorPaymentPdf(payment: AppSnapshot['collaboratorPayments'][number], collaborator: AppSnapshot['collaborators'][number], remainingBefore = 0) {
   const remainingAfter = Math.max(remainingBefore - Number(payment.amount ?? 0), 0);
-  downloadPdf(`best-collaborator-payment-${safeFilePart(collaborator.name)}-${safeFilePart(payment.paidAt)}.pdf`, `رسید پرداخت ${collaborator.name}`, [
-    `همکار: ${collaborator.name}`,
-    `موبایل: ${collaborator.phone || '-'}`,
-    `نقش: ${collaborator.role || '-'}`,
-    `تاریخ پرداخت: ${dateText(payment.paidAt)}`,
-    `مبلغ پرداخت: ${money(payment.amount)}`,
-    `مانده قبل از پرداخت: ${money(remainingBefore)}`,
-    `مانده بعد از پرداخت: ${money(remainingAfter)}`,
-    `توضیح: ${payment.note || '-'}`
-  ]);
+  downloadHtmlPdf(`best-collaborator-payment-${safeFilePart(collaborator.name)}-${safeFilePart(payment.paidAt)}.pdf`, renderPaymentReceiptHtml(payment, collaborator, remainingBefore, remainingAfter));
+}
+
+let torbestLogoDataUriPromise: Promise<string | null> | null = null;
+
+function getTorbestLogoDataUri() {
+  torbestLogoDataUriPromise ??= fetch(torbestLogoUrl)
+    .then((response) => response.blob())
+    .then((blob) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    }))
+    .catch(() => null);
+  return torbestLogoDataUriPromise;
+}
+
+function renderLabelsHtml(order: Order) {
+  const labels = order.lineItems.length ? order.lineItems : [{ id: 'empty', width: 0, height: 0, quantity: 1, meshTitle: '', meshTypeId: '', unitPrice: 0, total: 0, description: '' }];
+  const pages = labels.map((item) => {
+    const dimensions = `${dimensionText(item.width)}×${dimensionText(item.height)}`;
+    const customerName = order.customerName || '-';
+    const collaboratorContact = order.collaboratorPhone || order.collaboratorName || '-';
+    const dimensionFontSize = pickLabelFontSize(dimensions, 18.4, 13.2);
+    const customerFontSize = pickLabelFontSize(customerName, 12.6, 8.8);
+    const contactFontSize = pickLabelFontSize(collaboratorContact, 10.8, 7.8);
+    return `<section class="label-page"><div class="label"><div class="rotated-content"><div class="line line-1" style="font-size:${dimensionFontSize}px">${escapeHtml(dimensions)}</div><div class="line line-2" style="font-size:${customerFontSize}px">${escapeHtml(customerName)}</div><div class="line line-3" style="font-size:${contactFontSize}px">${escapeHtml(collaboratorContact)}</div></div></div></section>`;
+  }).join('');
+
+  return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8" /><style>
+@page{size:34mm 24mm;margin:0}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:34mm;min-height:24mm}
+body{font-family:Vazirmatn,Tahoma,sans-serif;direction:rtl;color:#0f172a;background:#fff}
+.label-page{width:34mm;height:24mm;display:flex;justify-content:center;align-items:center;page-break-after:always;break-after:page;overflow:hidden}
+.label-page:last-child{page-break-after:auto;break-after:auto}
+.label{width:33mm;height:23mm;border:1px solid #cbd5e1;border-radius:1.5mm;display:flex;justify-content:center;align-items:center;background:#fff;overflow:hidden}
+.rotated-content{transform:rotate(-90deg) translateY(-8mm);transform-origin:center;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:.7mm}
+.line{text-align:center;line-height:1.12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.line-1{font-weight:900;letter-spacing:.32mm}
+.line-2{transform:translateY(2mm);font-weight:700}
+.line-3{transform:translateY(5mm);font-weight:600;letter-spacing:.32mm;direction:ltr;unicode-bidi:plaintext;font-variant-numeric:tabular-nums}
+</style></head><body>${pages}</body></html>`;
+}
+
+function pickLabelFontSize(value: string, baseSize: number, minSize: number) {
+  const textLength = String(value ?? '').trim().length;
+  if (textLength <= 10) return baseSize;
+  if (textLength <= 14) return Math.max(baseSize - 1, minSize);
+  if (textLength <= 18) return Math.max(baseSize - 2, minSize);
+  if (textLength <= 24) return Math.max(baseSize - 3, minSize);
+  return minSize;
+}
+
+function renderInvoiceHtml(invoice: Invoice, orders: Order[], logoDataUri: string | null, data?: AppSnapshot) {
+  const invoiceOrders = orders.length ? orders : [];
+  const combinedItems = invoiceOrders.flatMap((order) => order.lineItems.map((item) => ({ ...item, orderTitle: order.title })));
+  const orderTitle = invoiceOrders.length ? invoiceOrders.map((order) => order.title).join(' + ') : invoice.orderTitle || '-';
+  const buyerName = invoice.payerName || invoiceOrders[0]?.collaboratorName || '-';
+  const buyer = data?.collaborators.find((collaborator) => collaborator.id === invoice.payerId);
+  const buyerPhone = buyer?.phone || invoiceOrders.find((order) => order.collaboratorPhone)?.collaboratorPhone || '-';
+  const buyerAddress = '-';
+  const sellerName = 'تولیدی توربست';
+  const sellerPhone = '09124617758 - 09004617758';
+  const sellerAddress = 'میانجاده، جنب خیابان عدل، بن‌بست 12، پلاک 1';
+  const discountAmount = moneyNumber(invoice.discount);
+  const finalAmount = moneyNumber(invoice.amount);
+  const subtotal = Math.max(finalAmount + discountAmount, 0);
+  const previousRemaining = moneyNumber(data ? calculatePreviousRemaining(invoice, data) : 0);
+  const finalPayableAmount = finalAmount + previousRemaining;
+  const rows = combinedItems.map((item, index) => `<tr><td>${index + 1}</td><td class="name-cell"><div class="item-title">${escapeHtml(item.meshTitle || 'آیتم')}</div><div class="item-sub">(${escapeHtml(`${dimensionText(item.width)} × ${dimensionText(item.height)}`)})</div></td><td>${numberText(item.quantity)}</td><td>${formatPdfMoney(item.unitPrice)}</td><td>${formatPdfMoney(item.total)}</td><td class="desc-cell">${escapeHtml(item.description || item.orderTitle || '-')}</td></tr>`).join('') || `<tr><td colspan="6">قلمی برای این فاکتور ثبت نشده است.</td></tr>`;
+  const summaryRows = [
+    `<div class="sum-row"><div class="sum-label">جمع جزء</div><div class="sum-amount">${formatPdfMoney(subtotal)}</div></div>`,
+    discountAmount > 0 ? `<div class="sum-row"><div class="sum-label">تخفیف</div><div class="sum-amount">${formatPdfMoney(discountAmount)}</div></div>` : '',
+    `<div class="sum-row final"><div class="sum-label">مبلغ کل فاکتور (تومان)</div><div class="sum-amount">${formatPdfMoney(finalAmount)}</div></div>`,
+    previousRemaining > 0 ? `<div class="sum-row carry"><div class="sum-label">مانده قبلی</div><div class="sum-amount">${formatPdfMoney(previousRemaining)}</div></div>` : '',
+    previousRemaining > 0 ? `<div class="sum-row final payable"><div class="sum-label">مبلغ نهایی قابل پرداخت</div><div class="sum-amount">${formatPdfMoney(finalPayableAmount)}</div></div>` : ''
+  ].filter(Boolean).join('');
+
+  return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8" /><style>
+@page{size:A4;margin:12mm 10mm}
+:root{--text:#111827;--muted:#6b7280;--border:#d6d9df;--soft:#f8fafc;--heading:#0f172a}
+*{box-sizing:border-box}
+html,body{width:100%;min-height:100%}
+body{margin:0;padding:12mm 10mm;box-sizing:border-box;color:var(--text);background:#fff;font-family:Vazirmatn,Tahoma,sans-serif;font-size:12.5px;line-height:1.65;direction:rtl}
+.invoice{width:100%;max-width:820px;margin:0 auto;padding:0}
+.header{display:grid;grid-template-columns:1.05fr 1.2fr .65fr;gap:14px;align-items:stretch;margin-bottom:14px}
+.meta{border-left:1px solid var(--border);padding-left:10px;align-content:center}
+.meta-grid,.party-info{display:grid;grid-template-columns:auto auto 1fr;row-gap:6px;column-gap:8px;font-size:12.5px}
+.label{color:var(--muted);font-weight:600;white-space:nowrap}
+.meta-grid strong,.party-info strong{font-size:13px;font-weight:700;color:var(--heading)}
+.title-block{border-left:1px solid var(--border);border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:4px 12px}
+.title-block h1{margin:0;font-size:36px;line-height:1.15;color:#020617;font-weight:800;letter-spacing:-.4px}
+.logo-card{border:1px solid var(--border);border-radius:12px;background:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:6px;padding:8px}
+.logo-image{width:100%;max-width:140px;max-height:130px;object-fit:contain}
+.logo-fallback{font-size:19px;font-weight:800;color:#f59e0b;letter-spacing:1px}
+.party-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.party-card{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:#fff}
+.party-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.party-header h3{margin:0;font-size:22px;line-height:1.1;color:var(--heading);font-weight:800}
+.table-wrap{margin:8px 0 12px;border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden}
+table{width:100%;border-collapse:separate;border-spacing:0;margin:0;table-layout:auto}
+thead{display:table-header-group}
+th,td{border:0;border-inline-start:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 10px;font-size:12.5px;text-align:center;vertical-align:middle;page-break-inside:avoid;break-inside:avoid}
+th:first-child,td:first-child{border-inline-start:0} tbody tr:last-child td{border-bottom:0}
+th{background:#f3f4f6;color:#111827;font-weight:700;white-space:nowrap}
+td{white-space:nowrap}.name-cell,.desc-cell{text-align:right;white-space:normal;word-break:normal;overflow-wrap:break-word;line-height:1.45}
+.item-title{font-weight:700;color:#111827;margin-bottom:2px}.item-sub{font-size:12px;color:#4b5563;direction:ltr;unicode-bidi:plaintext;text-align:right}
+.summary{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.sum-row{display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:42px;background:#fff}.sum-row:last-child{border-bottom:0}
+.sum-label{flex:1;text-align:right;padding:0 14px;font-size:14px;color:#111827;font-weight:600}
+.sum-amount{width:220px;border-right:1px solid var(--border);text-align:left;padding:0 14px;font-size:16px;font-weight:700;color:#111827;direction:ltr;unicode-bidi:plaintext}
+.sum-row.final .sum-label,.sum-row.final .sum-amount{font-size:18px;font-weight:800;color:#0b1220;background:var(--soft)}.sum-row.carry .sum-label,.sum-row.carry .sum-amount{font-size:16px;font-weight:800}.sum-row.payable .sum-label,.sum-row.payable .sum-amount{background:#eef2ff}
+.notes{border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px;text-align:right}.notes-head{font-size:15px;font-weight:700;margin-bottom:8px}
+.thank-you{text-align:center;color:#374151;font-size:12px;font-weight:500;margin:0}
+.header,.party-grid,.party-card,.summary,.notes,.footer,tr{page-break-inside:avoid;break-inside:avoid}
+</style></head><body><div class="invoice">
+<section class="header"><div class="meta"><div class="meta-grid"><span class="label">شماره فاکتور</span><span>:</span><strong>${escapeHtml(invoice.invoiceNumber || invoice.id.slice(0, 8))}</strong><span class="label">تاریخ فاکتور</span><span>:</span><strong>${escapeHtml(dateText(invoice.createdAt))}</strong><span class="label">ساعت</span><span>:</span><strong>${escapeHtml(timeText(invoice.createdAt))}</strong><span class="label">شماره سفارش</span><span>:</span><strong>${escapeHtml(orderTitle)}</strong></div></div><div class="title-block"><h1>فاکتور فروش</h1></div><div class="logo-card">${logoDataUri ? `<img class="logo-image" src="${logoDataUri}" alt="لوگوی توربست" />` : '<span class="logo-fallback">TORBEST</span>'}</div></section>
+<section class="party-grid"><article class="party-card"><div class="party-header"><h3>خریدار</h3></div><div class="party-info"><span class="label">نام خریدار</span><span>:</span><strong>${escapeHtml(buyerName)}</strong><span class="label">شماره همراه</span><span>:</span><strong>${escapeHtml(buyerPhone)}</strong><span class="label">آدرس</span><span>:</span><strong>${escapeHtml(buyerAddress)}</strong></div></article><article class="party-card"><div class="party-header"><h3>فروشنده</h3></div><div class="party-info"><span class="label">نام فروشگاه</span><span>:</span><strong>${escapeHtml(sellerName)}</strong><span class="label">تلفن</span><span>:</span><strong>${escapeHtml(sellerPhone)}</strong><span class="label">آدرس</span><span>:</span><strong>${escapeHtml(sellerAddress)}</strong></div></article></section>
+<div class="table-wrap"><table><thead><tr><th style="width:54px;">ردیف</th><th>نام کالا</th><th style="width:72px;">تعداد</th><th style="width:138px;">قیمت واحد (تومان)</th><th style="width:148px;">مبلغ کل (تومان)</th><th style="width:170px;">توضیحات</th></tr></thead><tbody>${rows}</tbody></table></div>
+<section class="summary">${summaryRows}</section>${invoice.note ? `<section class="notes"><div class="notes-head">توضیحات</div><p>${escapeHtml(invoice.note)}</p></section>` : ''}<footer class="footer"><p class="thank-you">از اعتماد و خرید شما سپاسگزاریم.</p></footer></div></body></html>`;
+}
+
+function calculatePreviousRemaining(invoice: Invoice, data: AppSnapshot) {
+  const payerId = invoice.payerId;
+  if (!payerId) return 0;
+  const invoiceTime = new Date(invoice.createdAt).getTime();
+  const safeInvoiceTime = Number.isFinite(invoiceTime) ? invoiceTime : Date.now();
+  const previousInvoices = data.invoices.filter((item) => {
+    if (item.id === invoice.id || item.payerId !== payerId) return false;
+    const itemTime = new Date(item.createdAt).getTime();
+    return Number.isFinite(itemTime) && itemTime < safeInvoiceTime;
+  });
+  const previousDebt = previousInvoices.reduce((sum, item) => sum + Math.max(moneyNumber(item.amount) - moneyNumber(item.paid), 0), 0);
+  const previousDirectPayments = data.collaboratorPayments
+    .filter((payment) => {
+      if (payment.collaboratorId !== payerId) return false;
+      const paymentTime = new Date(payment.paidAt || payment.createdAt).getTime();
+      return Number.isFinite(paymentTime) && paymentTime < safeInvoiceTime;
+    })
+    .reduce((sum, payment) => sum + moneyNumber(payment.amount), 0);
+  return Math.max(previousDebt - previousDirectPayments, 0);
+}
+
+function renderPaymentReceiptHtml(payment: AppSnapshot['collaboratorPayments'][number], collaborator: AppSnapshot['collaborators'][number], remainingBefore: number, remainingAfter: number) {
+  return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8" /><style>@page{size:A4;margin:14mm 12mm}html,body{width:100%;min-height:100%}body{margin:0;padding:14mm 12mm;box-sizing:border-box;font-family:Vazirmatn,Tahoma,sans-serif;color:#0f172a;font-size:13px;line-height:1.65}.wrap{border:1px solid #dbe2ea;border-radius:14px;padding:16px}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.title{font-size:24px;font-weight:800;margin:0}.sub{color:#64748b;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.card{border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;background:#fff}.label{color:#64748b;font-size:12px}.value{font-size:15px;font-weight:700;margin-top:3px}.table{border:1px solid #dbe2ea;border-radius:10px;overflow:hidden;margin-top:8px}.row{display:flex;border-bottom:1px solid #e2e8f0;min-height:42px;align-items:center}.row:last-child{border-bottom:0}.cell-label{flex:1;padding:0 12px;font-weight:600}.cell-value{width:260px;border-right:1px solid #e2e8f0;padding:0 12px;text-align:left;direction:ltr;unicode-bidi:plaintext;font-weight:700}.final{background:#f8fafc;font-size:15px}.note{margin-top:12px;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;background:#fcfcfd}</style></head><body><div class="wrap"><div class="head"><div><h1 class="title">رسید پرداخت</h1></div><div class="sub">${escapeHtml(dateText(payment.paidAt))}</div></div><div class="grid"><div class="card"><div class="label">نام</div><div class="value">${escapeHtml(collaborator.name)}</div></div><div class="card"><div class="label">شماره تماس</div><div class="value">${escapeHtml(collaborator.phone || '-')}</div></div></div><div class="table"><div class="row"><div class="cell-label">مانده قبل از رسید (تومان)</div><div class="cell-value">${formatPdfMoney(remainingBefore)}</div></div><div class="row"><div class="cell-label">مبلغ رسید (تومان)</div><div class="cell-value">${formatPdfMoney(payment.amount)}</div></div><div class="row final"><div class="cell-label">مانده بعد از رسید (تومان)</div><div class="cell-value">${formatPdfMoney(remainingAfter)}</div></div></div><div class="note"><span class="label">توضیح پرداخت:</span><div class="value">${escapeHtml(payment.note || '-')}</div></div></div></body></html>`;
+}
+
+function formatPdfMoney(value: number) {
+  return moneyNumber(value).toLocaleString('fa-IR');
+}
+
+function timeText(iso?: string) {
+  if (!iso) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('fa-IR', { hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
 function downloadText(filename: string, content: string, type: string) {
