@@ -908,6 +908,21 @@ textarea:focus {
   margin: 0;
 }
 
+.line-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.line-detail-head h3 {
+  min-width: 0;
+}
+
+.line-detail-head .label-download {
+  flex-shrink: 0;
+}
+
 .side-actions {
   flex-direction: column;
   align-items: flex-end;
@@ -1095,16 +1110,6 @@ textarea:focus {
   color: var(--primary);
   background: var(--accent-soft);
   font-weight: 800;
-}
-
-.bottom-nav button.active::before {
-  content: "";
-  position: absolute;
-  top: 5px;
-  width: 20px;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--accent);
 }
 
 .section-heading {

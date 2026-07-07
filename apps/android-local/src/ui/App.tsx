@@ -1150,7 +1150,7 @@ function Orders({
         <div className="metrics"><Metric label="جمع سفارش" value={money(selectedOrder.total)} /><Metric label="آیتم‌ها" value={selectedOrder.lineItems.length.toLocaleString('fa-IR')} /><Metric label="وضعیت" value={statusLabels[selectedOrder.status]} /><Metric label="تحویل" value={dateText(selectedOrder.dueDate)} /></div>
         <section className="panel"><div className="side-actions inline-actions"><button className="secondary" type="button" onClick={() => downloadOrderLabelsPdf(selectedOrder)}><Download size={17} />دانلود همه لیبل‌ها</button><button className="secondary" type="button" disabled={invoices.length > 0} onClick={() => void run(() => backend.addInvoice({ orderIds: [selectedOrder.id], title: `فاکتور ${selectedOrder.title}`, amount: selectedOrder.total, paid: 0, discount: selectedOrder.discount, payerId: selectedOrder.collaboratorId, dueDate: selectedOrder.dueDate, note: '' }), 'فاکتور سفارش ثبت شد')}>افزودن فاکتور</button><button className="secondary" type="button" onClick={() => fillOrder(selectedOrder)}>ویرایش سفارش</button></div></section>
         <List title="آیتم‌های سفارش">
-          {selectedOrder.lineItems.map((item) => <article className="line-detail" key={item.id}><h3>{item.meshTitle}</h3><p>ابعاد: {sizeText(item.width, item.height)} / تعداد: {numberText(item.quantity)} عدد</p><p>قیمت واحد: {money(item.unitPrice)} / جمع: {money(item.total)}</p>{item.description && <p>{item.description}</p>}</article>)}
+          {selectedOrder.lineItems.map((item, index) => <article className="line-detail" key={item.id}><div className="line-detail-head"><h3>{item.meshTitle}</h3><button className="secondary mini label-download" type="button" onClick={() => void downloadOrderLineLabelPdf(selectedOrder, item, index)}><Download size={16} />دانلود لیبل</button></div><p>ابعاد: {sizeText(item.width, item.height)} / تعداد: {numberText(item.quantity)} عدد</p><p>قیمت واحد: {money(item.unitPrice)} / جمع: {money(item.total)}</p>{item.description && <p>{item.description}</p>}</article>)}
         </List>
         <List title="فاکتورهای سفارش">
           {invoices.map((invoice) => <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.orderTitle}</h3><p>پرداخت: {money(invoice.paid)} / {money(invoice.amount)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span></div><div className="side-actions"><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, [selectedOrder], data)}><Download size={16} />PDF</button></div></article>)}
@@ -1632,12 +1632,28 @@ async function downloadOrderLabelsPdf(order: Order) {
   const fontFaceCss = await getLabelFontFaceCss();
   if (window.BestAndroid?.saveHtmlPdfFile) {
     labelItems.forEach((item, index) => {
-      window.BestAndroid?.saveHtmlPdfFile(buildDashboardLabelFileName(order, item, index), renderDashboardLabelHtml(order, item, fontFaceCss), 34, 24, index === 0);
+      saveDashboardLabelPdf(order, item, index, fontFaceCss, index === 0);
     });
     return;
   }
 
-  downloadHtmlPdf(buildDashboardLabelFileName(order, labelItems[0], 0), renderDashboardLabelHtml(order, labelItems[0], fontFaceCss), 34, 24);
+  saveDashboardLabelPdf(order, labelItems[0], 0, fontFaceCss, true);
+}
+
+async function downloadOrderLineLabelPdf(order: Order, item: OrderLineItem, index: number) {
+  const fontFaceCss = await getLabelFontFaceCss();
+  saveDashboardLabelPdf(order, item, index, fontFaceCss, true);
+}
+
+function saveDashboardLabelPdf(order: Order, item: OrderLineItem, index: number, fontFaceCss: string, openAfterSave: boolean) {
+  const fileName = buildDashboardLabelFileName(order, item, index);
+  const html = renderDashboardLabelHtml(order, item, fontFaceCss);
+  if (window.BestAndroid?.saveHtmlPdfFile) {
+    window.BestAndroid.saveHtmlPdfFile(fileName, html, 34, 24, openAfterSave);
+    return;
+  }
+
+  downloadHtmlPdf(fileName, html, 34, 24);
 }
 
 async function downloadInvoicePdf(invoice: Invoice, orders: Order[] = [], data?: AppSnapshot) {
