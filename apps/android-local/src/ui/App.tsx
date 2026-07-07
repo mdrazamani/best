@@ -39,11 +39,14 @@ declare global {
 }
 
 type Tab = 'dashboard' | 'orders' | 'invoices' | 'collaborators' | 'customers' | 'mesh' | 'warehouse' | 'users' | 'backups' | 'notifications' | 'activity' | 'reports';
+type OrderIntent = { key: number; customerId?: string; collaboratorId?: string };
+type InvoiceIntent = { key: number; orderIds?: string[]; payerId?: string };
 
 const emptySnapshot: AppSnapshot = {
   customers: [],
   orders: [],
   invoices: [],
+  collaboratorPayments: [],
   inventory: [],
   collaborators: [],
   meshTypes: [],
@@ -150,6 +153,8 @@ export function App() {
   const [role, setRole] = useState('assistant');
   const [assistantTabs, setAssistantTabs] = useState<Tab[]>(defaultAssistantTabs);
   const [backupInterval, setBackupInterval] = useState(1440);
+  const [orderIntent, setOrderIntent] = useState<OrderIntent | null>(null);
+  const [invoiceIntent, setInvoiceIntent] = useState<InvoiceIntent | null>(null);
 
   async function reload() {
     setData(await backend.snapshot());
@@ -179,13 +184,17 @@ export function App() {
   }, []);
 
   const stats = useMemo<DashboardStats>(
-    () => ({
-      customers: data.customers.length,
-      activeOrders: data.orders.filter((order) => !['delivered', 'cancelled'].includes(order.status)).length,
-      unpaidTotal: data.invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0),
-      lowStock: data.inventory.filter((item) => item.quantity <= item.minQuantity).length,
-      todayOrders: data.orders.filter((order) => order.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length
-    }),
+    () => {
+      const invoiceRemaining = data.invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
+      const directPayments = data.collaboratorPayments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+      return {
+        customers: data.customers.length,
+        activeOrders: data.orders.filter((order) => !['delivered', 'cancelled'].includes(order.status)).length,
+        unpaidTotal: Math.max(invoiceRemaining - directPayments, 0),
+        lowStock: data.inventory.filter((item) => item.quantity <= item.minQuantity).length,
+        todayOrders: data.orders.filter((order) => order.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length
+      };
+    },
     [data]
   );
 
@@ -219,6 +228,18 @@ export function App() {
 
   function goTo(nextTab: Tab) {
     setTab(nextTab);
+    closeMenu();
+  }
+
+  function openOrderIntent(intent: Omit<OrderIntent, 'key'>) {
+    setOrderIntent({ ...intent, key: Date.now() });
+    setTab('orders');
+    closeMenu();
+  }
+
+  function openInvoiceIntent(intent: Omit<InvoiceIntent, 'key'>) {
+    setInvoiceIntent({ ...intent, key: Date.now() });
+    setTab('invoices');
     closeMenu();
   }
 
@@ -310,10 +331,10 @@ export function App() {
       <main className="content">
         {message && <div className="toast">{message}</div>}
         {tab === 'dashboard' && <Dashboard data={data} stats={stats} />}
-        {tab === 'orders' && <Orders data={data} run={run} />}
-        {tab === 'invoices' && <Invoices data={data} run={run} />}
+        {tab === 'orders' && <Orders data={data} run={run} intent={orderIntent} onIntentConsumed={() => setOrderIntent(null)} />}
+        {tab === 'invoices' && <Invoices data={data} run={run} intent={invoiceIntent} onIntentConsumed={() => setInvoiceIntent(null)} />}
         {tab === 'collaborators' && <Collaborators data={data} run={run} />}
-        {tab === 'customers' && <Customers data={data} run={run} />}
+        {tab === 'customers' && <Customers data={data} run={run} onCreateOrder={openOrderIntent} onCreateInvoice={openInvoiceIntent} />}
         {tab === 'mesh' && <MeshTypes data={data} run={run} />}
         {tab === 'warehouse' && <Inventory data={data} run={run} />}
         {tab === 'users' && role === 'manager' && <UsersPage data={data} run={run} assistantTabs={assistantTabs} onSaveAssistantTabs={saveAssistantTabs} />}
@@ -495,7 +516,17 @@ function Dashboard({ data, stats }: { data: AppSnapshot; stats: DashboardStats }
   );
 }
 
-function Customers({ data, run }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void> }) {
+function Customers({
+  data,
+  run,
+  onCreateOrder,
+  onCreateInvoice
+}: {
+  data: AppSnapshot;
+  run: (action: () => Promise<void>, done?: string) => Promise<void>;
+  onCreateOrder: (intent: Omit<OrderIntent, 'key'>) => void;
+  onCreateInvoice: (intent: Omit<InvoiceIntent, 'key'>) => void;
+}) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -508,6 +539,9 @@ function Customers({ data, run }: { data: AppSnapshot; run: (action: () => Promi
   const [detailInvoiceStatus, setDetailInvoiceStatus] = useState('all');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
   const filtered = data.customers.filter((item) => {
     const matchesText = (item.name + ' ' + item.phone + ' ' + item.address).toLowerCase().includes(query.trim().toLowerCase());
     const hasReferrer = Boolean(item.referredByCollaboratorId);
@@ -527,10 +561,39 @@ function Customers({ data, run }: { data: AppSnapshot; run: (action: () => Promi
     const filteredOrders = orders.filter((order) => detailOrderStatus === 'all' || order.status === detailOrderStatus);
     const filteredInvoices = invoices.filter((invoice) => detailInvoiceStatus === 'all' || invoice.status === detailInvoiceStatus);
     const remaining = invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
+    const invoicedOrderIds = new Set(data.invoices.flatMap((invoice) => invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]));
+    const freeInvoiceOrders = orders.filter((order) => order.status !== 'cancelled' && !invoicedOrderIds.has(order.id));
+    const unpaidInvoices = invoices.filter((invoice) => Math.max(invoice.amount - invoice.paid, 0) > 0);
+    const selectedPaymentInvoice = unpaidInvoices.find((invoice) => invoice.id === paymentInvoiceId);
+    const openPayment = () => {
+      const invoice = unpaidInvoices[0];
+      setPaymentInvoiceId(invoice?.id ?? '');
+      setPaymentAmount(invoice ? String(Math.max(invoice.amount - invoice.paid, 0)) : '');
+      setPaymentOpen(true);
+    };
     return (
       <section className="stack">
         <section className="panel section-heading"><div><h2>{selected.name}</h2><p className="muted">{selected.phone || 'بدون موبایل'} {selected.address ? ` / ${selected.address}` : ''}</p></div><button className="secondary" type="button" onClick={() => setSelectedId('')}>بازگشت</button></section>
         <div className="metrics"><Metric label="سفارش‌ها" value={orders.length.toLocaleString('fa-IR')} /><Metric label="فاکتورها" value={invoices.length.toLocaleString('fa-IR')} /><Metric label="همکاران" value={collaborators.length.toLocaleString('fa-IR')} /><Metric label="مانده" value={money(remaining)} /></div>
+        <section className="panel">
+          <h2>عملیات سریع</h2>
+          <div className="quick-action-grid">
+            <button className="secondary" type="button" onClick={() => onCreateOrder({ customerId: selected.id, collaboratorId: selected.referredByCollaboratorId || collaborators[0]?.id })}><PackagePlus size={17} />ساخت سفارش</button>
+            <button className="secondary" type="button" disabled={freeInvoiceOrders.length === 0} onClick={() => onCreateInvoice({ orderIds: freeInvoiceOrders.slice(0, 1).map((order) => order.id), payerId: freeInvoiceOrders[0]?.collaboratorId })}><ReceiptText size={17} />ساخت فاکتور</button>
+            <button className="secondary" type="button" disabled={unpaidInvoices.length === 0} onClick={openPayment}><CheckCircle2 size={17} />ثبت پرداخت فاکتور</button>
+            <button className="secondary" type="button" onClick={() => openEdit(selected)}><UserRoundPlus size={17} />ویرایش مشتری</button>
+          </div>
+        </section>
+        <Modal title="ثبت پرداخت فاکتور مشتری" open={paymentOpen} onClose={() => setPaymentOpen(false)}>
+          <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!paymentInvoiceId) throw new Error('فاکتور را انتخاب کنید'); await backend.addInvoicePayment(paymentInvoiceId, Number(paymentAmount)); setPaymentOpen(false); setPaymentInvoiceId(''); setPaymentAmount(''); }, 'پرداخت فاکتور ثبت شد'); }}>
+            <FlowSection title="پرداخت">
+              <Picker label="فاکتور" value={paymentInvoiceId} onChange={(value) => { const invoice = unpaidInvoices.find((item) => item.id === value); setPaymentInvoiceId(value); setPaymentAmount(invoice ? String(Math.max(invoice.amount - invoice.paid, 0)) : ''); }} placeholder="فاکتور را انتخاب کنید" options={unpaidInvoices.map((invoice) => ({ value: invoice.id, label: invoice.title || invoice.orderTitle, helper: `مانده ${money(Math.max(invoice.amount - invoice.paid, 0))}` }))} />
+              {selectedPaymentInvoice && <p className="muted">مبلغ فاکتور: {money(selectedPaymentInvoice.amount)} / پرداخت شده: {money(selectedPaymentInvoice.paid)}</p>}
+              <label>مبلغ پرداخت<input value={paymentAmount} inputMode="numeric" onChange={(event) => setPaymentAmount(event.target.value)} /></label>
+            </FlowSection>
+            <div className="form-actions"><button className="primary" type="submit"><CheckCircle2 size={18} />ثبت پرداخت</button><button className="secondary" type="button" onClick={() => setPaymentOpen(false)}>انصراف</button></div>
+          </form>
+        </Modal>
         <div className="filter-grid"><Picker label="فیلتر سفارش‌ها" value={detailOrderStatus} onChange={setDetailOrderStatus} options={[{ value: 'all', label: 'همه سفارش‌ها' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /><Picker label="فیلتر فاکتورها" value={detailInvoiceStatus} onChange={setDetailInvoiceStatus} options={[{ value: 'all', label: 'همه فاکتورها' }, ...Object.entries(invoiceStatusLabels).map(([value, label]) => ({ value, label }))]} /><button className="secondary full-button" type="button" onClick={() => { setDetailOrderStatus('all'); setDetailInvoiceStatus('all'); }}>پاک کردن فیلترها</button></div>
         <List title="سفارش‌های مشتری">
           {filteredOrders.map((order) => <OrderCard key={order.id} order={order} onEdit={() => openEdit(selected)} run={run} compact />)}
@@ -569,7 +632,7 @@ function Customers({ data, run }: { data: AppSnapshot; run: (action: () => Promi
           const orders = data.orders.filter((order) => order.customerId === item.id);
           const invoices = data.invoices.filter((invoice) => orders.some((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id)));
           const remaining = invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
-          return <article className="row detail-row" key={item.id}><div><h3>{item.name}</h3><p>{item.phone || 'بدون موبایل'} {item.address ? ` / ${item.address}` : ''}</p><p>{orders.length.toLocaleString('fa-IR')} سفارش / مانده {money(remaining)}</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions"><span>{dateText(item.createdAt)}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteCustomer(item.id), 'مشتری حذف شد')}><Trash2 size={16} /></button></div></article>;
+          return <article className="row detail-row clickable-row" key={item.id} role="button" tabIndex={0} onClick={() => setSelectedId(item.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedId(item.id); }}><div><h3>{item.name}</h3><p>{item.phone || 'بدون موبایل'} {item.address ? ` / ${item.address}` : ''}</p><p>{orders.length.toLocaleString('fa-IR')} سفارش / مانده {money(remaining)}</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions" onClick={(event) => event.stopPropagation()}><span>{dateText(item.createdAt)}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteCustomer(item.id), 'مشتری حذف شد')}><Trash2 size={16} /></button></div></article>;
         })}
         {filtered.length === 0 && <Empty text="مشتری پیدا نشد" />}
       </List>
@@ -596,7 +659,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
   const [detailCustomersSearch, setDetailCustomersSearch] = useState('');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
-  const [detailAction, setDetailAction] = useState<'customer' | 'order' | 'invoice' | 'payment' | ''>('');
+  const [detailAction, setDetailAction] = useState<'customer' | 'order' | 'invoice' | 'payment' | 'collaboratorPayment' | ''>('');
   const [actionCustomerName, setActionCustomerName] = useState('');
   const [actionCustomerPhone, setActionCustomerPhone] = useState('');
   const [actionCustomerAddress, setActionCustomerAddress] = useState('');
@@ -622,15 +685,20 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
   const [actionInvoiceNote, setActionInvoiceNote] = useState('');
   const [actionPaymentInvoiceId, setActionPaymentInvoiceId] = useState('');
   const [actionPaymentAmount, setActionPaymentAmount] = useState('');
+  const [directPaymentAmount, setDirectPaymentAmount] = useState('');
+  const [directPaymentPaidAt, setDirectPaymentPaidAt] = useState(todayInput());
+  const [directPaymentNote, setDirectPaymentNote] = useState('');
   const actionInvoiceOrders = data.orders.filter((order) => actionInvoiceOrderIds.includes(order.id));
   const actionInvoiceSelectedAmount = actionInvoiceOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
   const collaboratorStats = (id: string) => {
     const orders = data.orders.filter((order) => order.collaboratorId === id);
     const orderIdSet = new Set(orders.map((order) => order.id));
     const invoices = data.invoices.filter((invoice) => invoice.payerId === id || (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).some((orderId) => orderIdSet.has(orderId)));
-    const remaining = invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
+    const directPayments = data.collaboratorPayments.filter((payment) => payment.collaboratorId === id);
+    const invoiceRemaining = invoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
+    const remaining = Math.max(invoiceRemaining - directPayments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0), 0);
     const customers = data.customers.filter((customer) => customer.referredByCollaboratorId === id || orders.some((order) => order.customerId === customer.id));
-    return { orders, invoices, customers, remaining };
+    return { orders, invoices, customers, directPayments, remaining };
   };
   const filtered = data.collaborators.filter((item) => {
     const stats = collaboratorStats(item.id);
@@ -660,6 +728,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
   };
   const resetActionInvoice = () => { setActionInvoiceOrderIds([]); setActionInvoiceTitle(''); setActionInvoiceAmount('0'); setActionInvoicePaid('0'); setActionInvoiceDiscount('0'); setActionInvoiceDueDate(todayInput()); setActionInvoiceNote(''); };
   const resetActionPayment = () => { setActionPaymentInvoiceId(''); setActionPaymentAmount(''); };
+  const resetDirectPayment = () => { setDirectPaymentAmount(''); setDirectPaymentPaidAt(todayInput()); setDirectPaymentNote(''); };
   const actionLinePricing = (item: LineDraft) => {
     const width = toNumber(item.width);
     const height = toNumber(item.height);
@@ -709,6 +778,10 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
     const invoiceOrderOptions = stats.orders.filter((order) => order.status !== 'cancelled' && (!invoicedOrderIds.has(order.id) || actionInvoiceOrderIds.includes(order.id)));
     const unpaidInvoices = stats.invoices.filter((invoice) => Math.max(invoice.amount - invoice.paid, 0) > 0);
     const selectedPaymentInvoice = stats.invoices.find((invoice) => invoice.id === actionPaymentInvoiceId);
+    const paymentHistory = [
+      ...stats.directPayments.map((payment) => ({ id: payment.id, source: 'direct' as const, title: 'پرداخت کلی همکار', amount: payment.amount, paidAt: payment.paidAt, note: payment.note, payment })),
+      ...stats.invoices.flatMap((invoice) => invoice.paid > 0 ? [{ id: `invoice-${invoice.id}`, source: 'invoice' as const, title: invoice.title || invoice.orderTitle, amount: invoice.paid, paidAt: invoice.createdAt.slice(0, 10), note: 'پرداخت فاکتور', invoice }] : [])
+    ].sort((a, b) => String(b.paidAt).localeCompare(String(a.paidAt)));
     const openActionOrder = () => {
       resetActionOrder();
       setActionOrderCustomerId(stats.customers[0]?.id ?? data.customers[0]?.id ?? '');
@@ -733,6 +806,11 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
       }
       setDetailAction('payment');
     };
+    const openDirectPayment = () => {
+      resetDirectPayment();
+      setDirectPaymentAmount(stats.remaining > 0 ? String(stats.remaining) : '');
+      setDetailAction('collaboratorPayment');
+    };
     const toggleActionInvoiceOrder = (orderId: string) => setActionInvoiceOrderIds((prev) => prev.includes(orderId) ? prev.filter((item) => item !== orderId) : [...prev, orderId]);
     return (
       <section className="stack">
@@ -745,6 +823,8 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
             <button className="secondary" type="button" onClick={openActionOrder}><PackagePlus size={17} />ساخت سفارش</button>
             <button className="secondary" type="button" onClick={openActionInvoice} disabled={invoiceOrderOptions.length === 0}><ReceiptText size={17} />ساخت فاکتور</button>
             <button className="secondary" type="button" onClick={openActionPayment} disabled={unpaidInvoices.length === 0}><CheckCircle2 size={17} />ثبت پرداخت فاکتور</button>
+            <button className="secondary" type="button" onClick={openDirectPayment} disabled={stats.remaining <= 0}><CheckCircle2 size={17} />پرداخت کلی همکار</button>
+            <button className="secondary" type="button" onClick={() => document.getElementById('collaborator-payments')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><ReceiptText size={17} />مشاهده پرداخت‌ها</button>
           </div>
         </section>
         <Modal title="ساخت مشتری برای همکار" open={detailAction === 'customer'} onClose={closeDetailAction}>
@@ -812,6 +892,21 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
             <div className="form-actions"><button className="primary" type="submit"><CheckCircle2 size={18} />ثبت پرداخت</button><button className="secondary" type="button" onClick={closeDetailAction}>انصراف</button></div>
           </form>
         </Modal>
+        <Modal title="ثبت پرداخت کلی همکار" open={detailAction === 'collaboratorPayment'} onClose={closeDetailAction}>
+          <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { const payment = await backend.addCollaboratorPayment({ collaboratorId: selected.id, amount: Number(directPaymentAmount), paidAt: directPaymentPaidAt, note: directPaymentNote }); downloadCollaboratorPaymentPdf(payment, selected, stats.remaining); resetDirectPayment(); closeDetailAction(); }, 'پرداخت کلی همکار ثبت شد'); }}>
+            <FlowSection title="پرداخت کلی">
+              <p className="muted">این پرداخت به مانده کلی همکار اعمال می‌شود و به فاکتور خاصی وابسته نیست.</p>
+              <label>مبلغ پرداخت<input value={directPaymentAmount} inputMode="numeric" onChange={(event) => setDirectPaymentAmount(event.target.value)} /></label>
+              <PersianDatePicker label="تاریخ پرداخت" value={directPaymentPaidAt} onChange={setDirectPaymentPaidAt} />
+              <label>توضیحات<textarea value={directPaymentNote} onChange={(event) => setDirectPaymentNote(event.target.value)} /></label>
+            </FlowSection>
+            <div className="form-actions"><button className="primary" type="submit"><CheckCircle2 size={18} />ثبت و دانلود رسید</button><button className="secondary" type="button" onClick={closeDetailAction}>انصراف</button></div>
+          </form>
+        </Modal>
+        <List id="collaborator-payments" title="پرداخت‌های همکار">
+          {paymentHistory.map((payment) => <article className="card-row" key={payment.id}><div><h3>{payment.title}</h3><p>{dateText(payment.paidAt)} / {money(payment.amount)}</p>{payment.note && <p>{payment.note}</p>}</div><div className="side-actions"><span className={`pill ${payment.source === 'direct' ? 'paid' : 'partial'}`}>{payment.source === 'direct' ? 'پرداخت کلی' : 'پرداخت فاکتور'}</span>{payment.source === 'direct' && <button className="secondary mini" type="button" onClick={() => downloadCollaboratorPaymentPdf(payment.payment, selected, stats.remaining)}><Download size={16} />رسید</button>}</div></article>)}
+          {paymentHistory.length === 0 && <Empty text="پرداختی برای این همکار ثبت نشده است" />}
+        </List>
         <div className="filter-grid"><SearchBox value={detailOrdersSearch} onChange={setDetailOrdersSearch} placeholder="جستجوی سفارش‌های همکار" /><Picker label="وضعیت سفارش‌ها" value={detailOrdersStatus} onChange={setDetailOrdersStatus} options={[{ value: 'all', label: 'همه سفارش‌ها' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /><button className="secondary full-button" type="button" onClick={() => { setDetailOrdersSearch(''); setDetailOrdersStatus('all'); }}>پاک کردن فیلترها</button></div>
         <List title="سفارش‌های همکار">
           {filteredOrders.map((order) => <article className="card-row order-card" key={order.id}><div><h3>{order.title}</h3><p>{order.customerName} / {workTypeLabels[order.workType]} / تحویل: {dateText(order.dueDate)}</p><strong>{money(order.total)}</strong><LineSummary items={order.lineItems} /></div><div className="side-actions"><span className={`pill ${order.status}`}>{statusLabels[order.status]}</span><button className="secondary mini label-download" type="button" onClick={() => downloadOrderLabelsPdf(order)}><Download size={16} />دانلود لیبل‌ها</button></div></article>)}
@@ -850,7 +945,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
         {filtered.map((item) => {
           const orders = data.orders.filter((order) => order.collaboratorId === item.id);
           const stats = collaboratorStats(item.id);
-          return <article className="row detail-row" key={item.id}><div><h3>{item.name}</h3><p>{item.role} {item.phone ? ` / ${item.phone}` : ''}</p><p>{orders.length.toLocaleString('fa-IR')} سفارش مرتبط / مانده {money(stats.remaining)}</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions"><span>{dateText(item.createdAt)}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteCollaborator(item.id), 'همکار حذف شد')}><Trash2 size={16} /></button></div></article>;
+          return <article className="row detail-row clickable-row" key={item.id} role="button" tabIndex={0} onClick={() => setSelectedId(item.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedId(item.id); }}><div><h3>{item.name}</h3><p>{item.role} {item.phone ? ` / ${item.phone}` : ''}</p><p>{orders.length.toLocaleString('fa-IR')} سفارش مرتبط / مانده {money(stats.remaining)}</p>{item.note && <p>{item.note}</p>}</div><div className="row-actions" onClick={(event) => event.stopPropagation()}><span>{dateText(item.createdAt)}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteCollaborator(item.id), 'همکار حذف شد')}><Trash2 size={16} /></button></div></article>;
         })}
         {filtered.length === 0 && <Empty text="همکاری پیدا نشد" />}
       </List>
@@ -904,7 +999,17 @@ function MeshTypes({ data, run }: { data: AppSnapshot; run: (action: () => Promi
 
 type LineDraft = { meshTypeId: string; width: string; height: string; quantity: string; unitPrice: string; lineTotalOverride: string; lineTotalManual: boolean; description: string };
 
-function Orders({ data, run }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void> }) {
+function Orders({
+  data,
+  run,
+  intent,
+  onIntentConsumed
+}: {
+  data: AppSnapshot;
+  run: (action: () => Promise<void>, done?: string) => Promise<void>;
+  intent: OrderIntent | null;
+  onIntentConsumed: () => void;
+}) {
   const activeMeshTypes = data.meshTypes.filter((mesh) => mesh.isActive);
   const defaultMesh = activeMeshTypes.find((mesh) => mesh.isDefault) ?? activeMeshTypes[0] ?? data.meshTypes[0];
   const defaultLine = () => ({ meshTypeId: defaultMesh?.id ?? '', width: '', height: '', quantity: '1', unitPrice: String(defaultMesh?.unitPrice ?? 0), lineTotalOverride: '', lineTotalManual: false, description: '' });
@@ -939,6 +1044,14 @@ function Orders({ data, run }: { data: AppSnapshot; run: (action: () => Promise<
   });
 
   useEffect(() => { if (!customerId && data.customers[0]) setCustomerId(data.customers[0].id); }, [customerId, data.customers]);
+  useEffect(() => {
+    if (!intent) return;
+    reset();
+    if (intent.customerId) setCustomerId(intent.customerId);
+    if (intent.collaboratorId) setCollaboratorId(intent.collaboratorId);
+    setFormOpen(true);
+    onIntentConsumed();
+  }, [intent?.key]);
 
   const reset = () => { setEditingId(''); setTitle(''); setQuickCustomerName(''); setQuickCustomerPhone(''); setCollaboratorId(''); setQuickCollaboratorName(''); setQuickCollaboratorPhone(''); setWorkType('new_construction'); setDueDate(todayInput()); setDiscount('0'); setFinalPrice(''); setFinalPriceOverridden(false); setCreateInitialInvoice(false); setNote(''); setItems([defaultLine()]); };
   const close = () => { reset(); setFormOpen(false); };
@@ -1053,7 +1166,7 @@ function Orders({ data, run }: { data: AppSnapshot; run: (action: () => Promise<
 
 function OrderCard({ order, onEdit, onOpen, run, compact = false }: { order: Order; onEdit: () => void; onOpen?: () => void; run: (action: () => Promise<void>, done?: string) => Promise<void>; compact?: boolean }) {
   return (
-    <article className="card-row order-card">
+    <article className={`card-row order-card ${onOpen ? 'clickable-row' : ''}`} role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined} onClick={onOpen} onKeyDown={(event) => { if (onOpen && (event.key === 'Enter' || event.key === ' ')) onOpen(); }}>
       <div>
         <h3>{order.title}</h3>
         <p>{order.customerName}{order.collaboratorName ? ` / ${order.collaboratorName}` : ''}</p>
@@ -1062,7 +1175,7 @@ function OrderCard({ order, onEdit, onOpen, run, compact = false }: { order: Ord
         <LineSummary items={order.lineItems} />
         {order.note && <p>{order.note}</p>}
       </div>
-      <div className="side-actions">
+      <div className="side-actions" onClick={(event) => event.stopPropagation()}>
         {compact ? <span className={`pill ${order.status}`}>{statusLabels[order.status]}</span> : <Picker label="وضعیت سفارش" value={order.status} options={Object.entries(statusLabels).map(([key, label]) => ({ value: key, label }))} onChange={(nextValue) => void run(() => backend.setOrderStatus(order.id, nextValue as OrderStatus), 'وضعیت تغییر کرد')} />}
         <button className="secondary mini label-download" type="button" onClick={() => downloadOrderLabelsPdf(order)}><Download size={16} />دانلود لیبل‌ها</button>
         {onOpen && <button className="secondary mini" type="button" onClick={onOpen}>جزئیات</button>}
@@ -1092,7 +1205,17 @@ function LineSummary({ items }: { items: OrderLineItem[] }) {
   );
 }
 
-function Invoices({ data, run }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void> }) {
+function Invoices({
+  data,
+  run,
+  intent,
+  onIntentConsumed
+}: {
+  data: AppSnapshot;
+  run: (action: () => Promise<void>, done?: string) => Promise<void>;
+  intent: InvoiceIntent | null;
+  onIntentConsumed: () => void;
+}) {
   const [orderIds, setOrderIds] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('0');
@@ -1125,6 +1248,14 @@ function Invoices({ data, run }: { data: AppSnapshot; run: (action: () => Promis
   const orderOptions = data.orders.filter((order) => order.status !== 'cancelled' && (!invoicedOrderIds.has(order.id) || orderIds.includes(order.id)));
   const payerOptions = Array.from(new Map(selectedOrders.filter((order) => order.collaboratorId).map((order) => [order.collaboratorId, { value: order.collaboratorId, label: order.collaboratorName, helper: 'همکار سفارش' }])).values());
 
+  useEffect(() => {
+    if (!intent) return;
+    reset();
+    setOrderIds(intent.orderIds ?? []);
+    if (intent.payerId) setPayerId(intent.payerId);
+    setFormOpen(true);
+    onIntentConsumed();
+  }, [intent?.key]);
   useEffect(() => { if (!editingId) setAmount(String(selectedAmount || 0)); }, [editingId, selectedAmount]);
   useEffect(() => { if (!editingId) setDiscount(String(selectedDiscount || 0)); }, [editingId, selectedDiscount]);
   useEffect(() => {
@@ -1187,7 +1318,7 @@ function Invoices({ data, run }: { data: AppSnapshot; run: (action: () => Promis
         {filtered.map((invoice) => {
           const remain = Math.max(invoice.amount - invoice.paid, 0);
           const invoiceOrders = data.orders.filter((order) => (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).includes(order.id));
-          return <article className="card-row" key={invoice.id}><div><h3>{invoice.title || invoice.customerName}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>همکار بدهکار: {invoice.payerName || '-'}</p><p>پرداخت شده: {money(invoice.paid)} / {money(invoice.amount)}</p><p>تخفیف: {money(invoice.discount ?? 0)} / سررسید: {dateText(invoice.dueDate)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span>{invoice.note && <p>{invoice.note}</p>}</div><div className="side-actions"><button className="secondary" type="button" disabled={remain <= 0} onClick={() => void run(() => backend.addInvoicePayment(invoice.id, remain), 'پرداخت ثبت شد')}><CheckCircle2 size={17} />تسویه</button><div className="payment-inline"><input aria-label="مبلغ پرداخت" placeholder="مبلغ" inputMode="numeric" value={payments[invoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [invoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(invoice.id, Number(payments[invoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت</button></div><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, invoiceOrders)}><Download size={16} />PDF</button><button className="secondary mini" type="button" onClick={() => setSelectedInvoiceId(invoice.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => fillInvoice(invoice)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteInvoice(invoice.id), 'فاکتور حذف شد')}><Trash2 size={16} /></button></div></article>;
+          return <article className="card-row clickable-row" key={invoice.id} role="button" tabIndex={0} onClick={() => setSelectedInvoiceId(invoice.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedInvoiceId(invoice.id); }}><div><h3>{invoice.title || invoice.customerName}</h3><p>{invoice.customerName} / {invoice.orderTitle}</p><p>همکار بدهکار: {invoice.payerName || '-'}</p><p>پرداخت شده: {money(invoice.paid)} / {money(invoice.amount)}</p><p>تخفیف: {money(invoice.discount ?? 0)} / سررسید: {dateText(invoice.dueDate)}</p><span className={`pill ${invoice.status}`}>{invoiceStatusLabels[invoice.status]}</span>{invoice.note && <p>{invoice.note}</p>}</div><div className="side-actions" onClick={(event) => event.stopPropagation()}><button className="secondary" type="button" disabled={remain <= 0} onClick={() => void run(() => backend.addInvoicePayment(invoice.id, remain), 'پرداخت ثبت شد')}><CheckCircle2 size={17} />تسویه</button><div className="payment-inline"><input aria-label="مبلغ پرداخت" placeholder="مبلغ" inputMode="numeric" value={payments[invoice.id] ?? ''} onChange={(event) => setPayments((prev) => ({ ...prev, [invoice.id]: event.target.value }))} /><button className="secondary" type="button" onClick={() => void run(() => backend.addInvoicePayment(invoice.id, Number(payments[invoice.id] ?? 0)), 'پرداخت ثبت شد')}>ثبت</button></div><button className="secondary mini" type="button" onClick={() => downloadInvoicePdf(invoice, invoiceOrders)}><Download size={16} />PDF</button><button className="secondary mini" type="button" onClick={() => setSelectedInvoiceId(invoice.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => fillInvoice(invoice)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteInvoice(invoice.id), 'فاکتور حذف شد')}><Trash2 size={16} /></button></div></article>;
         })}
         {filtered.length === 0 && <Empty text="فاکتوری پیدا نشد" />}
       </List>
@@ -1295,7 +1426,7 @@ function UsersPage({ data, run, assistantTabs, onSaveAssistantTabs }: { data: Ap
       </Modal>
       <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجوی نام یا نام کاربری" /><Picker label="فیلتر نقش" value={roleFilter} onChange={setRoleFilter} options={[{ value: 'all', label: 'همه نقش‌ها' }, { value: 'manager', label: 'مدیر' }, { value: 'assistant', label: 'دستیار' }]} /><Picker label="فیلتر وضعیت" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه وضعیت‌ها' }, { value: 'active', label: 'فعال' }, { value: 'disabled', label: 'غیرفعال' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setRoleFilter('all'); setStatusFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لیست کاربران">
-        {filtered.map((item) => <article className="row" key={item.id}><div><h3>{item.name}</h3><p dir="ltr">{item.username}</p><p className="muted">وضعیت: فعال</p></div><div className="row-actions"><span className="pill">{item.role === 'manager' ? 'مدیر' : 'دستیار'}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteUser(item.id), 'کاربر حذف شد')}><Trash2 size={16} /></button></div></article>)}
+        {filtered.map((item) => <article className="row clickable-row" key={item.id} role="button" tabIndex={0} onClick={() => setSelectedId(item.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedId(item.id); }}><div><h3>{item.name}</h3><p dir="ltr">{item.username}</p><p className="muted">وضعیت: فعال</p></div><div className="row-actions" onClick={(event) => event.stopPropagation()}><span className="pill">{item.role === 'manager' ? 'مدیر' : 'دستیار'}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteUser(item.id), 'کاربر حذف شد')}><Trash2 size={16} /></button></div></article>)}
         {filtered.length === 0 && <Empty text="کاربری پیدا نشد" />}
       </List>
       <section className="panel"><h2>دسترسی نقش‌ها</h2><Picker label="نقش" value={selectedRole} onChange={setSelectedRole} options={[{ value: 'assistant', label: 'دستیار' }, { value: 'manager', label: 'مدیر' }]} /><div className="permission-grid">{permissionLabels.map((item) => { const key = item.key as Tab; const checked = selectedRole === 'manager' || permissionDraft.includes(key); return <label className="check-row" key={item.key}><input type="checkbox" checked={checked} disabled={selectedRole === 'manager' || key === 'dashboard'} onChange={(event) => { setPermissionDraft((prev) => event.target.checked ? normalizeTabs([...prev, key]) : normalizeTabs(prev.filter((tabKey) => tabKey !== key))); }} />{item.label}</label>; })}</div><button className="secondary" type="button" disabled={selectedRole === 'manager'} onClick={() => void onSaveAssistantTabs(permissionDraft)}>ذخیره دسترسی‌ها</button></section>
@@ -1348,7 +1479,7 @@ function ActivityLog({ data }: { data: AppSnapshot }) {
 
 function Reports({ data }: { data: AppSnapshot }) {
   const totalSales = data.invoices.reduce((sum, item) => sum + item.amount, 0);
-  const received = data.invoices.reduce((sum, item) => sum + item.paid, 0);
+  const received = data.invoices.reduce((sum, item) => sum + item.paid, 0) + data.collaboratorPayments.reduce((sum, item) => sum + item.amount, 0);
   const remaining = Math.max(totalSales - received, 0);
   const delivered = data.orders.filter((item) => item.status === 'delivered').length;
   const cancelled = data.orders.filter((item) => item.status === 'cancelled').length;
@@ -1405,8 +1536,8 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
   return <label className="search-box"><Search size={18} /><input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
-function List({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="section"><h2>{title}</h2><div className="list">{children}</div></section>;
+function List({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
+  return <section id={id} className="section"><h2>{title}</h2><div className="list">{children}</div></section>;
 }
 
 function FlowSection({ title, children }: { title: string; children: ReactNode }) {
@@ -1489,6 +1620,20 @@ function downloadInvoicePdf(invoice: Invoice, orders: Order[] = []) {
     invoice.note ? `توضیحات: ${invoice.note}` : ''
   ].filter(Boolean);
   downloadPdf(`best-invoice-${safeFilePart(invoice.title || invoice.orderTitle || invoice.id)}.pdf`, `فاکتور ${invoice.title || invoice.orderTitle || invoice.id}`, lines);
+}
+
+function downloadCollaboratorPaymentPdf(payment: AppSnapshot['collaboratorPayments'][number], collaborator: AppSnapshot['collaborators'][number], remainingBefore = 0) {
+  const remainingAfter = Math.max(remainingBefore - Number(payment.amount ?? 0), 0);
+  downloadPdf(`best-collaborator-payment-${safeFilePart(collaborator.name)}-${safeFilePart(payment.paidAt)}.pdf`, `رسید پرداخت ${collaborator.name}`, [
+    `همکار: ${collaborator.name}`,
+    `موبایل: ${collaborator.phone || '-'}`,
+    `نقش: ${collaborator.role || '-'}`,
+    `تاریخ پرداخت: ${dateText(payment.paidAt)}`,
+    `مبلغ پرداخت: ${money(payment.amount)}`,
+    `مانده قبل از پرداخت: ${money(remainingBefore)}`,
+    `مانده بعد از پرداخت: ${money(remainingAfter)}`,
+    `توضیح: ${payment.note || '-'}`
+  ]);
 }
 
 function downloadText(filename: string, content: string, type: string) {

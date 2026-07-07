@@ -70,6 +70,16 @@ export type Invoice = {
   createdAt: string;
 };
 
+export type CollaboratorPayment = {
+  id: string;
+  collaboratorId: string;
+  collaboratorName: string;
+  amount: number;
+  paidAt: string;
+  note: string;
+  createdAt: string;
+};
+
 export type InventoryItem = {
   id: string;
   name: string;
@@ -115,6 +125,7 @@ export type AppSnapshot = {
   customers: Customer[];
   orders: Order[];
   invoices: Invoice[];
+  collaboratorPayments: CollaboratorPayment[];
   inventory: InventoryItem[];
   collaborators: Collaborator[];
   meshTypes: MeshType[];
@@ -179,6 +190,13 @@ export type NewInvoiceInput = {
   discount?: number;
   payerId?: string;
   dueDate?: string;
+  note?: string;
+};
+
+export type NewCollaboratorPaymentInput = {
+  collaboratorId: string;
+  amount: number;
+  paidAt?: string;
   note?: string;
 };
 

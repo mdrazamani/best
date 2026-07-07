@@ -2,6 +2,8 @@ package ir.best.mobile;
 
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -15,6 +17,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.webkit.JavascriptInterface;
+import android.widget.Toast;
 import com.getcapacitor.BridgeActivity;
 import java.io.File;
 import java.io.ByteArrayOutputStream;
@@ -38,7 +41,7 @@ public class MainActivity extends BridgeActivity {
             String safeName = sanitizeFilename(filename);
             String safeMime = mimeType == null || mimeType.isEmpty() ? "text/plain;charset=utf-8" : mimeType;
             byte[] bytes = (content == null ? "" : content).getBytes(StandardCharsets.UTF_8);
-            return saveBytesFile(safeName, bytes, safeMime);
+            return saveBytesFile(safeName, bytes, safeMime, false);
         }
 
         @JavascriptInterface
@@ -48,7 +51,7 @@ public class MainActivity extends BridgeActivity {
                 byte[] bytes = createSimplePdf(title == null ? "BEST" : title, lines);
                 String safeName = sanitizeFilename(filename == null || filename.trim().isEmpty() ? "best.pdf" : filename);
                 if (!safeName.toLowerCase().endsWith(".pdf")) safeName = safeName + ".pdf";
-                return saveBytesFile(safeName, bytes, "application/pdf");
+                return saveBytesFile(safeName, bytes, "application/pdf", true);
             } catch (Exception error) {
                 throw new RuntimeException("Could not save PDF: " + error.getMessage(), error);
             }
@@ -133,8 +136,9 @@ public class MainActivity extends BridgeActivity {
         canvas.drawText("BEST Mobile", width - margin, 78, mutedPaint);
     }
 
-    private String saveBytesFile(String safeName, byte[] bytes, String mimeType) {
+    private String saveBytesFile(String safeName, byte[] bytes, String mimeType, boolean openAfterSave) {
         try {
+            Uri savedUri;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentResolver resolver = getContentResolver();
                 ContentValues values = new ContentValues();
@@ -154,7 +158,9 @@ public class MainActivity extends BridgeActivity {
                 values.clear();
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0);
                 resolver.update(uri, values, null, null);
-                return uri.toString();
+                savedUri = uri;
+                notifyDownloadSaved(safeName, savedUri, mimeType, openAfterSave);
+                return savedUri.toString();
             }
 
             File directory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
@@ -164,10 +170,29 @@ public class MainActivity extends BridgeActivity {
                 stream.write(bytes);
             }
             MediaScannerConnection.scanFile(MainActivity.this, new String[] { output.getAbsolutePath() }, new String[] { mimeType }, null);
-            return Uri.fromFile(output).toString();
+            savedUri = Uri.fromFile(output);
+            notifyDownloadSaved(safeName, savedUri, mimeType, openAfterSave);
+            return savedUri.toString();
         } catch (Exception error) {
             throw new RuntimeException("Could not save file: " + error.getMessage(), error);
         }
+    }
+
+    private void notifyDownloadSaved(String safeName, Uri uri, String mimeType, boolean openAfterSave) {
+        runOnUiThread(() -> {
+            Toast.makeText(MainActivity.this, "فایل در دانلودها ذخیره شد: " + safeName, Toast.LENGTH_LONG).show();
+            if (!openAfterSave || uri == null) return;
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(uri, mimeType);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(intent);
+            } catch (ActivityNotFoundException error) {
+                Toast.makeText(MainActivity.this, "PDF ذخیره شد؛ برنامه‌ای برای باز کردن PDF پیدا نشد.", Toast.LENGTH_LONG).show();
+            } catch (Exception error) {
+                Toast.makeText(MainActivity.this, "PDF ذخیره شد. از پوشه دانلودها باز کنید.", Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private String sanitizeFilename(String filename) {
