@@ -36,6 +36,9 @@ const STORAGE_KEY = 'best-mobile-local-backend-v2';
 const LEGACY_STORAGE_KEY = 'best-mobile-local-backend-v1';
 const SESSION_KEY = 'best-mobile-session';
 const SESSION_ROLE_KEY = 'best-mobile-session-role';
+const ASSISTANT_TABS_KEY = 'best-mobile-assistant-tabs';
+const BACKUP_INTERVAL_KEY = 'best-mobile-backup-interval-minutes';
+const DEFAULT_ASSISTANT_TABS = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'warehouse', 'notifications'];
 
 type PersistedData = Omit<AppSnapshot, 'users'> & {
   users: Array<LocalUser & { pin: string }>;
@@ -168,6 +171,7 @@ abstract class BaseBackend {
   abstract deleteUser(id: string): Promise<void>;
   abstract markNotificationsSeen(): Promise<void>;
   abstract importSnapshot(snapshot: AppSnapshot): Promise<void>;
+  abstract recordBackup(filename: string): Promise<void>;
 
   isLoggedIn() {
     return globalThis.localStorage?.getItem(SESSION_KEY) === 'active';
@@ -185,6 +189,33 @@ abstract class BaseBackend {
   protected setSession(role = 'assistant') {
     globalThis.localStorage?.setItem(SESSION_KEY, 'active');
     globalThis.localStorage?.setItem(SESSION_ROLE_KEY, role);
+  }
+
+  getAssistantTabs() {
+    const stored = globalThis.localStorage?.getItem(ASSISTANT_TABS_KEY);
+    if (!stored) return [...DEFAULT_ASSISTANT_TABS];
+    try {
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [...DEFAULT_ASSISTANT_TABS];
+    } catch {
+      return [...DEFAULT_ASSISTANT_TABS];
+    }
+  }
+
+  async setAssistantTabs(tabs: string[]) {
+    const safeTabs = Array.from(new Set(tabs.filter(Boolean)));
+    if (!safeTabs.includes('dashboard')) safeTabs.unshift('dashboard');
+    globalThis.localStorage?.setItem(ASSISTANT_TABS_KEY, JSON.stringify(safeTabs));
+  }
+
+  getBackupInterval() {
+    const stored = Number(globalThis.localStorage?.getItem(BACKUP_INTERVAL_KEY) ?? 1440);
+    return Number.isFinite(stored) && stored > 0 ? Math.round(stored) : 1440;
+  }
+
+  async setBackupInterval(minutes: number) {
+    const safeMinutes = Math.max(1, Math.round(normalizeNumber(minutes)));
+    globalThis.localStorage?.setItem(BACKUP_INTERVAL_KEY, String(safeMinutes));
   }
 
   protected statsFromSnapshot(data: AppSnapshot): DashboardStats {
@@ -625,6 +656,11 @@ class BrowserBackend extends BaseBackend {
     await this.persist();
   }
 
+  async recordBackup(filename: string) {
+    this.log('backup', 'بکاپ اجرا شد', filename);
+    await this.persist();
+  }
+
   private log(type: string, title: string, body: string) {
     this.data.activities.unshift({ id: id(), type, title, body, createdAt: now() });
     this.data.activities = this.data.activities.slice(0, 100);
@@ -902,6 +938,10 @@ class SqliteBackend extends BaseBackend {
     for (const item of snapshot.notifications) await this.run('INSERT INTO notifications (id, title, body, seen, created_at) VALUES (?, ?, ?, ?, ?)', [item.id, item.title, item.body, item.seen, item.createdAt]);
     for (const item of snapshot.activities) await this.run('INSERT INTO activities (id, type, title, body, created_at) VALUES (?, ?, ?, ?, ?)', [item.id, item.type, item.title, item.body, item.createdAt]);
     await this.log('backup', 'بکاپ بازیابی شد', 'داده‌ها از JSON وارد شدند');
+  }
+
+  async recordBackup(filename: string) {
+    await this.log('backup', 'بکاپ اجرا شد', filename);
   }
 
   private async seed() {

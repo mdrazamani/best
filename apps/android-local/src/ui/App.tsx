@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity,
+  BarChart3,
   Bell,
   Check,
   CheckCircle2,
@@ -61,11 +62,13 @@ const tabs: Array<{ key: Tab; label: string; icon: typeof LayoutDashboard }> = [
   { key: 'warehouse', label: 'انبارداری', icon: Warehouse },
   { key: 'users', label: 'کاربران', icon: ShieldCheck },
   { key: 'backups', label: 'بکاپ', icon: Database },
+  { key: 'reports', label: 'گزارش‌ها', icon: BarChart3 },
   { key: 'notifications', label: 'اعلان‌ها', icon: Bell },
   { key: 'activity', label: 'عملیات', icon: Activity }
 ];
 
 const quickTabs: Tab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers'];
+const defaultAssistantTabs: Tab[] = ['dashboard', 'orders', 'invoices', 'collaborators', 'customers', 'mesh', 'warehouse', 'notifications'];
 
 const statusLabels: Record<OrderStatus, string> = {
   received: 'دریافت شده',
@@ -94,6 +97,8 @@ const permissionLabels = [
   { key: 'customers', label: 'مشتریان', assistant: true },
   { key: 'mesh', label: 'نوع توری', assistant: true },
   { key: 'warehouse', label: 'انبارداری', assistant: true },
+  { key: 'notifications', label: 'اعلان‌ها', assistant: true },
+  { key: 'reports', label: 'گزارش‌ها', assistant: false },
   { key: 'users', label: 'کاربران', assistant: false },
   { key: 'backups', label: 'بکاپ', assistant: false },
   { key: 'activity', label: 'گزارش عملیات', assistant: false }
@@ -130,6 +135,11 @@ const normalizeAmountInput = (value: number) => {
   const rounded = Math.max(Math.round(value * 100) / 100, 0);
   return Number.isFinite(rounded) ? String(rounded) : '0';
 };
+const normalizeTabs = (values: string[]): Tab[] => {
+  const validTabs = new Set(tabs.map((item) => item.key));
+  const normalized = values.filter((value): value is Tab => validTabs.has(value as Tab));
+  return normalized.length ? normalized : [...defaultAssistantTabs];
+};
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -138,6 +148,8 @@ export function App() {
   const [data, setData] = useState<AppSnapshot>(emptySnapshot);
   const [message, setMessage] = useState('');
   const [role, setRole] = useState('assistant');
+  const [assistantTabs, setAssistantTabs] = useState<Tab[]>(defaultAssistantTabs);
+  const [backupInterval, setBackupInterval] = useState(1440);
 
   async function reload() {
     setData(await backend.snapshot());
@@ -159,6 +171,8 @@ export function App() {
       await backend.initialize();
       setAuthed(backend.isLoggedIn());
       setRole(backend.getSessionRole());
+      setAssistantTabs(normalizeTabs(backend.getAssistantTabs()));
+      setBackupInterval(backend.getBackupInterval());
       await reload();
       setReady(true);
     })();
@@ -175,9 +189,29 @@ export function App() {
     [data]
   );
 
-  const managerOnlyTabs: Tab[] = ['users', 'backups', 'activity'];
-  const availableTabs = useMemo(() => tabs.filter((item) => role === 'manager' || !managerOnlyTabs.includes(item.key)), [role]);
+  const availableTabs = useMemo(() => tabs.filter((item) => role === 'manager' || assistantTabs.includes(item.key)), [assistantTabs, role]);
   const activeTabLabel = availableTabs.find((item) => item.key === tab)?.label ?? '';
+
+  useEffect(() => {
+    if (availableTabs.some((item) => item.key === tab)) return;
+    setTab('dashboard');
+  }, [availableTabs, tab]);
+
+  useEffect(() => {
+    if (!authed || role !== 'manager' || backupInterval <= 0) return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const snapshot = await backend.snapshot();
+        const filename = `best-mobile-auto-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        downloadText(filename, JSON.stringify(snapshot, null, 2), 'application/json;charset=utf-8');
+        await backend.recordBackup(filename);
+        await reload();
+        setMessage('بکاپ خودکار انجام شد');
+        setTimeout(() => setMessage(''), 2200);
+      })();
+    }, backupInterval * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [authed, backupInterval, role]);
 
   function closeMenu() {
     document.querySelector('details.menu-details')?.removeAttribute('open');
@@ -186,6 +220,22 @@ export function App() {
   function goTo(nextTab: Tab) {
     setTab(nextTab);
     closeMenu();
+  }
+
+  async function saveAssistantTabs(nextTabs: Tab[]) {
+    const normalized = normalizeTabs(nextTabs);
+    await backend.setAssistantTabs(normalized);
+    setAssistantTabs(normalized);
+    setMessage('دسترسی نقش ذخیره شد');
+    setTimeout(() => setMessage(''), 2200);
+  }
+
+  async function saveBackupInterval(nextInterval: number) {
+    await backend.setBackupInterval(nextInterval);
+    const savedInterval = backend.getBackupInterval();
+    setBackupInterval(savedInterval);
+    setMessage('تنظیمات بکاپ ذخیره شد');
+    setTimeout(() => setMessage(''), 2200);
   }
 
   if (!ready) return <Splash title="BEST Mobile" subtitle="آماده‌سازی دیتابیس لوکال" />;
@@ -266,8 +316,8 @@ export function App() {
         {tab === 'customers' && <Customers data={data} run={run} />}
         {tab === 'mesh' && <MeshTypes data={data} run={run} />}
         {tab === 'warehouse' && <Inventory data={data} run={run} />}
-        {tab === 'users' && role === 'manager' && <UsersPage data={data} run={run} />}
-        {tab === 'backups' && role === 'manager' && <Backup data={data} run={run} reload={reload} />}
+        {tab === 'users' && role === 'manager' && <UsersPage data={data} run={run} assistantTabs={assistantTabs} onSaveAssistantTabs={saveAssistantTabs} />}
+        {tab === 'backups' && role === 'manager' && <Backup data={data} run={run} reload={reload} backupInterval={backupInterval} onSaveBackupInterval={saveBackupInterval} />}
         {tab === 'notifications' && <Notifications data={data} run={run} />}
         {tab === 'activity' && <ActivityLog data={data} />}
         {tab === 'reports' && <Reports data={data} />}
@@ -1205,7 +1255,7 @@ function Inventory({ data, run }: { data: AppSnapshot; run: (action: () => Promi
   );
 }
 
-function UsersPage({ data, run }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void> }) {
+function UsersPage({ data, run, assistantTabs, onSaveAssistantTabs }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void>; assistantTabs: Tab[]; onSaveAssistantTabs: (tabs: Tab[]) => Promise<void> }) {
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [pin, setPin] = useState('');
@@ -1215,8 +1265,10 @@ function UsersPage({ data, run }: { data: AppSnapshot; run: (action: () => Promi
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedId, setSelectedId] = useState('');
   const [selectedRole, setSelectedRole] = useState('assistant');
+  const [permissionDraft, setPermissionDraft] = useState<Tab[]>(assistantTabs);
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  useEffect(() => setPermissionDraft(assistantTabs), [assistantTabs]);
   const reset = () => { setEditingId(''); setUsername(''); setName(''); setPin(''); setRole('assistant'); };
   const close = () => { reset(); setFormOpen(false); };
   const openCreate = () => { reset(); setFormOpen(true); };
@@ -1246,7 +1298,7 @@ function UsersPage({ data, run }: { data: AppSnapshot; run: (action: () => Promi
         {filtered.map((item) => <article className="row" key={item.id}><div><h3>{item.name}</h3><p dir="ltr">{item.username}</p><p className="muted">وضعیت: فعال</p></div><div className="row-actions"><span className="pill">{item.role === 'manager' ? 'مدیر' : 'دستیار'}</span><button className="secondary mini" type="button" onClick={() => setSelectedId(item.id)}>جزئیات</button><button className="secondary mini" type="button" onClick={() => openEdit(item)}>ویرایش</button><button className="danger-icon" type="button" onClick={() => void run(() => backend.deleteUser(item.id), 'کاربر حذف شد')}><Trash2 size={16} /></button></div></article>)}
         {filtered.length === 0 && <Empty text="کاربری پیدا نشد" />}
       </List>
-      <section className="panel"><h2>دسترسی نقش‌ها</h2><Picker label="نقش" value={selectedRole} onChange={setSelectedRole} options={[{ value: 'assistant', label: 'دستیار' }, { value: 'manager', label: 'مدیر' }]} /><div className="permission-grid">{permissionLabels.map((item) => <label className="check-row" key={item.key}><input type="checkbox" checked={selectedRole === 'manager' || item.assistant} readOnly />{item.label}</label>)}</div><button className="secondary" type="button" onClick={() => undefined}>ذخیره دسترسی‌ها</button></section>
+      <section className="panel"><h2>دسترسی نقش‌ها</h2><Picker label="نقش" value={selectedRole} onChange={setSelectedRole} options={[{ value: 'assistant', label: 'دستیار' }, { value: 'manager', label: 'مدیر' }]} /><div className="permission-grid">{permissionLabels.map((item) => { const key = item.key as Tab; const checked = selectedRole === 'manager' || permissionDraft.includes(key); return <label className="check-row" key={item.key}><input type="checkbox" checked={checked} disabled={selectedRole === 'manager' || key === 'dashboard'} onChange={(event) => { setPermissionDraft((prev) => event.target.checked ? normalizeTabs([...prev, key]) : normalizeTabs(prev.filter((tabKey) => tabKey !== key))); }} />{item.label}</label>; })}</div><button className="secondary" type="button" disabled={selectedRole === 'manager'} onClick={() => void onSaveAssistantTabs(permissionDraft)}>ذخیره دسترسی‌ها</button></section>
     </section>
   );
 }
@@ -1309,13 +1361,16 @@ function Reports({ data }: { data: AppSnapshot }) {
   );
 }
 
-function Backup({ data, run, reload }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void>; reload: () => Promise<void> }) {
+function Backup({ data, run, reload, backupInterval, onSaveBackupInterval }: { data: AppSnapshot; run: (action: () => Promise<void>, done?: string) => Promise<void>; reload: () => Promise<void>; backupInterval: number; onSaveBackupInterval: (minutes: number) => Promise<void> }) {
   const json = useMemo(() => JSON.stringify(data, null, 2), [data]);
-  const [intervalInput, setIntervalInput] = useState('1440');
+  const [intervalInput, setIntervalInput] = useState(String(backupInterval));
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  useEffect(() => setIntervalInput(String(backupInterval)), [backupInterval]);
   function download() {
-    downloadText(`best-mobile-backup-${new Date().toISOString().slice(0, 10)}.json`, json, 'application/json;charset=utf-8');
+    const filename = `best-mobile-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    downloadText(filename, json, 'application/json;charset=utf-8');
+    void run(() => backend.recordBackup(filename), 'بکاپ اجرا شد');
   }
   const backupRows = data.activities.filter((item) => item.type === 'backup').map((item) => ({ ...item, status: item.title.includes('بازیابی') ? 'SUCCESS' : 'SUCCESS' }));
   const filteredBackups = backupRows.filter((item) => {
@@ -1331,7 +1386,7 @@ function Backup({ data, run, reload }: { data: AppSnapshot; run: (action: () => 
   }
   return (
     <section className="stack">
-      <section className="panel"><h2>پشتیبان داده‌ها</h2><p className="muted">همه داده‌ها داخل SQLite گوشی ذخیره می‌شود. خروجی JSON برای انتقال دستی یا نگهداری امن است و با آپدیت APK پاک نمی‌شود.</p><div className="form-grid"><label>فاصله بکاپ خودکار (دقیقه)<input value={intervalInput} inputMode="numeric" onChange={(event) => setIntervalInput(event.target.value)} /></label><button className="secondary" type="button" onClick={() => undefined}>ذخیره تنظیمات</button></div><button className="primary" type="button" onClick={download}><Database size={18} />اجرای بکاپ و دانلود</button><label className="upload-button"><Upload size={18} />ریستور JSON<input type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} /></label></section>
+      <section className="panel"><h2>پشتیبان داده‌ها</h2><p className="muted">همه داده‌ها داخل SQLite گوشی ذخیره می‌شود. خروجی JSON برای انتقال دستی یا نگهداری امن است و با آپدیت APK پاک نمی‌شود.</p><div className="form-grid"><label>فاصله بکاپ خودکار (دقیقه)<input value={intervalInput} inputMode="numeric" onChange={(event) => setIntervalInput(event.target.value)} /></label><button className="secondary" type="button" onClick={() => void onSaveBackupInterval(Number(intervalInput))}>ذخیره تنظیمات</button></div><button className="primary" type="button" onClick={download}><Database size={18} />اجرای بکاپ و دانلود</button><label className="upload-button"><Upload size={18} />ریستور JSON<input type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} /></label></section>
       <div className="filter-grid"><SearchBox value={query} onChange={setQuery} placeholder="جستجو: شناسه بکاپ، تاریخ، فایل" /><Picker label="وضعیت بکاپ" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'all', label: 'همه وضعیت‌ها' }, { value: 'SUCCESS', label: 'موفق' }, { value: 'FAILED', label: 'ناموفق' }, { value: 'PENDING', label: 'در انتظار' }]} /><button className="secondary full-button" type="button" onClick={() => { setQuery(''); setStatusFilter('all'); }}>پاک کردن فیلترها</button></div>
       <List title="لاگ بکاپ‌ها">
         {filteredBackups.map((item) => <article className="row detail-row" key={item.id}><div><h3>{item.title}</h3><p>{item.body}</p><p className="muted">{dateText(item.createdAt)}</p></div><div className="row-actions"><span className="pill paid">موفق</span><button className="secondary mini" type="button" onClick={download}><Download size={16} />دانلود JSON</button></div></article>)}
