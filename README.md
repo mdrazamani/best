@@ -8,6 +8,15 @@ This repository contains three independent applications:
 
 Each app runs with `npm` directly. No `pnpm` is required.
 
+## Offline Operation
+
+Runtime app sources are kept free of external CDN/font/API URLs. Offline package assets are stored under `vendor/`:
+
+- `vendor/npm-cache` for npm installs
+- `vendor/gradle-user-home` and `vendor/maven` for Android Gradle builds
+
+See [docs/offline.md](docs/offline.md) for prepare/install/build commands.
+
 ## Project Structure
 
 ```text

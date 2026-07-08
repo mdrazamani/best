@@ -1,7 +1,11 @@
 def googleMirror = 'https://maven.aliyun.com/repository/google'
+def offlineMavenRepo = new File(gradle.startParameter.currentDir, '../../../vendor/maven')
 
 settingsEvaluated { settings ->
     settings.pluginManagement.repositories {
+        if (offlineMavenRepo.exists()) {
+            maven { url offlineMavenRepo.toURI() }
+        }
         maven { url googleMirror }
         google()
         mavenCentral()
@@ -11,6 +15,9 @@ settingsEvaluated { settings ->
 
 gradle.beforeProject { project ->
     project.buildscript.repositories {
+        if (offlineMavenRepo.exists()) {
+            maven { url offlineMavenRepo.toURI() }
+        }
         maven { url googleMirror }
         google()
         mavenCentral()
@@ -18,6 +25,9 @@ gradle.beforeProject { project ->
     }
 
     project.repositories {
+        if (offlineMavenRepo.exists()) {
+            maven { url offlineMavenRepo.toURI() }
+        }
         maven { url googleMirror }
         google()
         mavenCentral()

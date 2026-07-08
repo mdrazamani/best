@@ -14,6 +14,7 @@
     "prestart:prod": "npm run build && node scripts/ensure-port-free.js",
     "start:prod": "node -e \"process.env.NODE_ENV='production'; require('./dist/main.js')\"",
     "lint": "eslint src",
+    "offline:check": "node ../../scripts/offline/check-runtime-links.mjs",
     "test": "jest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",

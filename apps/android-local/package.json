@@ -7,11 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "tsc -b --pretty false",
+    "offline:check": "node ../../scripts/offline/check-runtime-links.mjs",
     "preview": "vite preview",
     "android:add": "cap add android",
     "android:sync": "npm run build && cap sync android",
+    "android:sync:offline": "npm run build && cap sync android",
     "android:apk:debug": "npm run android:sync && cd android && gradlew.bat assembleDebug --init-script gradle-mirror.init.gradle",
-    "android:apk:release": "npm run android:sync && cd android && gradlew.bat assembleRelease --init-script gradle-mirror.init.gradle"
+    "android:apk:debug:offline": "npm run android:sync:offline && cd android && gradlew.bat --offline -g ../../../vendor/gradle-user-home assembleDebug --init-script gradle-mirror.init.gradle",
+    "android:apk:release": "npm run android:sync && cd android && gradlew.bat assembleRelease --init-script gradle-mirror.init.gradle",
+    "android:apk:release:offline": "npm run android:sync:offline && cd android && gradlew.bat --offline -g ../../../vendor/gradle-user-home assembleRelease --init-script gradle-mirror.init.gradle"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^6.0.2",

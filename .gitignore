@@ -29,3 +29,5 @@ Screenshot*.png
 *.log
 *.tsbuildinfo
 .DS_Store
+vendor/
+**/vendor/
