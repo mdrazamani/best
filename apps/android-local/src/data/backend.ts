@@ -118,33 +118,14 @@ const makeLineItems = (input: NewOrderInput): OrderLineItem[] => {
 
 const emptyData = (): PersistedData => ({
   users: [{ id: id(), username: 'admin', pin: '1234', name: 'مدیر', role: 'manager' }],
-  customers: [
-    {
-      id: id(),
-      name: 'مشتری نمونه',
-      phone: '09120000000',
-      address: 'تهران',
-      note: 'برای تست اولیه',
-      createdAt: now()
-    }
-  ],
+  customers: [],
   orders: [],
   invoices: [],
   collaboratorPayments: [],
-  collaborators: [
-    { id: id(), name: 'همکار نمونه', phone: '09121111111', role: 'نصاب', note: '', createdAt: now() }
-  ],
-  meshTypes: [
-    { id: id(), title: 'پلیسه معمولی', unitPrice: 450000, isActive: 1, isDefault: 1, note: '' },
-    { id: id(), title: 'مگنتی', unitPrice: 380000, isActive: 1, isDefault: 0, note: '' }
-  ],
-  inventory: [
-    { id: id(), name: 'توری پلیسه', quantity: 12, unit: 'عدد', minQuantity: 4, note: '' },
-    { id: id(), name: 'ریل آلومینیوم', quantity: 28, unit: 'شاخه', minQuantity: 8, note: '' }
-  ],
-  notifications: [
-    { id: id(), title: 'نسخه موبایل آماده است', body: 'داده‌ها در SQLite داخل گوشی ذخیره می‌شوند.', seen: 0, createdAt: now() }
-  ],
+  collaborators: [],
+  meshTypes: [],
+  inventory: [],
+  notifications: [],
   activities: []
 });
 
@@ -369,7 +350,6 @@ class BrowserBackend extends BaseBackend {
     const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? globalThis.localStorage?.getItem(LEGACY_STORAGE_KEY);
     this.data = this.normalize(stored ? (JSON.parse(stored) as Partial<PersistedData>) : emptyData());
     await this.persist();
-    await this.ensureDemoData();
   }
 
   async login(username: string, pin: string) {
@@ -757,7 +737,6 @@ class SqliteBackend extends BaseBackend {
     await this.db.execute(schemaSql);
     await this.migrate();
     await this.seed();
-    await this.ensureDemoData();
     await this.syncPostgresMirror();
   }
 
@@ -1015,14 +994,6 @@ class SqliteBackend extends BaseBackend {
     const users = await this.all<{ count: number }>('SELECT COUNT(*) as count FROM users');
     if (users[0]?.count) return;
     await this.run('INSERT INTO users (id, username, pin, name, role) VALUES (?, ?, ?, ?, ?)', [id(), 'admin', '1234', 'مدیر', 'manager']);
-    const customerId = id();
-    await this.run('INSERT INTO customers (id, name, phone, address, note, referred_by_collaborator_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [customerId, 'مشتری نمونه', '09120000000', 'تهران', 'برای تست اولیه', '', now()]);
-    await this.run('INSERT INTO collaborators (id, name, phone, role, note, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id(), 'همکار نمونه', '09121111111', 'نصاب', '', now()]);
-    await this.run('INSERT INTO inventory (id, name, quantity, unit, min_quantity, note) VALUES (?, ?, ?, ?, ?, ?)', [id(), 'توری پلیسه', 12, 'عدد', 4, '']);
-    await this.run('INSERT INTO inventory (id, name, quantity, unit, min_quantity, note) VALUES (?, ?, ?, ?, ?, ?)', [id(), 'ریل آلومینیوم', 28, 'شاخه', 8, '']);
-    await this.run('INSERT INTO mesh_types (id, title, unit_price, is_active, is_default, note) VALUES (?, ?, ?, ?, ?, ?)', [id(), 'پلیسه معمولی', 450000, 1, 1, '']);
-    await this.run('INSERT INTO mesh_types (id, title, unit_price, is_active, is_default, note) VALUES (?, ?, ?, ?, ?, ?)', [id(), 'مگنتی', 380000, 1, 0, '']);
-    await this.run('INSERT INTO notifications (id, title, body, seen, created_at) VALUES (?, ?, ?, ?, ?)', [id(), 'نسخه موبایل آماده است', 'داده‌ها در SQLite داخل گوشی ذخیره می‌شوند.', 0, now()]);
   }
 
   private async migrate() {
