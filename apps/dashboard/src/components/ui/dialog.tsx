@@ -34,13 +34,13 @@ const DialogContent = React.forwardRef<
       data-dialog-content="true"
       dir="rtl"
       className={cn(
-        'fixed left-[50%] top-[50%] z-[150] grid w-full max-w-2xl origin-center translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl border bg-background p-6 shadow-soft duration-200 max-h-[92vh] overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95 data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]',
+        'fixed left-[50%] top-[50%] z-[150] grid w-[calc(100vw-1rem)] max-w-2xl origin-center translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-4 shadow-soft duration-200 max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable] sm:w-full sm:rounded-xl sm:p-6 sm:max-h-[92vh] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95 data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]',
         className
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute left-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
+      <DialogPrimitive.Close className="absolute left-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-md opacity-75 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring sm:left-4 sm:top-4 sm:h-8 sm:w-8">
         <X className="h-4 w-4" />
         <span className="sr-only">بستن</span>
       </DialogPrimitive.Close>

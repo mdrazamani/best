@@ -15,6 +15,20 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? '0.0.0'),
       __API_BASE_URL__: JSON.stringify(env.VITE_API_BASE_URL ?? '/v1')
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('react') || id.includes('@radix-ui')) return 'ui-vendor';
+            if (id.includes('framer-motion')) return 'motion-vendor';
+            if (id.includes('react-select') || id.includes('cmdk')) return 'form-vendor';
+            if (id.includes('react-date-object') || id.includes('react-multi-date-picker')) return 'date-vendor';
+            return 'vendor';
+          }
+        }
+      }
+    },
     server: {
       host: env.VITE_HOST ?? '127.0.0.1',
       port: Number(env.VITE_PORT ?? 3002),

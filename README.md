@@ -1,9 +1,10 @@
 # BEST Monorepo
 
-This repository contains two independent applications:
+This repository contains three independent applications:
 
 - `apps/api` : NestJS + Prisma backend
 - `apps/dashboard` : React + Vite admin panel
+- `apps/android-local` : React + Vite + Capacitor local/offline app
 
 Each app runs with `npm` directly. No `pnpm` is required.
 
@@ -13,6 +14,7 @@ Each app runs with `npm` directly. No `pnpm` is required.
 apps/
   api/
   dashboard/
+  android-local/
 docker-compose.dev.yaml
 ```
 
@@ -96,6 +98,26 @@ Endpoint:
 
 - Dashboard: `http://localhost:3002`
 
+## Run Android Local App
+
+```bash
+cd apps/android-local
+npm install
+npm run dev
+```
+
+Build web assets:
+
+```bash
+npm run build
+```
+
+Sync Android project after web changes:
+
+```bash
+npm run android:sync
+```
+
 ## Tests
 
 API tests:
@@ -110,6 +132,14 @@ Dashboard tests:
 ```bash
 cd apps/dashboard
 npm test
+```
+
+Android local checks:
+
+```bash
+cd apps/android-local
+npm run lint
+npm run build
 ```
 
 ## Architecture notes

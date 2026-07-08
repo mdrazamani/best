@@ -5,7 +5,6 @@ import { createWriteStream, existsSync } from 'fs';
 import { mkdir, readdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import cron, { type ScheduledTask } from 'node-cron';
-import * as XLSX from 'xlsx';
 import { BaseService } from '../../../common/services/base.service';
 import { BackupsRepository } from '../backups.repository';
 
@@ -340,8 +339,8 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
 
   private async exportWorkbook(excelPath: string) {
     const tables = await this.backupsRepository.listPublicTables();
-    const workbook = XLSX.utils.book_new();
     const usedSheetNames = new Set<string>();
+    const sheets: Array<{ name: string; rows: Array<Record<string, unknown>> }> = [];
 
     for (const tableName of tables) {
       try {
@@ -352,27 +351,168 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
 
         const rows = await this.backupsRepository.readRowsByTable(tableName);
         const normalizedRows = rows.map((row) => this.normalizeRow(row));
-        const sheet = normalizedRows.length ? XLSX.utils.json_to_sheet(normalizedRows) : XLSX.utils.aoa_to_sheet([[]]);
         const sheetName = this.uniqueSheetName(this.sanitizeSheetName(tableName), usedSheetNames);
 
-        XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+        sheets.push({ name: sheetName, rows: normalizedRows });
         usedSheetNames.add(sheetName);
       } catch (error) {
         const message = this.toSingleLineMessage(error);
         this.logger.error(`خروجی اکسل برای جدول "${tableName}" با خطا مواجه شد: ${message}`);
         const sheetName = this.uniqueSheetName(this.sanitizeSheetName(`${tableName}_error`), usedSheetNames);
-        const errorSheet = XLSX.utils.json_to_sheet([{ table: tableName, error: message }]);
-        XLSX.utils.book_append_sheet(workbook, errorSheet, sheetName);
+        sheets.push({ name: sheetName, rows: [{ table: tableName, error: message }] });
         usedSheetNames.add(sheetName);
       }
     }
 
     if (!usedSheetNames.size) {
-      const metaSheet = XLSX.utils.json_to_sheet([{ info: 'هیچ جدولی برای خروجی پیدا نشد' }]);
-      XLSX.utils.book_append_sheet(workbook, metaSheet, 'meta');
+      sheets.push({ name: 'meta', rows: [{ info: 'هیچ جدولی برای خروجی پیدا نشد' }] });
     }
 
-    XLSX.writeFile(workbook, excelPath, { compression: true });
+    await this.writeXlsxWorkbook(excelPath, sheets);
+  }
+
+  private async writeXlsxWorkbook(excelPath: string, sheets: Array<{ name: string; rows: Array<Record<string, unknown>> }>) {
+    const archiver = await this.getArchiverFactory();
+
+    return new Promise<void>((resolve, reject) => {
+      const output = createWriteStream(excelPath);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      let settled = false;
+
+      const finalizeOnce = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        fn();
+      };
+
+      output.on('close', () => finalizeOnce(() => resolve()));
+      output.on('error', (error: Error) => finalizeOnce(() => reject(error)));
+      archive.on('error', (error: Error) => finalizeOnce(() => reject(error)));
+
+      archive.pipe(output);
+      archive.append(this.buildContentTypesXml(sheets.length), { name: '[Content_Types].xml' });
+      archive.append(this.buildPackageRelsXml(), { name: '_rels/.rels' });
+      archive.append(this.buildWorkbookXml(sheets), { name: 'xl/workbook.xml' });
+      archive.append(this.buildWorkbookRelsXml(sheets.length), { name: 'xl/_rels/workbook.xml.rels' });
+      archive.append(this.buildWorkbookStylesXml(), { name: 'xl/styles.xml' });
+
+      sheets.forEach((sheet, index) => {
+        archive.append(this.buildWorksheetXml(sheet.rows), { name: `xl/worksheets/sheet${index + 1}.xml` });
+      });
+
+      void archive.finalize();
+    });
+  }
+
+  private buildContentTypesXml(sheetCount: number) {
+    const worksheetOverrides = Array.from({ length: sheetCount }, (_value, index) => {
+      const id = index + 1;
+      return `<Override PartName="/xl/worksheets/sheet${id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+    }).join('');
+
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  ${worksheetOverrides}
+</Types>`;
+  }
+
+  private buildPackageRelsXml() {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+  }
+
+  private buildWorkbookXml(sheets: Array<{ name: string }>) {
+    const sheetEntries = sheets
+      .map((sheet, index) => `<sheet name="${this.escapeXmlAttribute(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`)
+      .join('');
+
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>${sheetEntries}</sheets>
+</workbook>`;
+  }
+
+  private buildWorkbookRelsXml(sheetCount: number) {
+    const sheetRels = Array.from({ length: sheetCount }, (_value, index) => {
+      const id = index + 1;
+      return `<Relationship Id="rId${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${id}.xml"/>`;
+    }).join('');
+    const stylesRelId = sheetCount + 1;
+
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${sheetRels}
+  <Relationship Id="rId${stylesRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+  }
+
+  private buildWorkbookStylesXml() {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+</styleSheet>`;
+  }
+
+  private buildWorksheetXml(rows: Array<Record<string, unknown>>) {
+    const headers = this.collectWorksheetHeaders(rows);
+    const sheetRows = rows.length ? [headers, ...rows.map((row) => headers.map((header) => row[header]))] : [];
+    const xmlRows = sheetRows
+      .map((row, rowIndex) => {
+        const rowNumber = rowIndex + 1;
+        const cells = row
+          .map((value, columnIndex) => this.buildWorksheetCell(value, this.columnName(columnIndex + 1), rowNumber))
+          .join('');
+        return `<row r="${rowNumber}">${cells}</row>`;
+      })
+      .join('');
+
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>${xmlRows}</sheetData>
+</worksheet>`;
+  }
+
+  private collectWorksheetHeaders(rows: Array<Record<string, unknown>>) {
+    return Array.from(rows.reduce((headers, row) => {
+      Object.keys(row).forEach((key) => headers.add(key));
+      return headers;
+    }, new Set<string>()));
+  }
+
+  private buildWorksheetCell(value: unknown, column: string, rowNumber: number) {
+    const ref = `${column}${rowNumber}`;
+    if (value === null || value === undefined || value === '') {
+      return `<c r="${ref}"/>`;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return `<c r="${ref}"><v>${value}</v></c>`;
+    }
+    if (typeof value === 'boolean') {
+      return `<c r="${ref}" t="b"><v>${value ? 1 : 0}</v></c>`;
+    }
+
+    return `<c r="${ref}" t="inlineStr"><is><t>${this.escapeXmlText(String(value))}</t></is></c>`;
+  }
+
+  private columnName(index: number) {
+    let value = index;
+    let name = '';
+    while (value > 0) {
+      const remainder = (value - 1) % 26;
+      name = String.fromCharCode(65 + remainder) + name;
+      value = Math.floor((value - 1) / 26);
+    }
+    return name;
   }
 
   private async createArchive(zipPath: string, sqlPath: string, excelPath: string) {
@@ -501,6 +641,23 @@ export class BackupsService extends BaseService implements OnModuleInit, OnModul
 
   private escapeSqlString(value: string) {
     return value.replace(/'/g, "''");
+  }
+
+  private escapeXmlText(value: string) {
+    return this.removeInvalidXmlCharacters(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  private escapeXmlAttribute(value: string) {
+    return this.escapeXmlText(value)
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  private removeInvalidXmlCharacters(value: string) {
+    return value.replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g, '');
   }
 
   private isDecimalLike(value: unknown): value is { toString: () => string } {

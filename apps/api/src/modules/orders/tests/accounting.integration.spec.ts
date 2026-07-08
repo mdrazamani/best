@@ -6,6 +6,9 @@ describe('Accounting integration (orders + invoices)', () => {
   const operationLogsService = {
     log: jest.fn()
   };
+  const collaboratorsService = {
+    getCollaboratorBalance: jest.fn()
+  };
 
   const baseOrder = {
     id: 'order-1',
@@ -140,7 +143,7 @@ describe('Accounting integration (orders + invoices)', () => {
     softDelete: jest.fn()
   };
 
-  const invoicesService = new InvoicesService(invoicesRepository as any, operationLogsService as any);
+  const invoicesService = new InvoicesService(invoicesRepository as any, operationLogsService as any, collaboratorsService as any);
   const ordersService = new OrdersService(ordersRepository as any, operationLogsService as any);
 
   beforeEach(() => {
