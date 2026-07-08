@@ -1,6 +1,9 @@
+const SQUARE_CENTIMETERS_PER_SQUARE_METER = 10000;
+
 export function calculateLineAreaFactor(width: number, height: number, quantity: number) {
-  const areaMeters = (width * height) / 10000;
-  return areaMeters > 1 ? areaMeters * quantity : quantity;
+  const areaMeters = (width * height) / SQUARE_CENTIMETERS_PER_SQUARE_METER;
+  const billableArea = areaMeters > 1 ? areaMeters : 1;
+  return billableArea * quantity;
 }
 
 export function calculateLineTotal(width: number, height: number, quantity: number, unitPrice: number) {

@@ -330,8 +330,8 @@ abstract class BaseBackend {
         discount: Number(discount),
         note: String(note),
         lineItems: [
-          { meshTypeId: mesh.id, meshTitle: mesh.title, width: 1.2 + (Number(customerIndex) % 3) * 0.25, height: 1.4, quantity: 2 + (Number(customerIndex) % 2), unitPrice: mesh.unitPrice, description: 'آیتم اصلی' },
-          { meshTypeId: mesh.id, meshTitle: mesh.title, width: 0.9, height: 1.1, quantity: 1, unitPrice: mesh.unitPrice, description: 'آیتم تکمیلی' }
+          { meshTypeId: mesh.id, meshTitle: mesh.title, width: 120 + (Number(customerIndex) % 3) * 25, height: 140, quantity: 2 + (Number(customerIndex) % 2), unitPrice: mesh.unitPrice, description: 'آیتم اصلی' },
+          { meshTypeId: mesh.id, meshTitle: mesh.title, width: 90, height: 110, quantity: 1, unitPrice: mesh.unitPrice, description: 'آیتم تکمیلی' }
         ]
       });
       const created = (await this.snapshot()).orders.find((item) => item.title === title);
