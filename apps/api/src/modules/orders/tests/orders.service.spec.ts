@@ -169,6 +169,15 @@ describe('OrdersService', () => {
     expect(payload.initialInvoice).not.toHaveProperty('extraAmount');
   });
 
+  it('calculates line totals like dashboard for one square meter or less', () => {
+    expect(Number((service as any).calculateLineTotal(100, 100, 3, 500))).toBe(1500);
+    expect(Number((service as any).calculateLineTotal(90, 110, 3, 500))).toBe(1500);
+  });
+
+  it('calculates line totals by square meters only above one square meter', () => {
+    expect(Number((service as any).calculateLineTotal(145, 140, 3, 500))).toBe(3045);
+  });
+
   it('rejects create when both customer and collaborator are missing', async () => {
     await expect(
       service.create('actor-1', {
@@ -176,5 +185,22 @@ describe('OrdersService', () => {
         lineItems: [{ meshTypeId: 'mesh-1', width: 200, height: 300, quantity: 1, unitPrice: 100 }]
       } as any)
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('renders label PDF HTML with the dashboard label layout', () => {
+    const html = (service as any).renderLabelHtml(
+      {
+        customer: { firstName: 'الهام', lastName: 'مرادی' },
+        collaborator: { phone: '09124445566' }
+      },
+      { width: 1.45, height: 1.4 }
+    );
+
+    expect(html).toContain('size:34mm 24mm');
+    expect(html).toContain('width:34mm');
+    expect(html).toContain('height:24mm');
+    expect(html).toContain('class="rotated-content"');
+    expect(html).toContain('rotate(-90deg)');
+    expect(html).toContain('translateY(-8mm)');
   });
 });

@@ -32,6 +32,7 @@ import type {
   UpdateOrderInput,
   UpdateUserInput
 } from './types';
+import { calculateLineTotal } from '../lib/pricing';
 
 const DB_NAME = 'best_mobile';
 const STORAGE_KEY = 'best-mobile-local-backend-v2';
@@ -69,11 +70,6 @@ const invoiceStatus = (amount: number, paid: number): InvoiceStatus => {
   if (paid >= amount) return 'paid';
   return 'partial';
 };
-const calculateLineTotal = (width: number, height: number, quantity: number, unitPrice: number) => {
-  const areaMeters = (width * height) / 10000;
-  return areaMeters > 1 ? areaMeters * quantity * unitPrice : quantity * unitPrice;
-};
-
 const parseLineItems = (value: unknown): OrderLineItem[] => {
   if (Array.isArray(value)) return value as OrderLineItem[];
   if (typeof value !== 'string' || !value.trim()) return [];

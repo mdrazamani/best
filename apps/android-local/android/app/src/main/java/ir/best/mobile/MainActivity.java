@@ -285,19 +285,27 @@ public class MainActivity extends BridgeActivity {
 
         Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         borderPaint.setStyle(Paint.Style.STROKE);
-        borderPaint.setStrokeWidth(0.9f);
+        borderPaint.setStrokeWidth(mmToPoints(0.26f));
         borderPaint.setColor(Color.rgb(203, 213, 225));
-        RectF border = new RectF(2.5f, 2.5f, width - 2.5f, height - 2.5f);
-        canvas.drawRoundRect(border, 4.5f, 4.5f, borderPaint);
+        float labelInset = mmToPoints(0.5f);
+        float labelRadius = mmToPoints(1.5f);
+        RectF border = new RectF(labelInset, labelInset, width - labelInset, height - labelInset);
+        canvas.drawRoundRect(border, labelRadius, labelRadius, borderPaint);
 
-        TextPaint dimensionPaint = createLabelTextPaint(18.5f, true);
-        TextPaint customerPaint = createLabelTextPaint(pickLabelTextSize(customerName, 8.9f, 6.3f), true);
-        TextPaint contactPaint = createLabelTextPaint(pickLabelTextSize(contact, 8.2f, 6.2f), true);
-        contactPaint.setLetterSpacing(0.04f);
+        TextPaint dimensionPaint = createLabelTextPaint(pickLabelTextSize(dimensions, 18.4f, 13.2f), true);
+        TextPaint customerPaint = createLabelTextPaint(pickLabelTextSize(customerName, 12.6f, 8.8f), true);
+        TextPaint contactPaint = createLabelTextPaint(pickLabelTextSize(contact, 10.8f, 7.8f), true);
+        dimensionPaint.setLetterSpacing(0.05f);
+        contactPaint.setLetterSpacing(0.084f);
 
-        drawCenteredLabelText(canvas, dimensions, dimensionPaint, 7.4f, width, 22);
-        drawCenteredLabelText(canvas, customerName, customerPaint, 31.8f, width, 16);
-        drawCenteredLabelText(canvas, contact, contactPaint, 46.4f, width, 14);
+        float centerY = height / 2f;
+        drawRotatedDashboardLabelText(canvas, dimensions, dimensionPaint, mmToPoints(4.0f), centerY);
+        drawRotatedDashboardLabelText(canvas, customerName, customerPaint, mmToPoints(12.5f), centerY + mmToPoints(0.2f));
+        drawRotatedDashboardLabelText(canvas, contact, contactPaint, mmToPoints(20.0f), centerY);
+    }
+
+    private float mmToPoints(float mm) {
+        return mm * 72f / 25.4f;
     }
 
     private TextPaint createLabelTextPaint(float size, boolean bold) {
@@ -311,29 +319,24 @@ public class MainActivity extends BridgeActivity {
 
     private float pickLabelTextSize(String value, float baseSize, float minSize) {
         int length = value == null ? 0 : value.trim().length();
-        if (length <= 14) return baseSize;
-        if (length <= 20) return Math.max(baseSize - 1.0f, minSize);
-        if (length <= 28) return Math.max(baseSize - 1.8f, minSize);
+        if (length <= 10) return baseSize;
+        if (length <= 14) return Math.max(baseSize - 1.0f, minSize);
+        if (length <= 18) return Math.max(baseSize - 2.0f, minSize);
+        if (length <= 24) return Math.max(baseSize - 3.0f, minSize);
         return minSize;
     }
 
-    private void drawCenteredLabelText(Canvas canvas, String value, TextPaint paint, float top, int pageWidth, int boxHeight) {
+    private void drawRotatedDashboardLabelText(Canvas canvas, String value, TextPaint paint, float centerX, float centerY) {
         String text = value == null || value.trim().isEmpty() ? "-" : value.trim();
-        int availableWidth = Math.max(1, pageWidth - 12);
-        fitLabelTextSize(text, paint, availableWidth);
-        StaticLayout layout = createSingleLineLayout(text, paint, availableWidth);
+        int layoutWidth = Math.max(1, Math.round(paint.measureText(text) + paint.getTextSize()));
+        StaticLayout layout = createSingleLineLayout(text, paint, layoutWidth);
 
         canvas.save();
-        canvas.translate(6, top + Math.max(0, (boxHeight - layout.getHeight()) / 2f));
+        canvas.translate(centerX, centerY);
+        canvas.rotate(-90f);
+        canvas.translate(-layoutWidth / 2f, -layout.getHeight() / 2f);
         layout.draw(canvas);
         canvas.restore();
-    }
-
-    private void fitLabelTextSize(String text, TextPaint paint, int availableWidth) {
-        float minSize = paint.getTextSize() >= 16f ? 12f : 5.1f;
-        while (paint.measureText(text) > availableWidth && paint.getTextSize() > minSize) {
-            paint.setTextSize(Math.max(minSize, paint.getTextSize() - 0.35f));
-        }
     }
 
     @SuppressWarnings("deprecation")

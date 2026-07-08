@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { backend } from '../data/backend';
 import type { AppSnapshot, DashboardStats, Invoice, InvoiceStatus, Order, OrderLineItem, OrderStatus, WorkType } from '../data/types';
+import { calculateEffectiveLinePricing, calculateLineTotal } from '../lib/pricing';
 import torbestLogoUrl from '../assets/torbest-logo.png';
 import vazirmatnArabic400Url from '@fontsource/vazirmatn/files/vazirmatn-arabic-400-normal.woff2?url';
 import vazirmatnArabic600Url from '@fontsource/vazirmatn/files/vazirmatn-arabic-600-normal.woff2?url';
@@ -143,10 +144,6 @@ const addDays = (iso: string, days: number) => {
 const moneyNumber = (value: unknown) => {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? Math.max(Math.round(parsed), 0) : 0;
-};
-const calculateLineTotal = (width: number, height: number, quantity: number, unitPrice: number) => {
-  const areaMeters = (width * height) / 10000;
-  return areaMeters > 1 ? areaMeters * quantity * unitPrice : quantity * unitPrice;
 };
 const toNumber = (value: string) => {
   const parsed = Number(value.trim());
@@ -775,13 +772,15 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
     const height = toNumber(item.height);
     const quantity = toNumber(item.quantity);
     const unitPrice = toNumber(item.unitPrice);
-    const calculated = calculateLineTotal(width, height, quantity, unitPrice);
-    const areaMeters = (width * height) / 10000;
-    const factor = areaMeters > 1 ? areaMeters * quantity : quantity;
-    const hasManualOverride = item.lineTotalManual && item.lineTotalOverride.trim() !== '';
-    const effectiveTotal = hasManualOverride ? Math.max(toNumber(item.lineTotalOverride), 0) : calculated;
-    const effectiveUnitPrice = factor > 0 ? effectiveTotal / factor : unitPrice;
-    return { width, height, quantity, unitPrice, calculated, effectiveTotal, effectiveUnitPrice };
+    return calculateEffectiveLinePricing({
+      width,
+      height,
+      quantity,
+      unitPrice,
+      lineTotalOverride: toNumber(item.lineTotalOverride),
+      lineTotalManual: item.lineTotalManual,
+      hasLineTotalOverride: item.lineTotalOverride.trim() !== ''
+    });
   };
   const actionOrderSubtotal = actionOrderItems.reduce((sum, item) => sum + actionLinePricing(item).effectiveTotal, 0);
   const actionOrderAdjustedTotal = Math.max(actionOrderSubtotal - Math.max(toNumber(actionOrderDiscount), 0), 0);
@@ -1122,13 +1121,15 @@ function Orders({
     const height = toNumber(item.height);
     const quantity = toNumber(item.quantity);
     const unitPrice = toNumber(item.unitPrice);
-    const calculated = calculateLineTotal(width, height, quantity, unitPrice);
-    const areaMeters = (width * height) / 10000;
-    const factor = areaMeters > 1 ? areaMeters * quantity : quantity;
-    const hasManualOverride = item.lineTotalManual && item.lineTotalOverride.trim() !== '';
-    const effectiveTotal = hasManualOverride ? Math.max(toNumber(item.lineTotalOverride), 0) : calculated;
-    const effectiveUnitPrice = factor > 0 ? effectiveTotal / factor : unitPrice;
-    return { width, height, quantity, unitPrice, calculated, effectiveTotal, effectiveUnitPrice };
+    return calculateEffectiveLinePricing({
+      width,
+      height,
+      quantity,
+      unitPrice,
+      lineTotalOverride: toNumber(item.lineTotalOverride),
+      lineTotalManual: item.lineTotalManual,
+      hasLineTotalOverride: item.lineTotalOverride.trim() !== ''
+    });
   };
   const buildLines = () => items.map((item) => {
     const mesh = data.meshTypes.find((meshType) => meshType.id === item.meshTypeId);
@@ -1629,6 +1630,13 @@ function escapeHtml(value: string) {
 
 async function downloadOrderLabelsPdf(order: Order) {
   const labelItems = order.lineItems.length ? order.lineItems : [{ id: 'empty', width: 0, height: 0, quantity: 1, meshTitle: '', meshTypeId: '', unitPrice: 0, total: 0, description: '' }];
+  if (window.BestAndroid?.saveLabelPdfFile) {
+    labelItems.forEach((item, index) => {
+      saveNativeDashboardLabelPdf(order, item, index, index === 0);
+    });
+    return;
+  }
+
   const fontFaceCss = await getLabelFontFaceCss();
   if (window.BestAndroid?.saveHtmlPdfFile) {
     labelItems.forEach((item, index) => {
@@ -1641,8 +1649,27 @@ async function downloadOrderLabelsPdf(order: Order) {
 }
 
 async function downloadOrderLineLabelPdf(order: Order, item: OrderLineItem, index: number) {
+  if (window.BestAndroid?.saveLabelPdfFile) {
+    saveNativeDashboardLabelPdf(order, item, index, true);
+    return;
+  }
+
   const fontFaceCss = await getLabelFontFaceCss();
   saveDashboardLabelPdf(order, item, index, fontFaceCss, true);
+}
+
+function saveNativeDashboardLabelPdf(order: Order, item: OrderLineItem, index: number, openAfterSave: boolean) {
+  const fileName = buildDashboardLabelFileName(order, item, index);
+  const labelsJson = JSON.stringify([buildDashboardLabelPayload(order, item)]);
+  window.BestAndroid?.saveLabelPdfFile?.(fileName, labelsJson, openAfterSave);
+}
+
+function buildDashboardLabelPayload(order: Order, item: OrderLineItem) {
+  return {
+    dimensions: `${dimensionText(item.width)}\u00d7${dimensionText(item.height)}`,
+    customerName: order.customerName || '-',
+    contact: order.collaboratorPhone || '-'
+  };
 }
 
 function saveDashboardLabelPdf(order: Order, item: OrderLineItem, index: number, fontFaceCss: string, openAfterSave: boolean) {
@@ -1738,7 +1765,7 @@ html,body{
   height:24mm;
 }
 body{
-  font-family:Vazirmatn,Tahoma,sans-serif;
+  font-family:'Vazirmatn',Tahoma,sans-serif;
   direction:rtl;
   color:#0f172a;
   background:#fff;
