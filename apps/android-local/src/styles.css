@@ -1138,6 +1138,48 @@ textarea:focus {
   min-height: 18px;
 }
 
+.check-button {
+  width: 100%;
+  min-height: 42px;
+  justify-content: flex-start;
+  padding: 7px 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  text-align: right;
+}
+
+.check-button.active {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.check-button span:last-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.check-box {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+}
+
+.check-button.active .check-box {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
 .notification-row {
   border-color: rgba(23, 79, 145, 0.25);
 }

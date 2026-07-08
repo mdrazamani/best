@@ -453,6 +453,9 @@ function PersianDatePicker({ label, value, onChange, placeholder = 'انتخاب
                 <X size={19} />
               </button>
             </div>
+            <button className="secondary full-button" type="button" onClick={() => { onChange(''); setOpen(false); }}>
+              بدون تاریخ
+            </button>
             <div className="date-options">
               {options.map((iso) => (
                 <button key={iso} type="button" className={iso === value ? 'active' : ''} onClick={() => { onChange(iso); setOpen(false); }}>
@@ -617,7 +620,7 @@ function Customers({
           <h2>عملیات سریع</h2>
           <div className="quick-action-grid">
             <button className="secondary" type="button" onClick={() => onCreateOrder({ customerId: selected.id, collaboratorId: selected.referredByCollaboratorId || collaborators[0]?.id })}><PackagePlus size={17} />ساخت سفارش</button>
-            <button className="secondary" type="button" disabled={freeInvoiceOrders.length === 0} onClick={() => onCreateInvoice({ orderIds: freeInvoiceOrders.slice(0, 1).map((order) => order.id), payerId: freeInvoiceOrders[0]?.collaboratorId })}><ReceiptText size={17} />ساخت فاکتور</button>
+            <button className="secondary" type="button" disabled={freeInvoiceOrders.length === 0} onClick={() => onCreateInvoice({ orderIds: freeInvoiceOrders.map((order) => order.id), payerId: freeInvoiceOrders[0]?.collaboratorId })}><ReceiptText size={17} />ساخت فاکتور</button>
             <button className="secondary" type="button" disabled={unpaidInvoices.length === 0} onClick={openPayment}><CheckCircle2 size={17} />ثبت پرداخت فاکتور</button>
             <button className="secondary" type="button" onClick={() => openEdit(selected)}><UserRoundPlus size={17} />ویرایش مشتری</button>
           </div>
@@ -707,7 +710,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
   const [actionOrderQuickCustomerPhone, setActionOrderQuickCustomerPhone] = useState('');
   const [actionOrderTitle, setActionOrderTitle] = useState('');
   const [actionOrderWorkType, setActionOrderWorkType] = useState<WorkType>('new_construction');
-  const [actionOrderDueDate, setActionOrderDueDate] = useState(todayInput());
+  const [actionOrderDueDate, setActionOrderDueDate] = useState('');
   const [actionOrderDiscount, setActionOrderDiscount] = useState('0');
   const [actionOrderFinalPrice, setActionOrderFinalPrice] = useState('');
   const [actionOrderFinalPriceOverridden, setActionOrderFinalPriceOverridden] = useState(false);
@@ -719,15 +722,16 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
   const [actionInvoiceAmount, setActionInvoiceAmount] = useState('0');
   const [actionInvoicePaid, setActionInvoicePaid] = useState('0');
   const [actionInvoiceDiscount, setActionInvoiceDiscount] = useState('0');
-  const [actionInvoiceDueDate, setActionInvoiceDueDate] = useState(todayInput());
+  const [actionInvoiceDueDate, setActionInvoiceDueDate] = useState('');
   const [actionInvoiceNote, setActionInvoiceNote] = useState('');
   const [actionPaymentInvoiceId, setActionPaymentInvoiceId] = useState('');
   const [actionPaymentAmount, setActionPaymentAmount] = useState('');
   const [directPaymentAmount, setDirectPaymentAmount] = useState('');
-  const [directPaymentPaidAt, setDirectPaymentPaidAt] = useState(todayInput());
+  const [directPaymentPaidAt, setDirectPaymentPaidAt] = useState('');
   const [directPaymentNote, setDirectPaymentNote] = useState('');
   const actionInvoiceOrders = data.orders.filter((order) => actionInvoiceOrderIds.includes(order.id));
   const actionInvoiceSelectedAmount = actionInvoiceOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
+  const actionInvoiceSelectedDiscount = actionInvoiceOrders.reduce((sum, order) => sum + Number(order.discount ?? 0), 0);
   const collaboratorStats = (id: string) => {
     const orders = data.orders.filter((order) => order.collaboratorId === id);
     const orderIdSet = new Set(orders.map((order) => order.id));
@@ -756,7 +760,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
     setActionOrderQuickCustomerPhone('');
     setActionOrderTitle('');
     setActionOrderWorkType('new_construction');
-    setActionOrderDueDate(todayInput());
+    setActionOrderDueDate('');
     setActionOrderDiscount('0');
     setActionOrderFinalPrice('');
     setActionOrderFinalPriceOverridden(false);
@@ -764,9 +768,9 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
     setActionOrderNote('');
     setActionOrderItems([defaultActionLine()]);
   };
-  const resetActionInvoice = () => { setActionInvoiceOrderIds([]); setActionInvoiceTitle(''); setActionInvoiceAmount('0'); setActionInvoicePaid('0'); setActionInvoiceDiscount('0'); setActionInvoiceDueDate(todayInput()); setActionInvoiceNote(''); };
+  const resetActionInvoice = () => { setActionInvoiceOrderIds([]); setActionInvoiceTitle(''); setActionInvoiceAmount('0'); setActionInvoicePaid('0'); setActionInvoiceDiscount('0'); setActionInvoiceDueDate(''); setActionInvoiceNote(''); };
   const resetActionPayment = () => { setActionPaymentInvoiceId(''); setActionPaymentAmount(''); };
-  const resetDirectPayment = () => { setDirectPaymentAmount(''); setDirectPaymentPaidAt(todayInput()); setDirectPaymentNote(''); };
+  const resetDirectPayment = () => { setDirectPaymentAmount(''); setDirectPaymentPaidAt(''); setDirectPaymentNote(''); };
   const actionLinePricing = (item: LineDraft) => {
     const width = toNumber(item.width);
     const height = toNumber(item.height);
@@ -797,6 +801,9 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
   useEffect(() => {
     if (detailAction === 'invoice') setActionInvoiceAmount(String(actionInvoiceSelectedAmount || 0));
   }, [actionInvoiceSelectedAmount, detailAction]);
+  useEffect(() => {
+    if (detailAction === 'invoice') setActionInvoiceDiscount(String(actionInvoiceSelectedDiscount || 0));
+  }, [actionInvoiceSelectedDiscount, detailAction]);
   const selected = data.collaborators.find((item) => item.id === selectedId);
   if (selected) {
     const stats = collaboratorStats(selected.id);
@@ -829,11 +836,11 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
     };
     const openActionInvoice = () => {
       resetActionInvoice();
-      const firstOrder = invoiceOrderOptions[0];
-      if (firstOrder) {
-        setActionInvoiceOrderIds([firstOrder.id]);
-        setActionInvoiceAmount(String(firstOrder.total ?? 0));
-        setActionInvoiceDueDate(firstOrder.dueDate || todayInput());
+      if (invoiceOrderOptions.length) {
+        setActionInvoiceOrderIds(invoiceOrderOptions.map((order) => order.id));
+        setActionInvoiceAmount(String(invoiceOrderOptions.reduce((sum, order) => sum + Number(order.total ?? 0), 0)));
+        setActionInvoiceDiscount(String(invoiceOrderOptions.reduce((sum, order) => sum + Number(order.discount ?? 0), 0)));
+        setActionInvoiceDueDate('');
       }
       setDetailAction('invoice');
     };
@@ -909,7 +916,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
               <div className="multi-select">
                 <strong>{actionInvoiceOrderIds.length.toLocaleString('fa-IR')} سفارش انتخاب شده</strong>
                 {actionInvoiceOrders.length > 0 && <p>{actionInvoiceOrders.map((order) => `${order.title} (${money(order.total)})`).join('، ')}</p>}
-                <div>{invoiceOrderOptions.map((order) => <label className="check-row" key={order.id}><input type="checkbox" checked={actionInvoiceOrderIds.includes(order.id)} onChange={() => toggleActionInvoiceOrder(order.id)} />{order.title} - {order.customerName} - {money(order.total)}</label>)}{invoiceOrderOptions.length === 0 && <p className="empty">سفارش آزاد برای فاکتور وجود ندارد</p>}</div>
+              <div>{invoiceOrderOptions.map((order) => <OrderCheckButton key={order.id} order={order} checked={actionInvoiceOrderIds.includes(order.id)} onToggle={() => toggleActionInvoiceOrder(order.id)} />)}{invoiceOrderOptions.length === 0 && <p className="empty">سفارش آزاد برای فاکتور وجود ندارد</p>}</div>
               </div>
             </FlowSection>
             <FlowSection title="مبلغ و پرداخت">
@@ -1061,7 +1068,7 @@ function Orders({
   const [quickCollaboratorPhone, setQuickCollaboratorPhone] = useState('');
   const [title, setTitle] = useState('');
   const [workType, setWorkType] = useState<WorkType>('new_construction');
-  const [dueDate, setDueDate] = useState(todayInput());
+  const [dueDate, setDueDate] = useState('');
   const [discount, setDiscount] = useState('0');
   const [finalPrice, setFinalPrice] = useState('');
   const [finalPriceOverridden, setFinalPriceOverridden] = useState(false);
@@ -1093,7 +1100,7 @@ function Orders({
     onIntentConsumed();
   }, [intent?.key]);
 
-  const reset = () => { setEditingId(''); setTitle(''); setQuickCustomerName(''); setQuickCustomerPhone(''); setCollaboratorId(''); setQuickCollaboratorName(''); setQuickCollaboratorPhone(''); setWorkType('new_construction'); setDueDate(todayInput()); setDiscount('0'); setFinalPrice(''); setFinalPriceOverridden(false); setCreateInitialInvoice(false); setNote(''); setItems([defaultLine()]); };
+  const reset = () => { setEditingId(''); setTitle(''); setQuickCustomerName(''); setQuickCustomerPhone(''); setCollaboratorId(''); setQuickCollaboratorName(''); setQuickCollaboratorPhone(''); setWorkType('new_construction'); setDueDate(''); setDiscount('0'); setFinalPrice(''); setFinalPriceOverridden(false); setCreateInitialInvoice(false); setNote(''); setItems([defaultLine()]); };
   const close = () => { reset(); setFormOpen(false); };
   const openCreate = () => { reset(); setFormOpen(true); };
   const fillOrder = (order: Order) => {
@@ -1106,7 +1113,7 @@ function Orders({
     setQuickCollaboratorPhone('');
     setTitle(order.title);
     setWorkType(order.workType);
-    setDueDate(order.dueDate || todayInput());
+    setDueDate(order.dueDate || '');
     setDiscount(String(order.discount ?? 0));
     setNote(order.note);
     const orderSubtotal = order.lineItems.reduce((sum, item) => sum + calculateLineTotal(Number(item.width), Number(item.height), Number(item.quantity), Number(item.unitPrice)), 0);
@@ -1149,7 +1156,7 @@ function Orders({
       <section className="stack">
         <section className="panel section-heading"><div><h2>{selectedOrder.title}</h2><p className="muted">{selectedOrder.customerName}{selectedOrder.collaboratorName ? ` / ${selectedOrder.collaboratorName}` : ''}</p></div><button className="secondary" type="button" onClick={() => setSelectedOrderId('')}>بازگشت</button></section>
         <div className="metrics"><Metric label="جمع سفارش" value={money(selectedOrder.total)} /><Metric label="آیتم‌ها" value={selectedOrder.lineItems.length.toLocaleString('fa-IR')} /><Metric label="وضعیت" value={statusLabels[selectedOrder.status]} /><Metric label="تحویل" value={dateText(selectedOrder.dueDate)} /></div>
-        <section className="panel"><div className="side-actions inline-actions"><button className="secondary" type="button" onClick={() => downloadOrderLabelsPdf(selectedOrder)}><Download size={17} />دانلود همه لیبل‌ها</button><button className="secondary" type="button" disabled={invoices.length > 0} onClick={() => void run(() => backend.addInvoice({ orderIds: [selectedOrder.id], title: `فاکتور ${selectedOrder.title}`, amount: selectedOrder.total, paid: 0, discount: selectedOrder.discount, payerId: selectedOrder.collaboratorId, dueDate: selectedOrder.dueDate, note: '' }), 'فاکتور سفارش ثبت شد')}>افزودن فاکتور</button><button className="secondary" type="button" onClick={() => fillOrder(selectedOrder)}>ویرایش سفارش</button></div></section>
+        <section className="panel"><div className="side-actions inline-actions"><button className="secondary" type="button" onClick={() => downloadOrderLabelsPdf(selectedOrder)}><Download size={17} />دانلود همه لیبل‌ها</button><button className="secondary" type="button" disabled={invoices.length > 0} onClick={() => void run(() => backend.addInvoice({ orderIds: [selectedOrder.id], title: `فاکتور ${selectedOrder.title}`, amount: selectedOrder.total, paid: 0, discount: selectedOrder.discount, payerId: selectedOrder.collaboratorId, dueDate: '', note: '' }), 'فاکتور سفارش ثبت شد')}>افزودن فاکتور</button><button className="secondary" type="button" onClick={() => fillOrder(selectedOrder)}>ویرایش سفارش</button></div></section>
         <List title="آیتم‌های سفارش">
           {selectedOrder.lineItems.map((item, index) => <article className="line-detail" key={item.id}><div className="line-detail-head"><h3>{item.meshTitle}</h3><button className="secondary mini label-download" type="button" onClick={() => void downloadOrderLineLabelPdf(selectedOrder, item, index)}><Download size={16} />دانلود لیبل</button></div><p>ابعاد: {sizeText(item.width, item.height)} / تعداد: {numberText(item.quantity)} عدد</p><p>قیمت واحد: {money(item.unitPrice)} / جمع: {money(item.total)}</p>{item.description && <p>{item.description}</p>}</article>)}
         </List>
@@ -1165,7 +1172,7 @@ function Orders({
     <section className="stack">
       <PageActions title="سفارشات" actionLabel="افزودن سفارش" onAction={openCreate} />
       <Modal title={editingId ? 'ویرایش سفارش' : 'افزودن سفارش'} open={formOpen} onClose={close}>
-        <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { const lines = buildLines(); if (!lines.length) throw new Error('حداقل یک ردیف معتبر سفارش لازم است'); let effectiveCustomerId = customerId; let effectiveCollaboratorId = collaboratorId; let effectiveCustomerName = data.customers.find((item) => item.id === customerId)?.name ?? ''; if (quickCustomerName.trim()) { const created = await backend.addCustomer({ name: quickCustomerName, phone: quickCustomerPhone }); effectiveCustomerId = created.id; effectiveCustomerName = created.name; } if (quickCollaboratorName.trim()) { const created = await backend.addCollaborator({ name: quickCollaboratorName, phone: quickCollaboratorPhone }); effectiveCollaboratorId = created.id; } if (!effectiveCustomerId) throw new Error('مشتری را انتخاب یا همان‌جا ثبت کنید'); if (!effectiveCollaboratorId) throw new Error('همکار را انتخاب یا همان‌جا ثبت کنید'); const payloadTotal = finalPrice.trim() ? toNumber(finalPrice) : adjustedTotal; const payload = { customerId: effectiveCustomerId, collaboratorId: effectiveCollaboratorId, title: title.trim() || `سفارش ${effectiveCustomerName || todayInput()}`, workType, dueDate, discount: Math.max(toNumber(discount), 0), totalPrice: Number.isFinite(payloadTotal) ? Math.max(payloadTotal, 0) : 0, createInitialInvoice, note, lineItems: lines }; if (editingId) await backend.updateOrder({ id: editingId, ...payload }); else await backend.addOrder(payload); close(); }, editingId ? 'سفارش ویرایش شد' : 'سفارش ثبت شد'); }}>
+        <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { const lines = buildLines(); if (!lines.length) throw new Error('حداقل یک ردیف معتبر سفارش لازم است'); let effectiveCustomerId = customerId; let effectiveCollaboratorId = collaboratorId; let effectiveCustomerName = data.customers.find((item) => item.id === customerId)?.name ?? ''; if (quickCustomerName.trim()) { const created = await backend.addCustomer({ name: quickCustomerName, phone: quickCustomerPhone }); effectiveCustomerId = created.id; effectiveCustomerName = created.name; } if (quickCollaboratorName.trim()) { const created = await backend.addCollaborator({ name: quickCollaboratorName, phone: quickCollaboratorPhone }); effectiveCollaboratorId = created.id; } if (!effectiveCustomerId) throw new Error('مشتری را انتخاب یا همان‌جا ثبت کنید'); if (!effectiveCollaboratorId) throw new Error('همکار را انتخاب یا همان‌جا ثبت کنید'); const payloadTotal = finalPrice.trim() ? toNumber(finalPrice) : adjustedTotal; const payload = { customerId: effectiveCustomerId, collaboratorId: effectiveCollaboratorId, title: title.trim() || `سفارش ${effectiveCustomerName || 'جدید'}`, workType, dueDate, discount: Math.max(toNumber(discount), 0), totalPrice: Number.isFinite(payloadTotal) ? Math.max(payloadTotal, 0) : 0, createInitialInvoice, note, lineItems: lines }; if (editingId) await backend.updateOrder({ id: editingId, ...payload }); else await backend.addOrder(payload); close(); }, editingId ? 'سفارش ویرایش شد' : 'سفارش ثبت شد'); }}>
           <FlowSection title="مشتری">
             <Picker label="انتخاب مشتری" value={customerId} onChange={setCustomerId} placeholder="مشتری را انتخاب کنید" options={data.customers.map((customer) => ({ value: customer.id, label: customer.name, helper: customer.phone }))} />
             <div className="quick-create"><label>ثبت سریع مشتری<input value={quickCustomerName} placeholder="نام مشتری جدید" onChange={(event) => setQuickCustomerName(event.target.value)} /></label><label>موبایل<input value={quickCustomerPhone} inputMode="tel" onChange={(event) => setQuickCustomerPhone(event.target.value)} /></label></div>
@@ -1247,6 +1254,15 @@ function LineSummary({ items }: { items: OrderLineItem[] }) {
   );
 }
 
+function OrderCheckButton({ order, checked, onToggle }: { order: Order; checked: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className={`check-row check-button ${checked ? 'active' : ''}`} role="checkbox" aria-checked={checked} onClick={onToggle}>
+      <span className="check-box" aria-hidden="true">{checked && <Check size={16} />}</span>
+      <span>{order.title} - {order.customerName} - {money(order.total)}</span>
+    </button>
+  );
+}
+
 function Invoices({
   data,
   run,
@@ -1264,7 +1280,7 @@ function Invoices({
   const [paid, setPaid] = useState('0');
   const [discount, setDiscount] = useState('0');
   const [payerId, setPayerId] = useState('');
-  const [dueDate, setDueDate] = useState(todayInput());
+  const [dueDate, setDueDate] = useState('');
   const [note, setNote] = useState('');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -1279,10 +1295,10 @@ function Invoices({
     const matchesPayer = payerFilter === 'all' || item.payerId === payerFilter;
     return matchesText && matchesStatus && matchesPayer;
   });
-  const reset = () => { setEditingId(''); setOrderIds([]); setTitle(''); setAmount('0'); setPaid('0'); setDiscount('0'); setPayerId(''); setDueDate(todayInput()); setNote(''); };
+  const reset = () => { setEditingId(''); setOrderIds([]); setTitle(''); setAmount('0'); setPaid('0'); setDiscount('0'); setPayerId(''); setDueDate(''); setNote(''); };
   const close = () => { reset(); setFormOpen(false); };
   const openCreate = () => { reset(); setFormOpen(true); };
-  const fillInvoice = (invoice: AppSnapshot['invoices'][number]) => { setEditingId(invoice.id); setOrderIds(invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]); setTitle(invoice.title); setAmount(String(invoice.amount)); setPaid(String(invoice.paid)); setDiscount(String(invoice.discount ?? 0)); setPayerId(invoice.payerId ?? ''); setDueDate(invoice.dueDate || todayInput()); setNote(invoice.note); setFormOpen(true); };
+  const fillInvoice = (invoice: AppSnapshot['invoices'][number]) => { setEditingId(invoice.id); setOrderIds(invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]); setTitle(invoice.title); setAmount(String(invoice.amount)); setPaid(String(invoice.paid)); setDiscount(String(invoice.discount ?? 0)); setPayerId(invoice.payerId ?? ''); setDueDate(invoice.dueDate || ''); setNote(invoice.note); setFormOpen(true); };
   const selectedOrders = orderIds.map((id) => data.orders.find((order) => order.id === id)).filter(Boolean) as Order[];
   const selectedAmount = selectedOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
   const selectedDiscount = selectedOrders.reduce((sum, order) => sum + Number(order.discount ?? 0), 0);
@@ -1335,7 +1351,7 @@ function Invoices({
               <strong>{orderIds.length.toLocaleString('fa-IR')} سفارش انتخاب شده</strong>
               {selectedOrders.length > 0 && <p>{selectedOrders.map((order) => `${order.title} (${money(order.total)})`).join('، ')}</p>}
               <div>
-                {orderOptions.map((order) => <label className="check-row" key={order.id}><input type="checkbox" checked={orderIds.includes(order.id)} onChange={() => toggleOrder(order.id)} /> {order.title} - {order.customerName} - {money(order.total)}</label>)}
+                {orderOptions.map((order) => <OrderCheckButton key={order.id} order={order} checked={orderIds.includes(order.id)} onToggle={() => toggleOrder(order.id)} />)}
                 {orderOptions.length === 0 && <p className="empty">سفارش آزاد برای فاکتور وجود ندارد</p>}
               </div>
             </div>

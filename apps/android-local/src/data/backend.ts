@@ -538,7 +538,7 @@ class BrowserBackend extends BaseBackend {
     const customerName = Array.from(new Set(orders.map((item) => item.customerName).filter(Boolean))).join('، ');
     const invoiceId = id();
     const invoiceCreatedAt = now();
-    this.data.invoices.unshift({ id: invoiceId, invoiceNumber: generateInvoiceNumber(invoiceCreatedAt), orderId: orders[0].id, orderIds: orders.map((item) => item.id), orderTitle, customerName, payerId: payer?.id ?? '', payerName: payer?.name ?? '', title: input.title?.trim() || `فاکتور ${orderTitle}`, amount, paid, discount: normalizeNumber(input.discount ?? 0), status: invoiceStatus(amount, paid), dueDate: input.dueDate ?? orders[0]?.dueDate ?? '', note: input.note?.trim() ?? '', createdAt: invoiceCreatedAt });
+    this.data.invoices.unshift({ id: invoiceId, invoiceNumber: generateInvoiceNumber(invoiceCreatedAt), orderId: orders[0].id, orderIds: orders.map((item) => item.id), orderTitle, customerName, payerId: payer?.id ?? '', payerName: payer?.name ?? '', title: input.title?.trim() || `فاکتور ${orderTitle}`, amount, paid, discount: normalizeNumber(input.discount ?? 0), status: invoiceStatus(amount, paid), dueDate: input.dueDate ?? '', note: input.note?.trim() ?? '', createdAt: invoiceCreatedAt });
     this.log('invoice', 'فاکتور ثبت شد', orderTitle);
     await this.persist();
   }
@@ -895,7 +895,7 @@ class SqliteBackend extends BaseBackend {
     const customerName = Array.from(new Set(orders.map((item) => item.customerName).filter(Boolean))).join('، ');
     const invoiceId = id();
     const invoiceCreatedAt = now();
-    await this.run('INSERT INTO invoices (id, invoice_number, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, generateInvoiceNumber(invoiceCreatedAt), orders[0].id, JSON.stringify(orders.map((item) => item.id)), orderTitle, customerName, payer?.id ?? '', payer?.name ?? '', input.title?.trim() || `فاکتور ${orderTitle}`, amount, paid, normalizeNumber(input.discount ?? 0), invoiceStatus(amount, paid), input.dueDate ?? orders[0]?.dueDate ?? '', input.note?.trim() ?? '', invoiceCreatedAt]);
+    await this.run('INSERT INTO invoices (id, invoice_number, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, generateInvoiceNumber(invoiceCreatedAt), orders[0].id, JSON.stringify(orders.map((item) => item.id)), orderTitle, customerName, payer?.id ?? '', payer?.name ?? '', input.title?.trim() || `فاکتور ${orderTitle}`, amount, paid, normalizeNumber(input.discount ?? 0), invoiceStatus(amount, paid), input.dueDate ?? '', input.note?.trim() ?? '', invoiceCreatedAt]);
     await this.log('invoice', 'فاکتور ثبت شد', orderTitle);
   }
 
@@ -1292,7 +1292,7 @@ function normalizeInvoice(invoice: Partial<Invoice>, orders: Order[]): Invoice {
     paid,
     discount: normalizeNumber(invoice.discount ?? 0),
     status: invoice.status ?? invoiceStatus(amount, paid),
-    dueDate: invoice.dueDate ?? order?.dueDate ?? '',
+    dueDate: invoice.dueDate ?? '',
     note: invoice.note ?? '',
     createdAt: invoice.createdAt ?? now()
   };
