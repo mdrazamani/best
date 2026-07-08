@@ -431,7 +431,7 @@ textarea {
 }
 
 .picker-sheet {
-  position: absolute;
+  position: fixed;
   right: 50%;
   bottom: 0;
   width: min(100%, 520px);

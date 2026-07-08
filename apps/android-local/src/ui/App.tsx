@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Activity,
   BarChart3,
@@ -400,6 +401,28 @@ export function App() {
 function Picker({ label, value, options, onChange, placeholder = 'انتخاب کنید' }: { label: string; value: string; options: Array<{ value: string; label: string; helper?: string }>; onChange: (value: string) => void; placeholder?: string }) {
   const [open, setOpen] = useState(false);
   const selected = options.find((item) => item.value === value);
+  const layer = open ? createPortal(
+    <div className="picker-layer" role="dialog" aria-modal="true" aria-label={label}>
+      <button className="picker-scrim" type="button" aria-label="بستن" onClick={() => setOpen(false)} />
+      <div className="picker-sheet">
+        <div className="picker-head">
+          <strong>{label}</strong>
+          <button className="icon-button" type="button" aria-label="بستن" onClick={() => setOpen(false)}>
+            <X size={19} />
+          </button>
+        </div>
+        <div className="picker-options">
+          {options.map((item) => (
+            <button key={item.value} type="button" className={item.value === value ? 'active' : ''} onClick={() => { onChange(item.value); setOpen(false); }}>
+              <span>{item.label}{item.helper && <small>{item.helper}</small>}</span>
+              {item.value === value && <Check size={20} />}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  ) : null;
   return (
     <div className="picker-field">
       <span>{label}</span>
@@ -407,27 +430,7 @@ function Picker({ label, value, options, onChange, placeholder = 'انتخاب �
         <span>{selected?.label ?? placeholder}</span>
         <ChevronDown size={18} />
       </button>
-      {open && (
-        <div className="picker-layer" role="dialog" aria-modal="true" aria-label={label}>
-          <button className="picker-scrim" type="button" aria-label="بستن" onClick={() => setOpen(false)} />
-          <div className="picker-sheet">
-            <div className="picker-head">
-              <strong>{label}</strong>
-              <button className="icon-button" type="button" aria-label="بستن" onClick={() => setOpen(false)}>
-                <X size={19} />
-              </button>
-            </div>
-            <div className="picker-options">
-              {options.map((item) => (
-                <button key={item.value} type="button" className={item.value === value ? 'active' : ''} onClick={() => { onChange(item.value); setOpen(false); }}>
-                  <span>{item.label}{item.helper && <small>{item.helper}</small>}</span>
-                  {item.value === value && <Check size={20} />}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {layer}
     </div>
   );
 }
@@ -436,6 +439,31 @@ function PersianDatePicker({ label, value, onChange, placeholder = 'انتخاب
   const [open, setOpen] = useState(false);
   const base = value || todayInput();
   const options = Array.from({ length: 46 }, (_, index) => addDays(base, index - 7));
+  const layer = open ? createPortal(
+    <div className="picker-layer" role="dialog" aria-modal="true" aria-label={label}>
+      <button className="picker-scrim" type="button" aria-label="بستن" onClick={() => setOpen(false)} />
+      <div className="picker-sheet date-sheet">
+        <div className="picker-head">
+          <strong>{label}</strong>
+          <button className="icon-button" type="button" aria-label="بستن" onClick={() => setOpen(false)}>
+            <X size={19} />
+          </button>
+        </div>
+        <button className="secondary full-button" type="button" onClick={() => { onChange(''); setOpen(false); }}>
+          بدون تاریخ
+        </button>
+        <div className="date-options">
+          {options.map((iso) => (
+            <button key={iso} type="button" className={iso === value ? 'active' : ''} onClick={() => { onChange(iso); setOpen(false); }}>
+              <span>{dateText(iso)}</span>
+              <small dir="ltr">{iso}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  ) : null;
   return (
     <div className="picker-field">
       <span>{label}</span>
@@ -443,30 +471,7 @@ function PersianDatePicker({ label, value, onChange, placeholder = 'انتخاب
         <span>{value ? dateText(value) : placeholder}</span>
         <ChevronDown size={18} />
       </button>
-      {open && (
-        <div className="picker-layer" role="dialog" aria-modal="true" aria-label={label}>
-          <button className="picker-scrim" type="button" aria-label="بستن" onClick={() => setOpen(false)} />
-          <div className="picker-sheet date-sheet">
-            <div className="picker-head">
-              <strong>{label}</strong>
-              <button className="icon-button" type="button" aria-label="بستن" onClick={() => setOpen(false)}>
-                <X size={19} />
-              </button>
-            </div>
-            <button className="secondary full-button" type="button" onClick={() => { onChange(''); setOpen(false); }}>
-              بدون تاریخ
-            </button>
-            <div className="date-options">
-              {options.map((iso) => (
-                <button key={iso} type="button" className={iso === value ? 'active' : ''} onClick={() => { onChange(iso); setOpen(false); }}>
-                  <span>{dateText(iso)}</span>
-                  <small dir="ltr">{iso}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {layer}
     </div>
   );
 }
@@ -1215,7 +1220,7 @@ function Orders({
 
 function OrderCard({ order, onEdit, onOpen, run, compact = false }: { order: Order; onEdit: () => void; onOpen?: () => void; run: (action: () => Promise<void>, done?: string) => Promise<void>; compact?: boolean }) {
   return (
-    <article className={`card-row order-card ${onOpen ? 'clickable-row' : ''}`} role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined} onClick={onOpen} onKeyDown={(event) => { if (onOpen && (event.key === 'Enter' || event.key === ' ')) onOpen(); }}>
+    <article className="card-row order-card">
       <div>
         <h3>{order.title}</h3>
         <p>{order.customerName}{order.collaboratorName ? ` / ${order.collaboratorName}` : ''}</p>
@@ -1224,7 +1229,7 @@ function OrderCard({ order, onEdit, onOpen, run, compact = false }: { order: Ord
         <LineSummary items={order.lineItems} />
         {order.note && <p>{order.note}</p>}
       </div>
-      <div className="side-actions" onClick={(event) => event.stopPropagation()}>
+      <div className="side-actions">
         {compact ? <span className={`pill ${order.status}`}>{statusLabels[order.status]}</span> : <Picker label="وضعیت سفارش" value={order.status} options={Object.entries(statusLabels).map(([key, label]) => ({ value: key, label }))} onChange={(nextValue) => void run(() => backend.setOrderStatus(order.id, nextValue as OrderStatus), 'وضعیت تغییر کرد')} />}
         <button className="secondary mini label-download" type="button" onClick={() => downloadOrderLabelsPdf(order)}><Download size={16} />دانلود لیبل‌ها</button>
         {onOpen && <button className="secondary mini" type="button" onClick={onOpen}>جزئیات</button>}
@@ -1647,9 +1652,8 @@ function escapeHtml(value: string) {
 async function downloadOrderLabelsPdf(order: Order) {
   const labelItems = order.lineItems.length ? order.lineItems : [{ id: 'empty', width: 0, height: 0, quantity: 1, meshTitle: '', meshTypeId: '', unitPrice: 0, total: 0, description: '' }];
   if (window.BestAndroid?.saveLabelPdfFile) {
-    labelItems.forEach((item, index) => {
-      saveNativeDashboardLabelPdf(order, item, index, index === 0);
-    });
+    const labelsJson = JSON.stringify(labelItems.map((item) => buildDashboardLabelPayload(order, item)));
+    window.BestAndroid.saveLabelPdfFile(buildDashboardLabelsFileName(order, labelItems.length), labelsJson, true);
     return;
   }
 
@@ -1661,7 +1665,9 @@ async function downloadOrderLabelsPdf(order: Order) {
     return;
   }
 
-  saveDashboardLabelPdf(order, labelItems[0], 0, fontFaceCss, true);
+  labelItems.forEach((item, index) => {
+    saveDashboardLabelPdf(order, item, index, fontFaceCss, index === 0);
+  });
 }
 
 async function downloadOrderLineLabelPdf(order: Order, item: OrderLineItem, index: number) {
@@ -1759,9 +1765,9 @@ function renderDashboardLabelHtml(order: Order, item: OrderLineItem, fontFaceCss
   const dimensions = `${dimensionText(item.width)}\u00d7${dimensionText(item.height)}`;
   const customerName = order.customerName || '-';
   const collaboratorPhone = order.collaboratorPhone || '-';
-  const dimensionFontSize = pickLabelFontSize(dimensions, 18.4, 13.2);
-  const customerFontSize = pickLabelFontSize(customerName, 12.6, 8.8);
-  const phoneFontSize = pickLabelFontSize(collaboratorPhone, 10.8, 7.8);
+  const dimensionFontSize = pickLabelFontSize(dimensions, 15.2, 10.8);
+  const customerFontSize = pickLabelFontSize(customerName, 11.2, 7.8);
+  const phoneFontSize = pickLabelFontSize(collaboratorPhone, 9.4, 6.8);
 
   return `<!doctype html>
 <html lang="fa" dir="rtl">
@@ -1819,7 +1825,7 @@ body{
 }
 .line-1{
   font-weight:900;
-  letter-spacing:0.32mm;
+  letter-spacing:0.12mm;
 }
 .line-2{
   transform:translateY(2mm);
@@ -1828,7 +1834,7 @@ body{
 .line-3{
   transform:translateY(5mm);
   font-weight:600;
-  letter-spacing:0.32mm;
+  letter-spacing:0.12mm;
   direction:ltr;
   unicode-bidi:plaintext;
   font-variant-numeric:tabular-nums;
@@ -1852,6 +1858,12 @@ function buildDashboardLabelFileName(order: Order, item: OrderLineItem, index: n
   const collaboratorName = normalizeLabelFileNamePart(order.collaboratorName || order.collaboratorPhone || 'بدون-همکار');
   const dimensions = `${dimensionText(item.width)}x${dimensionText(item.height)}`;
   return `لیبل-${customerName}-${collaboratorName}-${dimensions}-${index + 1}.pdf`;
+}
+
+function buildDashboardLabelsFileName(order: Order, count: number) {
+  const customerName = normalizeLabelFileNamePart(order.customerName || 'بدون-مشتری');
+  const collaboratorName = normalizeLabelFileNamePart(order.collaboratorName || order.collaboratorPhone || 'بدون-همکار');
+  return `لیبل‌ها-${customerName}-${collaboratorName}-${count}-آیتم.pdf`;
 }
 
 function normalizeLabelFileNamePart(value: string) {

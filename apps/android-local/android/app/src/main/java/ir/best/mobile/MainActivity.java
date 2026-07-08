@@ -292,11 +292,11 @@ public class MainActivity extends BridgeActivity {
         RectF border = new RectF(labelInset, labelInset, width - labelInset, height - labelInset);
         canvas.drawRoundRect(border, labelRadius, labelRadius, borderPaint);
 
-        TextPaint dimensionPaint = createLabelTextPaint(pickLabelTextSize(dimensions, 18.4f, 13.2f), true);
-        TextPaint customerPaint = createLabelTextPaint(pickLabelTextSize(customerName, 12.6f, 8.8f), true);
-        TextPaint contactPaint = createLabelTextPaint(pickLabelTextSize(contact, 10.8f, 7.8f), true);
-        dimensionPaint.setLetterSpacing(0.05f);
-        contactPaint.setLetterSpacing(0.084f);
+        TextPaint dimensionPaint = createLabelTextPaint(pickLabelTextSize(dimensions, 15.2f, 10.8f), true);
+        TextPaint customerPaint = createLabelTextPaint(pickLabelTextSize(customerName, 11.2f, 7.8f), true);
+        TextPaint contactPaint = createLabelTextPaint(pickLabelTextSize(contact, 9.4f, 6.8f), true);
+        dimensionPaint.setLetterSpacing(0.02f);
+        contactPaint.setLetterSpacing(0.03f);
 
         float centerY = height / 2f;
         drawRotatedDashboardLabelText(canvas, dimensions, dimensionPaint, mmToPoints(4.0f), centerY);
