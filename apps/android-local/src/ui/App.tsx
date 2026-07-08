@@ -587,7 +587,10 @@ function Customers({
   const [formOpen, setFormOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentInvoiceId, setPaymentInvoiceId] = useState('');
+  const [paymentCollaboratorId, setPaymentCollaboratorId] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentPaidAt, setPaymentPaidAt] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
   const filtered = data.customers.filter((item) => {
     const matchesText = (item.name + ' ' + item.phone + ' ' + item.address).toLowerCase().includes(query.trim().toLowerCase());
     const hasReferrer = Boolean(item.referredByCollaboratorId);
@@ -611,10 +614,24 @@ function Customers({
     const freeInvoiceOrders = orders.filter((order) => order.status !== 'cancelled' && !invoicedOrderIds.has(order.id));
     const unpaidInvoices = invoices.filter((invoice) => Math.max(invoice.amount - invoice.paid, 0) > 0);
     const selectedPaymentInvoice = unpaidInvoices.find((invoice) => invoice.id === paymentInvoiceId);
+    const customerCollaboratorBalance = (collaboratorId: string) => {
+      const collaboratorOrders = data.orders.filter((order) => order.collaboratorId === collaboratorId);
+      const collaboratorOrderIds = new Set(collaboratorOrders.map((order) => order.id));
+      const collaboratorInvoices = data.invoices.filter((invoice) => invoice.payerId === collaboratorId || (invoice.orderIds?.length ? invoice.orderIds : [invoice.orderId]).some((orderId) => collaboratorOrderIds.has(orderId)));
+      const invoiceRemaining = collaboratorInvoices.reduce((sum, invoice) => sum + Math.max(invoice.amount - invoice.paid, 0), 0);
+      const directPayments = data.collaboratorPayments.filter((payment) => payment.collaboratorId === collaboratorId).reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+      return Math.max(invoiceRemaining - directPayments, 0);
+    };
+    const paymentInvoiceOptions = [
+      { value: '', label: 'بدون فاکتور - پرداخت کلی', helper: 'از مانده کلی همکار کم می‌شود' },
+      ...unpaidInvoices.map((invoice) => ({ value: invoice.id, label: invoice.title || invoice.orderTitle, helper: `مانده ${money(Math.max(invoice.amount - invoice.paid, 0))}` }))
+    ];
     const openPayment = () => {
-      const invoice = unpaidInvoices[0];
-      setPaymentInvoiceId(invoice?.id ?? '');
-      setPaymentAmount(invoice ? String(Math.max(invoice.amount - invoice.paid, 0)) : '');
+      setPaymentInvoiceId('');
+      setPaymentCollaboratorId(collaborators[0]?.id ?? selected.referredByCollaboratorId ?? '');
+      setPaymentAmount(remaining > 0 ? String(remaining) : '');
+      setPaymentPaidAt(todayInput());
+      setPaymentNote('');
       setPaymentOpen(true);
     };
     return (
@@ -626,16 +643,19 @@ function Customers({
           <div className="quick-action-grid">
             <button className="secondary" type="button" onClick={() => onCreateOrder({ customerId: selected.id, collaboratorId: selected.referredByCollaboratorId || collaborators[0]?.id })}><PackagePlus size={17} />ساخت سفارش</button>
             <button className="secondary" type="button" disabled={freeInvoiceOrders.length === 0} onClick={() => onCreateInvoice({ orderIds: freeInvoiceOrders.map((order) => order.id), payerId: freeInvoiceOrders[0]?.collaboratorId })}><ReceiptText size={17} />ساخت فاکتور</button>
-            <button className="secondary" type="button" disabled={unpaidInvoices.length === 0} onClick={openPayment}><CheckCircle2 size={17} />ثبت پرداخت فاکتور</button>
+            <button className="secondary" type="button" disabled={unpaidInvoices.length === 0 && collaborators.length === 0} onClick={openPayment}><CheckCircle2 size={17} />ثبت پرداخت</button>
             <button className="secondary" type="button" onClick={() => openEdit(selected)}><UserRoundPlus size={17} />ویرایش مشتری</button>
           </div>
         </section>
-        <Modal title="ثبت پرداخت فاکتور مشتری" open={paymentOpen} onClose={() => setPaymentOpen(false)}>
-          <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!paymentInvoiceId) throw new Error('فاکتور را انتخاب کنید'); await backend.addInvoicePayment(paymentInvoiceId, Number(paymentAmount)); setPaymentOpen(false); setPaymentInvoiceId(''); setPaymentAmount(''); }, 'پرداخت فاکتور ثبت شد'); }}>
+        <Modal title="ثبت پرداخت مشتری" open={paymentOpen} onClose={() => setPaymentOpen(false)}>
+          <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (paymentInvoiceId) { await backend.addInvoicePayment(paymentInvoiceId, Number(paymentAmount)); } else { const collaboratorId = paymentCollaboratorId || collaborators[0]?.id || selected.referredByCollaboratorId || ''; if (!collaboratorId) throw new Error('همکار را انتخاب کنید'); const collaborator = data.collaborators.find((item) => item.id === collaboratorId); const payment = await backend.addCollaboratorPayment({ collaboratorId, amount: Number(paymentAmount), paidAt: paymentPaidAt, note: paymentNote }); if (collaborator) downloadCollaboratorPaymentPdf(payment, collaborator, customerCollaboratorBalance(collaboratorId)); } setPaymentOpen(false); setPaymentInvoiceId(''); setPaymentCollaboratorId(''); setPaymentAmount(''); setPaymentPaidAt(''); setPaymentNote(''); }, paymentInvoiceId ? 'پرداخت فاکتور ثبت شد' : 'پرداخت کلی ثبت شد'); }}>
             <FlowSection title="پرداخت">
-              <Picker label="فاکتور" value={paymentInvoiceId} onChange={(value) => { const invoice = unpaidInvoices.find((item) => item.id === value); setPaymentInvoiceId(value); setPaymentAmount(invoice ? String(Math.max(invoice.amount - invoice.paid, 0)) : ''); }} placeholder="فاکتور را انتخاب کنید" options={unpaidInvoices.map((invoice) => ({ value: invoice.id, label: invoice.title || invoice.orderTitle, helper: `مانده ${money(Math.max(invoice.amount - invoice.paid, 0))}` }))} />
+              <Picker label="فاکتور" value={paymentInvoiceId} onChange={(value) => { const invoice = unpaidInvoices.find((item) => item.id === value); setPaymentInvoiceId(value); if (invoice?.payerId) setPaymentCollaboratorId(invoice.payerId); setPaymentAmount(invoice ? String(Math.max(invoice.amount - invoice.paid, 0)) : (remaining > 0 ? String(remaining) : '')); }} placeholder="بدون فاکتور / پرداخت کلی" options={paymentInvoiceOptions} />
               {selectedPaymentInvoice && <p className="muted">مبلغ فاکتور: {money(selectedPaymentInvoice.amount)} / پرداخت شده: {money(selectedPaymentInvoice.paid)}</p>}
+              {!selectedPaymentInvoice && <Picker label="همکار" value={paymentCollaboratorId} onChange={setPaymentCollaboratorId} placeholder="همکار را انتخاب کنید" options={collaborators.map((collaborator) => ({ value: collaborator.id, label: collaborator.name, helper: collaborator.role }))} />}
               <label>مبلغ پرداخت<input value={paymentAmount} inputMode="numeric" onChange={(event) => setPaymentAmount(event.target.value)} /></label>
+              {!selectedPaymentInvoice && <PersianDatePicker label="تاریخ پرداخت" value={paymentPaidAt} onChange={setPaymentPaidAt} />}
+              {!selectedPaymentInvoice && <label>توضیحات<textarea value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} /></label>}
             </FlowSection>
             <div className="form-actions"><button className="primary" type="submit"><CheckCircle2 size={18} />ثبت پرداخت</button><button className="secondary" type="button" onClick={() => setPaymentOpen(false)}>انصراف</button></div>
           </form>
@@ -731,6 +751,8 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
   const [actionInvoiceNote, setActionInvoiceNote] = useState('');
   const [actionPaymentInvoiceId, setActionPaymentInvoiceId] = useState('');
   const [actionPaymentAmount, setActionPaymentAmount] = useState('');
+  const [actionPaymentPaidAt, setActionPaymentPaidAt] = useState('');
+  const [actionPaymentNote, setActionPaymentNote] = useState('');
   const [directPaymentAmount, setDirectPaymentAmount] = useState('');
   const [directPaymentPaidAt, setDirectPaymentPaidAt] = useState('');
   const [directPaymentNote, setDirectPaymentNote] = useState('');
@@ -774,7 +796,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
     setActionOrderItems([defaultActionLine()]);
   };
   const resetActionInvoice = () => { setActionInvoiceOrderIds([]); setActionInvoiceTitle(''); setActionInvoiceAmount('0'); setActionInvoicePaid('0'); setActionInvoiceDiscount('0'); setActionInvoiceDueDate(''); setActionInvoiceNote(''); };
-  const resetActionPayment = () => { setActionPaymentInvoiceId(''); setActionPaymentAmount(''); };
+  const resetActionPayment = () => { setActionPaymentInvoiceId(''); setActionPaymentAmount(''); setActionPaymentPaidAt(''); setActionPaymentNote(''); };
   const resetDirectPayment = () => { setDirectPaymentAmount(''); setDirectPaymentPaidAt(''); setDirectPaymentNote(''); };
   const actionLinePricing = (item: LineDraft) => {
     const width = toNumber(item.width);
@@ -830,6 +852,10 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
     const invoiceOrderOptions = stats.orders.filter((order) => order.status !== 'cancelled' && (!invoicedOrderIds.has(order.id) || actionInvoiceOrderIds.includes(order.id)));
     const unpaidInvoices = stats.invoices.filter((invoice) => Math.max(invoice.amount - invoice.paid, 0) > 0);
     const selectedPaymentInvoice = stats.invoices.find((invoice) => invoice.id === actionPaymentInvoiceId);
+    const actionPaymentInvoiceOptions = [
+      { value: '', label: 'بدون فاکتور - پرداخت کلی', helper: `مانده کلی ${money(stats.remaining)}` },
+      ...unpaidInvoices.map((invoice) => ({ value: invoice.id, label: invoice.title || invoice.orderTitle, helper: `مانده ${money(Math.max(invoice.amount - invoice.paid, 0))}` }))
+    ];
     const paymentHistory = [
       ...stats.directPayments.map((payment) => ({ id: payment.id, source: 'direct' as const, title: 'پرداخت کلی همکار', amount: payment.amount, paidAt: payment.paidAt, note: payment.note, payment })),
       ...stats.invoices.flatMap((invoice) => invoice.paid > 0 ? [{ id: `invoice-${invoice.id}`, source: 'invoice' as const, title: invoice.title || invoice.orderTitle, amount: invoice.paid, paidAt: invoice.createdAt.slice(0, 10), note: 'پرداخت فاکتور', invoice }] : [])
@@ -851,11 +877,8 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
     };
     const openActionPayment = () => {
       resetActionPayment();
-      const invoice = unpaidInvoices[0];
-      if (invoice) {
-        setActionPaymentInvoiceId(invoice.id);
-        setActionPaymentAmount(String(Math.max(invoice.amount - invoice.paid, 0)));
-      }
+      setActionPaymentAmount(stats.remaining > 0 ? String(stats.remaining) : '');
+      setActionPaymentPaidAt(todayInput());
       setDetailAction('payment');
     };
     const openDirectPayment = () => {
@@ -874,7 +897,7 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
             <button className="secondary" type="button" onClick={() => { resetActionCustomer(); setDetailAction('customer'); }}><UserRoundPlus size={17} />ساخت مشتری</button>
             <button className="secondary" type="button" onClick={openActionOrder}><PackagePlus size={17} />ساخت سفارش</button>
             <button className="secondary" type="button" onClick={openActionInvoice} disabled={invoiceOrderOptions.length === 0}><ReceiptText size={17} />ساخت فاکتور</button>
-            <button className="secondary" type="button" onClick={openActionPayment} disabled={unpaidInvoices.length === 0}><CheckCircle2 size={17} />ثبت پرداخت فاکتور</button>
+            <button className="secondary" type="button" onClick={openActionPayment} disabled={stats.remaining <= 0 && unpaidInvoices.length === 0}><CheckCircle2 size={17} />ثبت پرداخت</button>
             <button className="secondary" type="button" onClick={openDirectPayment} disabled={stats.remaining <= 0}><CheckCircle2 size={17} />پرداخت کلی همکار</button>
             <button className="secondary" type="button" onClick={() => document.getElementById('collaborator-payments')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><ReceiptText size={17} />مشاهده پرداخت‌ها</button>
           </div>
@@ -934,12 +957,15 @@ function Collaborators({ data, run }: { data: AppSnapshot; run: (action: () => P
             <div className="form-actions"><button className="primary" type="submit"><ReceiptText size={18} />ثبت فاکتور</button><button className="secondary" type="button" onClick={closeDetailAction}>انصراف</button></div>
           </form>
         </Modal>
-        <Modal title="ثبت پرداخت فاکتور همکار" open={detailAction === 'payment'} onClose={closeDetailAction}>
-          <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (!actionPaymentInvoiceId) throw new Error('فاکتور را انتخاب کنید'); await backend.addInvoicePayment(actionPaymentInvoiceId, Number(actionPaymentAmount)); resetActionPayment(); closeDetailAction(); }, 'پرداخت فاکتور ثبت شد'); }}>
+        <Modal title="ثبت پرداخت همکار" open={detailAction === 'payment'} onClose={closeDetailAction}>
+          <form className="compact-form" onSubmit={(event) => { event.preventDefault(); void run(async () => { if (actionPaymentInvoiceId) { await backend.addInvoicePayment(actionPaymentInvoiceId, Number(actionPaymentAmount)); } else { const payment = await backend.addCollaboratorPayment({ collaboratorId: selected.id, amount: Number(actionPaymentAmount), paidAt: actionPaymentPaidAt, note: actionPaymentNote }); downloadCollaboratorPaymentPdf(payment, selected, stats.remaining); } resetActionPayment(); closeDetailAction(); }, actionPaymentInvoiceId ? 'پرداخت فاکتور ثبت شد' : 'پرداخت کلی همکار ثبت شد'); }}>
             <FlowSection title="پرداخت">
-              <Picker label="فاکتور" value={actionPaymentInvoiceId} onChange={(value) => { const invoice = stats.invoices.find((item) => item.id === value); setActionPaymentInvoiceId(value); setActionPaymentAmount(invoice ? String(Math.max(invoice.amount - invoice.paid, 0)) : ''); }} placeholder="فاکتور را انتخاب کنید" options={unpaidInvoices.map((invoice) => ({ value: invoice.id, label: invoice.title || invoice.orderTitle, helper: `مانده ${money(Math.max(invoice.amount - invoice.paid, 0))}` }))} />
+              <Picker label="فاکتور" value={actionPaymentInvoiceId} onChange={(value) => { const invoice = stats.invoices.find((item) => item.id === value); setActionPaymentInvoiceId(value); setActionPaymentAmount(invoice ? String(Math.max(invoice.amount - invoice.paid, 0)) : (stats.remaining > 0 ? String(stats.remaining) : '')); }} placeholder="بدون فاکتور / پرداخت کلی" options={actionPaymentInvoiceOptions} />
               {selectedPaymentInvoice && <p className="muted">مبلغ فاکتور: {money(selectedPaymentInvoice.amount)} / پرداخت شده: {money(selectedPaymentInvoice.paid)}</p>}
+              {!selectedPaymentInvoice && <p className="muted">اگر فاکتور انتخاب نشود، پرداخت از مانده کلی همکار کم می‌شود.</p>}
               <label>مبلغ پرداخت<input value={actionPaymentAmount} inputMode="numeric" onChange={(event) => setActionPaymentAmount(event.target.value)} /></label>
+              {!selectedPaymentInvoice && <PersianDatePicker label="تاریخ پرداخت" value={actionPaymentPaidAt} onChange={setActionPaymentPaidAt} />}
+              {!selectedPaymentInvoice && <label>توضیحات<textarea value={actionPaymentNote} onChange={(event) => setActionPaymentNote(event.target.value)} /></label>}
             </FlowSection>
             <div className="form-actions"><button className="primary" type="submit"><CheckCircle2 size={18} />ثبت پرداخت</button><button className="secondary" type="button" onClick={closeDetailAction}>انصراف</button></div>
           </form>
