@@ -162,6 +162,7 @@ const normalizeTabs = (values: string[]): Tab[] => {
 
 export function App() {
   const [ready, setReady] = useState(false);
+  const [initError, setInitError] = useState('');
   const [authed, setAuthed] = useState(false);
   const [tab, setTab] = useState<Tab>('dashboard');
   const [data, setData] = useState<AppSnapshot>(emptySnapshot);
@@ -188,15 +189,27 @@ export function App() {
   }
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      await backend.initialize();
-      setAuthed(backend.isLoggedIn());
-      setRole(backend.getSessionRole());
-      setAssistantTabs(normalizeTabs(backend.getAssistantTabs()));
-      setBackupInterval(backend.getBackupInterval());
-      await reload();
-      setReady(true);
+      try {
+        await backend.initialize();
+        if (cancelled) return;
+        setAuthed(backend.isLoggedIn());
+        setRole(backend.getSessionRole());
+        setAssistantTabs(normalizeTabs(backend.getAssistantTabs()));
+        setBackupInterval(backend.getBackupInterval());
+        await reload();
+        if (cancelled) return;
+        setReady(true);
+      } catch (error) {
+        console.error('BEST Mobile startup failed', error);
+        if (cancelled) return;
+        setInitError(error instanceof Error ? error.message : 'Startup failed');
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const stats = useMemo<DashboardStats>(
@@ -280,7 +293,16 @@ export function App() {
     setTimeout(() => setMessage(''), 2200);
   }
 
-  if (!ready) return <Splash title="BEST Mobile" subtitle="آماده‌سازی دیتابیس لوکال" />;
+  if (!ready) {
+    return (
+      <Splash
+        title="BEST Mobile"
+        subtitle={initError ? '\u062e\u0637\u0627 \u062f\u0631 \u0622\u0645\u0627\u062f\u0647\u200c\u0633\u0627\u0632\u06cc \u062f\u06cc\u062a\u0627\u0628\u06cc\u0633' : 'آماده‌سازی دیتابیس لوکال'}
+        details={initError}
+        onRetry={initError ? () => window.location.reload() : undefined}
+      />
+    );
+  }
   if (!authed) return <Login onDone={() => { setRole(backend.getSessionRole()); setAuthed(true); }} message={message} setMessage={setMessage} />;
 
   return (
@@ -506,8 +528,16 @@ function PageActions({ title, actionLabel, onAction, children }: { title: string
   );
 }
 
-function Splash({ title, subtitle }: { title: string; subtitle: string }) {
-  return <div className="splash"><div className="brand-mark">B</div><h1>{title}</h1><p>{subtitle}</p></div>;
+function Splash({ title, subtitle, details, onRetry }: { title: string; subtitle: string; details?: string; onRetry?: () => void }) {
+  return (
+    <div className="splash">
+      <div className="brand-mark">B</div>
+      <h1>{title}</h1>
+      <p>{subtitle}</p>
+      {details && <p className="form-error">{details}</p>}
+      {onRetry && <button className="primary" type="button" onClick={onRetry}>{'\u062a\u0644\u0627\u0634 \u062f\u0648\u0628\u0627\u0631\u0647'}</button>}
+    </div>
+  );
 }
 
 function Login({ onDone, message, setMessage }: { onDone: () => void; message: string; setMessage: (value: string) => void }) {

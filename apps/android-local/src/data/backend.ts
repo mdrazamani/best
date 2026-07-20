@@ -343,12 +343,17 @@ abstract class BaseBackend {
   }
 }
 
-class BrowserBackend extends BaseBackend {
+export class BrowserBackend extends BaseBackend {
   private data: PersistedData = emptyData();
 
   async initialize() {
     const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? globalThis.localStorage?.getItem(LEGACY_STORAGE_KEY);
-    this.data = this.normalize(stored ? (JSON.parse(stored) as Partial<PersistedData>) : emptyData());
+    try {
+      this.data = this.normalize(stored ? (JSON.parse(stored) as Partial<PersistedData>) : emptyData());
+    } catch (error) {
+      console.warn('Invalid local backend payload ignored', error);
+      this.data = this.normalize(emptyData());
+    }
     await this.persist();
   }
 
@@ -375,7 +380,7 @@ class BrowserBackend extends BaseBackend {
   }
 
   async addCustomer(input: NewCustomerInput) {
-    const customer = { id: id(), name: input.name.trim(), phone: input.phone?.trim() ?? '', address: input.address?.trim() ?? '', note: input.note?.trim() ?? '', referredByCollaboratorId: input.referredByCollaboratorId ?? '', createdAt: now() };
+    const customer = { id: id(), name: input.name.trim(), phone: input.phone?.trim() ?? '', address: input.address?.trim() ?? '', note: input.note?.trim() ?? '', referredByCollaboratorId: this.safeCollaboratorId(input.referredByCollaboratorId), createdAt: now() };
     this.data.customers.unshift(customer);
     this.log('customer', 'مشتری ثبت شد', input.name);
     await this.persist();
@@ -383,7 +388,8 @@ class BrowserBackend extends BaseBackend {
   }
 
   async updateCustomer(input: { id: string; name?: string; phone?: string; address?: string; note?: string; referredByCollaboratorId?: string }) {
-    this.data.customers = this.data.customers.map((item) => (item.id === input.id ? { ...item, ...input } : item));
+    const referredByCollaboratorId = input.referredByCollaboratorId === undefined ? undefined : this.safeCollaboratorId(input.referredByCollaboratorId);
+    this.data.customers = this.data.customers.map((item) => (item.id === input.id ? { ...item, ...input, ...(referredByCollaboratorId === undefined ? {} : { referredByCollaboratorId }) } : item));
     this.log('customer', 'مشتری ویرایش شد', input.name ?? input.id);
     await this.persist();
   }
@@ -413,6 +419,7 @@ class BrowserBackend extends BaseBackend {
   async deleteCollaborator(collaboratorId: string) {
     this.data.collaborators = this.data.collaborators.filter((item) => item.id !== collaboratorId);
     this.data.orders = this.data.orders.map((order) => order.collaboratorId === collaboratorId ? { ...order, collaboratorId: '', collaboratorName: '', collaboratorPhone: '' } : order);
+    this.data.customers = this.data.customers.map((customer) => customer.referredByCollaboratorId === collaboratorId ? { ...customer, referredByCollaboratorId: '' } : customer);
     this.log('collaborator', 'همکار حذف شد', collaboratorId);
     await this.persist();
   }
@@ -529,6 +536,8 @@ class BrowserBackend extends BaseBackend {
       const orderIds = input.orderIds?.length ? input.orderIds : input.orderId ? [input.orderId] : invoice.orderIds;
       const orders = orderIds?.length ? this.data.orders.filter((item) => orderIds.includes(item.id)) : [];
       const payer = input.payerId ? this.data.collaborators.find((item) => item.id === input.payerId) : undefined;
+      const payerId = input.payerId === undefined ? invoice.payerId : payer?.id ?? '';
+      const payerName = input.payerId === undefined ? invoice.payerName : payer?.name ?? '';
       const amount = normalizeNumber(input.amount ?? invoice.amount);
       const paid = Math.min(amount, normalizeNumber(input.paid ?? invoice.paid));
       return {
@@ -537,8 +546,8 @@ class BrowserBackend extends BaseBackend {
         orderIds: orders.length ? orders.map((item) => item.id) : invoice.orderIds,
         orderTitle: orders.length ? orders.map((item) => item.title).join('، ') : invoice.orderTitle,
         customerName: orders.length ? Array.from(new Set(orders.map((item) => item.customerName).filter(Boolean))).join('، ') : invoice.customerName,
-        payerId: payer?.id ?? input.payerId ?? invoice.payerId,
-        payerName: payer?.name ?? invoice.payerName,
+        payerId,
+        payerName,
         title: input.title?.trim() ?? invoice.title,
         amount,
         paid,
@@ -668,8 +677,9 @@ class BrowserBackend extends BaseBackend {
   }
 
   async importSnapshot(snapshot: AppSnapshot) {
+    const safeSnapshot = prepareSnapshotForImport(snapshot);
     const currentUsers = this.data.users;
-    this.data = this.normalize({ ...emptyData(), ...snapshot, users: currentUsers });
+    this.data = this.normalize({ ...emptyData(), ...safeSnapshot, users: currentUsers });
     this.log('backup', 'بکاپ بازیابی شد', 'داده‌ها از فایل JSON جایگزین شدند');
     await this.persist();
   }
@@ -720,12 +730,109 @@ class BrowserBackend extends BaseBackend {
       activities: input.activities ?? base.activities
     };
   }
+
+  private safeCollaboratorId(collaboratorId?: string) {
+    return collaboratorId && this.data.collaborators.some((item) => item.id === collaboratorId) ? collaboratorId : '';
+  }
 }
 
-class SqliteBackend extends BaseBackend {
+export function prepareSnapshotForImport(snapshot: AppSnapshot): AppSnapshot {
+  const customers = requireSnapshotArray<Customer>(snapshot, 'customers');
+  const collaborators = requireSnapshotArray<Collaborator>(snapshot, 'collaborators');
+  const orders = requireSnapshotArray<Order>(snapshot, 'orders');
+  const invoices = requireSnapshotArray<Invoice>(snapshot, 'invoices');
+  const collaboratorPayments = requireSnapshotArray<CollaboratorPayment>(snapshot, 'collaboratorPayments', true);
+  const inventory = requireSnapshotArray<InventoryItem>(snapshot, 'inventory');
+  const meshTypes = requireSnapshotArray<MeshType>(snapshot, 'meshTypes');
+  const users = requireSnapshotArray<LocalUser>(snapshot, 'users', true);
+  const notifications = requireSnapshotArray<NotificationItem>(snapshot, 'notifications', true);
+  const activities = requireSnapshotArray<Activity>(snapshot, 'activities', true);
+
+  assertUniqueIds(customers, 'customers');
+  assertUniqueIds(collaborators, 'collaborators');
+  assertUniqueIds(orders, 'orders');
+  assertUniqueIds(invoices, 'invoices');
+  assertUniqueIds(collaboratorPayments, 'collaboratorPayments');
+  assertUniqueIds(inventory, 'inventory');
+  assertUniqueIds(meshTypes, 'meshTypes');
+  assertUniqueIds(users, 'users');
+  assertUniqueIds(notifications, 'notifications');
+  assertUniqueIds(activities, 'activities');
+
+  const collaboratorIds = new Set(collaborators.map((item) => item.id));
+  const safeCustomers = customers.map((customer) => ({
+    ...customer,
+    referredByCollaboratorId: customer.referredByCollaboratorId && collaboratorIds.has(customer.referredByCollaboratorId)
+      ? customer.referredByCollaboratorId
+      : ''
+  }));
+
+  const customerIds = new Set(safeCustomers.map((item) => item.id));
+  const safeOrders = orders.map((order) => {
+    const normalized = normalizeOrder(order, safeCustomers, collaborators);
+    if (!normalized.customerId || !customerIds.has(normalized.customerId)) throw new Error('بکاپ معتبر نیست: سفارش بدون مشتری معتبر پیدا شد');
+    return {
+      ...normalized,
+      collaboratorId: normalized.collaboratorId && collaboratorIds.has(normalized.collaboratorId) ? normalized.collaboratorId : '',
+      collaboratorName: normalized.collaboratorId && collaboratorIds.has(normalized.collaboratorId) ? normalized.collaboratorName : '',
+      collaboratorPhone: normalized.collaboratorId && collaboratorIds.has(normalized.collaboratorId) ? normalized.collaboratorPhone : ''
+    };
+  });
+
+  const orderIds = new Set(safeOrders.map((item) => item.id));
+  const safeInvoices = invoices.map((invoice) => {
+    const normalized = normalizeInvoice(invoice, safeOrders);
+    const invoiceOrderIds = normalized.orderIds.length ? normalized.orderIds : normalized.orderId ? [normalized.orderId] : [];
+    if (!invoiceOrderIds.length || invoiceOrderIds.some((orderId) => !orderIds.has(orderId))) throw new Error('بکاپ معتبر نیست: فاکتور بدون سفارش معتبر پیدا شد');
+    return {
+      ...normalized,
+      orderId: invoiceOrderIds[0],
+      orderIds: invoiceOrderIds,
+      payerId: normalized.payerId && collaboratorIds.has(normalized.payerId) ? normalized.payerId : '',
+      payerName: normalized.payerId && collaboratorIds.has(normalized.payerId) ? normalized.payerName : ''
+    };
+  });
+
+  const safeCollaboratorPayments = collaboratorPayments.map((payment) => {
+    if (!payment.collaboratorId || !collaboratorIds.has(payment.collaboratorId)) throw new Error('بکاپ معتبر نیست: پرداخت بدون همکار معتبر پیدا شد');
+    return payment;
+  });
+
+  return {
+    customers: safeCustomers,
+    collaborators,
+    orders: safeOrders,
+    invoices: safeInvoices,
+    collaboratorPayments: safeCollaboratorPayments,
+    inventory,
+    meshTypes,
+    users,
+    notifications,
+    activities
+  };
+}
+
+function requireSnapshotArray<T>(snapshot: AppSnapshot, key: keyof AppSnapshot, optional = false) {
+  const value = (snapshot as Record<string, unknown>)[key];
+  if (value === undefined && optional) return [];
+  if (!Array.isArray(value)) throw new Error(`بکاپ معتبر نیست: ${String(key)} باید آرایه باشد`);
+  return value as T[];
+}
+
+function assertUniqueIds(items: Array<{ id?: unknown }>, label: string) {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (typeof item.id !== 'string' || !item.id.trim()) throw new Error(`بکاپ معتبر نیست: ${label} شناسه خالی دارد`);
+    if (seen.has(item.id)) throw new Error(`بکاپ معتبر نیست: ${label} شناسه تکراری دارد`);
+    seen.add(item.id);
+  }
+}
+
+export class SqliteBackend extends BaseBackend {
   private sqlite = new SQLiteConnection(CapacitorSQLite);
   private db: SQLiteDBConnection | null = null;
   private mirrorSyncQueued = false;
+  private transactionDepth = 0;
 
   async initialize() {
     const existing = await this.sqlite.isConnection(DB_NAME, false);
@@ -737,7 +844,7 @@ class SqliteBackend extends BaseBackend {
     await this.db.execute(schemaSql);
     await this.migrate();
     await this.seed();
-    await this.syncPostgresMirror();
+    this.queuePostgresMirrorSync();
   }
 
   async login(username: string, pin: string) {
@@ -770,14 +877,16 @@ class SqliteBackend extends BaseBackend {
   }
 
   async addCustomer(input: NewCustomerInput) {
-    const customer = { id: id(), name: input.name.trim(), phone: input.phone?.trim() ?? '', address: input.address?.trim() ?? '', note: input.note?.trim() ?? '', referredByCollaboratorId: input.referredByCollaboratorId ?? '', createdAt: now() };
+    const referredByCollaboratorId = await this.safeCollaboratorId(input.referredByCollaboratorId);
+    const customer = { id: id(), name: input.name.trim(), phone: input.phone?.trim() ?? '', address: input.address?.trim() ?? '', note: input.note?.trim() ?? '', referredByCollaboratorId, createdAt: now() };
     await this.run('INSERT INTO customers (id, name, phone, address, note, referred_by_collaborator_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [customer.id, customer.name, customer.phone, customer.address, customer.note, customer.referredByCollaboratorId, customer.createdAt]);
     await this.log('customer', 'مشتری ثبت شد', input.name);
     return customer;
   }
 
   async updateCustomer(input: { id: string; name?: string; phone?: string; address?: string; note?: string; referredByCollaboratorId?: string }) {
-    await this.run('UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone), address = COALESCE(?, address), note = COALESCE(?, note), referred_by_collaborator_id = COALESCE(?, referred_by_collaborator_id) WHERE id = ?', [input.name ?? null, input.phone ?? null, input.address ?? null, input.note ?? null, input.referredByCollaboratorId ?? null, input.id]);
+    const referredByCollaboratorId = input.referredByCollaboratorId === undefined ? null : await this.safeCollaboratorId(input.referredByCollaboratorId);
+    await this.run('UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone), address = COALESCE(?, address), note = COALESCE(?, note), referred_by_collaborator_id = COALESCE(?, referred_by_collaborator_id) WHERE id = ?', [input.name ?? null, input.phone ?? null, input.address ?? null, input.note ?? null, referredByCollaboratorId, input.id]);
     if (input.name) await this.run('UPDATE orders SET customer_name = ? WHERE customer_id = ?', [input.name, input.id]);
     await this.log('customer', 'مشتری ویرایش شد', input.name ?? input.id);
   }
@@ -804,6 +913,7 @@ class SqliteBackend extends BaseBackend {
 
   async deleteCollaborator(collaboratorId: string) {
     await this.run("UPDATE orders SET collaborator_id = '', collaborator_name = '' WHERE collaborator_id = ?", [collaboratorId]);
+    await this.run("UPDATE customers SET referred_by_collaborator_id = '' WHERE referred_by_collaborator_id = ?", [collaboratorId]);
     await this.run('DELETE FROM collaborators WHERE id = ?', [collaboratorId]);
     await this.log('collaborator', 'همکار حذف شد', collaboratorId);
   }
@@ -884,9 +994,11 @@ class SqliteBackend extends BaseBackend {
     const orderIds = input.orderIds?.length ? input.orderIds : input.orderId ? [input.orderId] : [];
     const orders = orderIds.length ? await this.all<Order>(`SELECT id, title, customer_name as customerName FROM orders WHERE id IN (${orderIds.map(() => '?').join(',')})`, orderIds) : [];
     const [payer] = input.payerId ? await this.all<Collaborator>('SELECT id, name FROM collaborators WHERE id = ?', [input.payerId]) : [];
+    const payerId = input.payerId === undefined ? null : payer?.id ?? '';
+    const payerName = input.payerId === undefined ? null : payer?.name ?? '';
     const amount = normalizeNumber(input.amount ?? invoice.amount);
     const paid = Math.min(amount, normalizeNumber(input.paid ?? invoice.paid));
-    await this.run('UPDATE invoices SET order_id = COALESCE(?, order_id), order_ids = COALESCE(?, order_ids), order_title = COALESCE(?, order_title), customer_name = COALESCE(?, customer_name), payer_id = COALESCE(?, payer_id), payer_name = COALESCE(?, payer_name), title = COALESCE(?, title), amount = ?, paid = ?, discount = COALESCE(?, discount), status = ?, due_date = COALESCE(?, due_date), note = COALESCE(?, note) WHERE id = ?', [orders[0]?.id ?? null, orders.length ? JSON.stringify(orders.map((item) => item.id)) : null, orders.length ? orders.map((item) => item.title).join('، ') : null, orders.length ? Array.from(new Set(orders.map((item) => item.customerName).filter(Boolean))).join('، ') : null, payer?.id ?? input.payerId ?? null, payer?.name ?? null, input.title?.trim() ?? null, amount, paid, typeof input.discount === 'number' ? normalizeNumber(input.discount) : null, invoiceStatus(amount, paid), input.dueDate ?? null, input.note?.trim() ?? null, input.id]);
+    await this.run('UPDATE invoices SET order_id = COALESCE(?, order_id), order_ids = COALESCE(?, order_ids), order_title = COALESCE(?, order_title), customer_name = COALESCE(?, customer_name), payer_id = COALESCE(?, payer_id), payer_name = COALESCE(?, payer_name), title = COALESCE(?, title), amount = ?, paid = ?, discount = COALESCE(?, discount), status = ?, due_date = COALESCE(?, due_date), note = COALESCE(?, note) WHERE id = ?', [orders[0]?.id ?? null, orders.length ? JSON.stringify(orders.map((item) => item.id)) : null, orders.length ? orders.map((item) => item.title).join('، ') : null, orders.length ? Array.from(new Set(orders.map((item) => item.customerName).filter(Boolean))).join('، ') : null, payerId, payerName, input.title?.trim() ?? null, amount, paid, typeof input.discount === 'number' ? normalizeNumber(input.discount) : null, invoiceStatus(amount, paid), input.dueDate ?? null, input.note?.trim() ?? null, input.id]);
     await this.log('invoice', 'فاکتور ویرایش شد', input.title ?? input.id);
   }
 
@@ -973,16 +1085,19 @@ class SqliteBackend extends BaseBackend {
   }
 
   async importSnapshot(snapshot: AppSnapshot) {
-    for (const table of ['activities', 'notifications', 'collaborator_payments', 'invoices', 'orders', 'inventory', 'mesh_types', 'collaborators', 'customers']) await this.run(`DELETE FROM ${table}`);
-    for (const item of snapshot.customers) await this.run('INSERT INTO customers (id, name, phone, address, note, referred_by_collaborator_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [item.id, item.name, item.phone, item.address, item.note, item.referredByCollaboratorId ?? '', item.createdAt]);
-    for (const item of snapshot.collaborators) await this.run('INSERT INTO collaborators (id, name, phone, role, note, created_at) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.name, item.phone, item.role, item.note, item.createdAt]);
-    for (const item of snapshot.orders) await this.run('INSERT INTO orders (id, customer_id, customer_name, collaborator_id, collaborator_name, title, status, work_type, quantity, unit_price, discount, total, line_items, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [item.id, item.customerId, item.customerName, item.collaboratorId, item.collaboratorName, item.title, item.status, item.workType, item.quantity, item.unitPrice, item.discount, item.total, JSON.stringify(item.lineItems ?? []), item.dueDate, item.note, item.createdAt]);
-    for (const item of snapshot.invoices.map((invoice) => normalizeInvoice(invoice, snapshot.orders))) await this.run('INSERT INTO invoices (id, invoice_number, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [item.id, item.invoiceNumber ?? fallbackInvoiceNumber(item.id, item.createdAt), item.orderId, JSON.stringify(item.orderIds ?? [item.orderId]), item.orderTitle, item.customerName, item.payerId, item.payerName, item.title, item.amount, item.paid, item.discount, item.status, item.dueDate, item.note, item.createdAt]);
-    for (const item of snapshot.collaboratorPayments ?? []) await this.run('INSERT INTO collaborator_payments (id, collaborator_id, amount, paid_at, note, created_at) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.collaboratorId, item.amount, item.paidAt, item.note, item.createdAt]);
-    for (const item of snapshot.inventory) await this.run('INSERT INTO inventory (id, name, quantity, unit, min_quantity, note) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.name, item.quantity, item.unit, item.minQuantity, item.note]);
-    for (const item of snapshot.meshTypes) await this.run('INSERT INTO mesh_types (id, title, unit_price, is_active, is_default, note) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.title, item.unitPrice, item.isActive, item.isDefault, item.note]);
-    for (const item of snapshot.notifications) await this.run('INSERT INTO notifications (id, title, body, seen, created_at) VALUES (?, ?, ?, ?, ?)', [item.id, item.title, item.body, item.seen, item.createdAt]);
-    for (const item of snapshot.activities) await this.run('INSERT INTO activities (id, type, title, body, created_at) VALUES (?, ?, ?, ?, ?)', [item.id, item.type, item.title, item.body, item.createdAt]);
+    const safeSnapshot = prepareSnapshotForImport(snapshot);
+    await this.withTransaction(async () => {
+      for (const table of ['activities', 'notifications', 'collaborator_payments', 'invoices', 'orders', 'inventory', 'mesh_types', 'collaborators', 'customers']) await this.run(`DELETE FROM ${table}`);
+      for (const item of safeSnapshot.customers) await this.run('INSERT INTO customers (id, name, phone, address, note, referred_by_collaborator_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [item.id, item.name, item.phone, item.address, item.note, item.referredByCollaboratorId ?? '', item.createdAt]);
+      for (const item of safeSnapshot.collaborators) await this.run('INSERT INTO collaborators (id, name, phone, role, note, created_at) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.name, item.phone, item.role, item.note, item.createdAt]);
+      for (const item of safeSnapshot.orders) await this.run('INSERT INTO orders (id, customer_id, customer_name, collaborator_id, collaborator_name, title, status, work_type, quantity, unit_price, discount, total, line_items, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [item.id, item.customerId, item.customerName, item.collaboratorId, item.collaboratorName, item.title, item.status, item.workType, item.quantity, item.unitPrice, item.discount, item.total, JSON.stringify(item.lineItems ?? []), item.dueDate, item.note, item.createdAt]);
+      for (const item of safeSnapshot.invoices.map((invoice) => normalizeInvoice(invoice, safeSnapshot.orders))) await this.run('INSERT INTO invoices (id, invoice_number, order_id, order_ids, order_title, customer_name, payer_id, payer_name, title, amount, paid, discount, status, due_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [item.id, item.invoiceNumber ?? fallbackInvoiceNumber(item.id, item.createdAt), item.orderId, JSON.stringify(item.orderIds ?? [item.orderId]), item.orderTitle, item.customerName, item.payerId, item.payerName, item.title, item.amount, item.paid, item.discount, item.status, item.dueDate, item.note, item.createdAt]);
+      for (const item of safeSnapshot.collaboratorPayments ?? []) await this.run('INSERT INTO collaborator_payments (id, collaborator_id, amount, paid_at, note, created_at) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.collaboratorId, item.amount, item.paidAt, item.note, item.createdAt]);
+      for (const item of safeSnapshot.inventory) await this.run('INSERT INTO inventory (id, name, quantity, unit, min_quantity, note) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.name, item.quantity, item.unit, item.minQuantity, item.note]);
+      for (const item of safeSnapshot.meshTypes) await this.run('INSERT INTO mesh_types (id, title, unit_price, is_active, is_default, note) VALUES (?, ?, ?, ?, ?, ?)', [item.id, item.title, item.unitPrice, item.isActive, item.isDefault, item.note]);
+      for (const item of safeSnapshot.notifications) await this.run('INSERT INTO notifications (id, title, body, seen, created_at) VALUES (?, ?, ?, ?, ?)', [item.id, item.title, item.body, item.seen, item.createdAt]);
+      for (const item of safeSnapshot.activities) await this.run('INSERT INTO activities (id, type, title, body, created_at) VALUES (?, ?, ?, ?, ?)', [item.id, item.type, item.title, item.body, item.createdAt]);
+    });
     await this.log('backup', 'بکاپ بازیابی شد', 'داده‌ها از JSON وارد شدند');
   }
 
@@ -1057,7 +1172,13 @@ class SqliteBackend extends BaseBackend {
   }
 
   private async run(statement: string, values: unknown[] = []) {
-    await this.requireDb().run(statement, values);
+    await this.requireDb().run(statement, values, this.transactionDepth === 0);
+  }
+
+  private async safeCollaboratorId(collaboratorId?: string) {
+    if (!collaboratorId) return '';
+    const rows = await this.all<{ id: string }>('SELECT id FROM collaborators WHERE id = ? LIMIT 1', [collaboratorId]);
+    return rows[0]?.id ?? '';
   }
 
   private requireDb() {
@@ -1065,8 +1186,28 @@ class SqliteBackend extends BaseBackend {
     return this.db;
   }
 
-  private async syncPostgresMirror() {
+  private async withTransaction(action: () => Promise<void>) {
+    if (this.transactionDepth > 0) {
+      await action();
+      return;
+    }
+
     const db = this.requireDb();
+    await db.beginTransaction();
+    this.transactionDepth += 1;
+    try {
+      await action();
+      await db.commitTransaction();
+    } catch (error) {
+      await db.rollbackTransaction().catch(() => undefined);
+      throw error;
+    } finally {
+      this.transactionDepth -= 1;
+    }
+  }
+
+  private async syncPostgresMirror() {
+    const db = { run: (statement: string, values: unknown[] = []) => this.run(statement, values) };
     const current = now();
     const adminId = 'local-admin-user';
     const managerRoleId = 'local-role-manager';
@@ -1086,7 +1227,10 @@ class SqliteBackend extends BaseBackend {
     const collaboratorPayments = await this.all<CollaboratorPayment>('SELECT collaborator_payments.id, collaborator_id as collaboratorId, collaborators.name as collaboratorName, amount, paid_at as paidAt, collaborator_payments.note, collaborator_payments.created_at as createdAt FROM collaborator_payments JOIN collaborators ON collaborators.id = collaborator_payments.collaborator_id');
     const inventory = await this.all<InventoryItem>('SELECT id, name, quantity FROM inventory');
     const activities = await this.all<Activity>('SELECT id, type, title, body, created_at as createdAt FROM activities');
+    const collaboratorIds = new Set(collaborators.map((item) => item.id));
+    const customerIds = new Set(customers.map((item) => item.id));
 
+    await this.withTransaction(async () => {
     for (const table of ['OperationLog', 'InventoryLog', 'InventoryItem', 'InvoicePayment', 'InvoiceOrder', 'Invoice', 'OrderLineItem', 'Order', 'CollaboratorPayment', 'MeshType', 'Customer', 'Collaborator', 'Session', 'LoginAttempt', 'UserRole', 'RolePermission', 'Permission', 'Role', 'User', 'BackupLog', 'AppSetting']) {
       await db.run(`DELETE FROM "${table}"`);
     }
@@ -1122,9 +1266,12 @@ class SqliteBackend extends BaseBackend {
 
     for (const customer of customers) {
       const parts = splitDisplayName(customer.name);
+      const referredByCollaboratorId = customer.referredByCollaboratorId && collaboratorIds.has(customer.referredByCollaboratorId)
+        ? customer.referredByCollaboratorId
+        : null;
       await db.run(
         'INSERT INTO "Customer" (id, firstName, lastName, phone, address, description, createdById, referredByCollaboratorId, createdAt, updatedAt, deletedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [customer.id, parts.firstName, parts.lastName, customer.phone || null, customer.address || null, customer.note || null, createdById, customer.referredByCollaboratorId || null, customer.createdAt, current, null]
+        [customer.id, parts.firstName, parts.lastName, customer.phone || null, customer.address || null, customer.note || null, createdById, referredByCollaboratorId, customer.createdAt, current, null]
       );
     }
 
@@ -1145,8 +1292,8 @@ class SqliteBackend extends BaseBackend {
           `M-${order.id.slice(0, 8)}`,
           order.title || null,
           order.dueDate || order.createdAt.slice(0, 10),
-          order.collaboratorId || null,
-          order.customerId || null,
+          order.collaboratorId && collaboratorIds.has(order.collaboratorId) ? order.collaboratorId : null,
+          order.customerId && customerIds.has(order.customerId) ? order.customerId : null,
           createdById,
           toPrismaWorkType(order.workType),
           lineItems[0]?.width ?? null,
@@ -1203,6 +1350,7 @@ class SqliteBackend extends BaseBackend {
     }
 
     await db.run('INSERT INTO "AppSetting" (key, value, updatedAt) VALUES (?, ?, ?)', ['mobile_schema_mode', 'postgres-compatible', current]);
+    });
   }
 }
 
